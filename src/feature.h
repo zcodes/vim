@@ -286,6 +286,7 @@
 #endif
 
 /*
+ *			Persian language: 波斯语
  * +farsi		Farsi (Persian language) Keymap support.
  *			Requires FEAT_RIGHTLEFT.
  *
@@ -301,6 +302,7 @@
 #endif
 
 /*
+ *			阿拉伯语
  * +arabic		Arabic keymap and shaping support.
  *			Requires FEAT_RIGHTLEFT and FEAT_MBYTE.
  *
@@ -515,6 +517,7 @@
 #endif
 
 /*
+ *			conceal: 隐藏
  * +conceal		'conceal' option.  Needs syntax highlighting
  *			as this is how the concealed text is defined.
  */
@@ -1237,6 +1240,8 @@
  * +sun_workshop	Sun Workshop integration
  * +netbeans_intg	Netbeans integration
  * +channel		Inter process communication
+ *
+ * Note: mzscheme is Racket now !
  */
 
 /*
