@@ -36,7 +36,9 @@ OPTIMIZE=MAXSPEED
 GUI=yes
 # set to yes if you want to use DirectWrite (DirectX)
 # MinGW-w64 is needed, and ARCH should be set to i686 or x86-64.
+ifndef DIRECTX
 DIRECTX=no
+endif
 # FEATURES=[TINY | SMALL | NORMAL | BIG | HUGE]
 # Set to TINY to make minimal version (few features).
 FEATURES=HUGE
@@ -66,7 +68,9 @@ endif
 # Set to yes to enable Cscope support.
 CSCOPE=yes
 # Set to yes to enable Netbeans support (requires CHANNEL).
+ifndef NETBEANS
 NETBEANS=$(GUI)
+endif
 # Set to yes to enable inter process communication.
 ifeq (HUGE, $(FEATURES))
 CHANNEL=yes
