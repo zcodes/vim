@@ -3352,9 +3352,9 @@ f_float2nr(typval_T *argvars, typval_T *rettv)
 
     if (get_float_arg(argvars, &f) == OK)
     {
-	if (f < -VARNUM_MAX)
+	if (f <= -VARNUM_MAX + DBL_EPSILON)
 	    rettv->vval.v_number = -VARNUM_MAX;
-	else if (f > VARNUM_MAX)
+	else if (f >= VARNUM_MAX - DBL_EPSILON)
 	    rettv->vval.v_number = VARNUM_MAX;
 	else
 	    rettv->vval.v_number = (varnumber_T)f;
@@ -10461,8 +10461,10 @@ f_sha256(typval_T *argvars, typval_T *rettv)
     static void
 f_shellescape(typval_T *argvars, typval_T *rettv)
 {
+    int do_special = non_zero_arg(&argvars[1]);
+
     rettv->vval.v_string = vim_strsave_shellescape(
-		get_tv_string(&argvars[0]), non_zero_arg(&argvars[1]), TRUE);
+			   get_tv_string(&argvars[0]), do_special, do_special);
     rettv->v_type = VAR_STRING;
 }
 
@@ -13177,7 +13179,10 @@ f_writefile(typval_T *argvars, typval_T *rettv)
     char_u	*fname;
     FILE	*fd;
     int		ret = 0;
+    listitem_T	*li;
+    list_T	*list;
 
+    rettv->vval.v_number = -1;
     if (check_restricted() || check_secure())
 	return;
 
@@ -13186,20 +13191,31 @@ f_writefile(typval_T *argvars, typval_T *rettv)
 	EMSG2(_(e_listarg), "writefile()");
 	return;
     }
-    if (argvars[0].vval.v_list == NULL)
+    list = argvars[0].vval.v_list;
+    if (list == NULL)
 	return;
+    for (li = list->lv_first; li != NULL; li = li->li_next)
+	if (get_tv_string_chk(&li->li_tv) == NULL)
+	    return;
 
     if (argvars[2].v_type != VAR_UNKNOWN)
     {
-	if (vim_strchr(get_tv_string(&argvars[2]), 'b') != NULL)
+	char_u *arg2 = get_tv_string_chk(&argvars[2]);
+
+	if (arg2 == NULL)
+	    return;
+	if (vim_strchr(arg2, 'b') != NULL)
 	    binary = TRUE;
-	if (vim_strchr(get_tv_string(&argvars[2]), 'a') != NULL)
+	if (vim_strchr(arg2, 'a') != NULL)
 	    append = TRUE;
     }
 
+    fname = get_tv_string_chk(&argvars[1]);
+    if (fname == NULL)
+	return;
+
     /* Always open the file in binary mode, library functions have a mind of
      * their own about CR-LF conversion. */
-    fname = get_tv_string(&argvars[1]);
     if (*fname == NUL || (fd = mch_fopen((char *)fname,
 				      append ? APPENDBIN : WRITEBIN)) == NULL)
     {
@@ -13208,7 +13224,7 @@ f_writefile(typval_T *argvars, typval_T *rettv)
     }
     else
     {
-	if (write_list(fd, argvars[0].vval.v_list, binary) == FAIL)
+	if (write_list(fd, list, binary) == FAIL)
 	    ret = -1;
 	fclose(fd);
     }

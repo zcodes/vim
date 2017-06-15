@@ -3436,9 +3436,9 @@ syn_cmd_conceal(exarg_T *eap UNUSED, int syncing UNUSED)
     if (*arg == NUL)
     {
 	if (curwin->w_s->b_syn_conceal)
-	    MSG(_("syn conceal on"));
+	    MSG(_("syntax conceal on"));
 	else
-	    MSG(_("syn conceal off"));
+	    MSG(_("syntax conceal off"));
     }
     else if (STRNICMP(arg, "on", 2) == 0 && next - arg == 2)
 	curwin->w_s->b_syn_conceal = TRUE;
@@ -6970,6 +6970,8 @@ static char *(highlight_init_light[]) =
 #ifdef FEAT_GUI
 	"Normal gui=NONE",
 #endif
+	CENT("QuickFixLine term=reverse ctermbg=Cyan",
+	     "QuickFixLine term=reverse ctermbg=Cyan guibg=Cyan"),
 	NULL
     };
 
@@ -7055,6 +7057,8 @@ static char *(highlight_init_dark[]) =
 	CENT("Conceal ctermbg=DarkGrey ctermfg=LightGrey",
 	     "Conceal ctermbg=DarkGrey ctermfg=LightGrey guibg=DarkGrey guifg=LightGrey"),
 #endif
+	CENT("QuickFixLine term=reverse ctermbg=Cyan",
+	     "QuickFixLine term=reverse ctermbg=Cyan guibg=Cyan"),
 #ifdef FEAT_GUI
 	"Normal gui=NONE",
 #endif
@@ -7834,18 +7838,25 @@ do_highlight(
 			must_redraw = CLEAR;
 			if (color >= 0)
 			{
+			    int dark = -1;
+
 			    if (termcap_active)
 				term_bg_color(color);
 			    if (t_colors < 16)
-				i = (color == 0 || color == 4);
-			    else
-				i = (color < 7 || color == 8);
+				dark = (color == 0 || color == 4);
+			    /* Limit the heuristic to the standard 16 colors */
+			    else if (color < 16)
+				dark = (color < 7 || color == 8);
 			    /* Set the 'background' option if the value is
 			     * wrong. */
-			    if (i != (*p_bg == 'd'))
+			    if (dark != -1
+				    && dark != (*p_bg == 'd')
+				    && !option_was_set((char_u *)"bg"))
+			    {
 				set_option_value((char_u *)"bg", 0L,
-					i ?  (char_u *)"dark"
-					  : (char_u *)"light", 0);
+				       (char_u *)(dark ? "dark" : "light"), 0);
+				reset_option_was_set((char_u *)"bg");
+			    }
 			}
 		    }
 		}
