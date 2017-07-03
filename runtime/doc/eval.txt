@@ -1,4 +1,4 @@
-*eval.txt*	For Vim version 8.0.  Last change: 2017 Jun 23
+*eval.txt*	For Vim version 8.0.  Last change: 2017 Jun 25
 
 
 		  VIM REFERENCE MANUAL	  by Bram Moolenaar
@@ -7008,7 +7008,8 @@ setqflist({list} [, {action}[, {what}]])		*setqflist()*
 		    title	quickfix list title text
 		Unsupported keys in {what} are ignored.
 		If the "nr" item is not present, then the current quickfix list
-		is modified.
+		is modified. When creating a new quickfix list, "nr" can be
+		set to a value one greater than the quickfix stack size.
 
 		Examples: >
 			:call setqflist([], 'r', {'title': 'My search'})
@@ -7663,12 +7664,21 @@ synconcealed({lnum}, {col})				*synconcealed()*
 		   is 1, the second item contains the text which will be
 		   displayed in place of the concealed text, depending on the
 		   current setting of 'conceallevel' and 'listchars'.
-		3. The third and final item in the list is a unique number
-		   representing the specific syntax region matched. This
-		   allows detection of the beginning of a new concealable
-		   region if there are two consecutive regions with the same
-		   replacement character.  For an example use see
-		   $VIMRUNTIME/syntax/2html.vim .
+		3. The third and final item in the list is a number
+		   representing the specific syntax region matched in the
+		   line. When the character is not concealed the value is
+		   zero. This allows detection of the beginning of a new
+		   concealable region if there are two consecutive regions
+		   with the same replacement character.  For an example, if
+		   the text is "123456" and both "23" and "45" are concealed
+		   and replace by the character "X", then:
+			call			returns ~
+		   	synconcealed(lnum, 1)   [0, '', 0]
+		   	synconcealed(lnum, 2)   [1, 'X', 1]
+		   	synconcealed(lnum, 3)   [1, 'X', 1]
+		   	synconcealed(lnum, 4)   [1, 'X', 2]
+		   	synconcealed(lnum, 5)   [1, 'X', 2]
+		   	synconcealed(lnum, 6)   [0, '', 0]
 
 
 synstack({lnum}, {col})					*synstack()*
@@ -7933,7 +7943,18 @@ test_override({name}, {val})				*test_override()*
 		name	     effect when {val} is non-zero ~
 		redraw       disable the redrawing() function
 		char_avail   disable the char_avail() function
+		starting     reset the "starting" variable, see below
 		ALL	     clear all overrides ({val} is not used)
+
+		"starting" is to be used when a test should behave like
+		startup was done.  Since the tests are run by sourcing a
+		script the "starting" variable is non-zero. This is usually a
+		good thing (tests run faster), but sometimes changes behavior
+		in a way that the test doesn't work properly.
+		When using: >
+			call test_override('starting', 1)
+< 		The value of "starting" is saved.  It is restored by: >
+			call test_override('starting', 0)
 
 test_settime({expr})					*test_settime()*
 		Set the time Vim uses internally.  Currently only used for

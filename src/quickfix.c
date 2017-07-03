@@ -1163,8 +1163,8 @@ qf_init_ext(
     qffields_T	    fields;
 #ifdef FEAT_WINDOWS
     qfline_T	    *old_last = NULL;
-    int		    adding = FALSE;
 #endif
+    int		    adding = FALSE;
     static efm_T    *fmt_first = NULL;
     char_u	    *efm;
     static char_u   *last_efm = NULL;
@@ -1199,14 +1199,15 @@ qf_init_ext(
     if (newlist || qi->qf_curlist == qi->qf_listcount)
 	/* make place for a new list */
 	qf_new_list(qi, qf_title);
-#ifdef FEAT_WINDOWS
-    else if (qi->qf_lists[qi->qf_curlist].qf_count > 0)
+    else
     {
 	/* Adding to existing list, use last entry. */
 	adding = TRUE;
-	old_last = qi->qf_lists[qi->qf_curlist].qf_last;
-    }
+#ifdef FEAT_WINDOWS
+	if (qi->qf_lists[qi->qf_curlist].qf_count > 0)
+	    old_last = qi->qf_lists[qi->qf_curlist].qf_last;
 #endif
+    }
 
     /* Use the local value of 'errorformat' if it's set. */
     if (errorformat == p_efm && tv == NULL && *buf->b_p_efm != NUL)
@@ -3425,6 +3426,9 @@ qf_fill_buffer(qf_info_T *qi, buf_T *buf, qfline_T *old_last)
 	/* Set the 'filetype' to "qf" each time after filling the buffer.
 	 * This resembles reading a file into a buffer, it's more logical when
 	 * using autocommands. */
+#ifdef FEAT_AUTOCMD
+	++curbuf_lock;
+#endif
 	set_option_value((char_u *)"ft", 0L, (char_u *)"qf", OPT_LOCAL);
 	curbuf->b_p_ma = FALSE;
 
@@ -3435,6 +3439,7 @@ qf_fill_buffer(qf_info_T *qi, buf_T *buf, qfline_T *old_last)
 	apply_autocmds(EVENT_BUFWINENTER, (char_u *)"quickfix", NULL,
 							       FALSE, curbuf);
 	keep_filetype = FALSE;
+	--curbuf_lock;
 #endif
 	/* make sure it will be redrawn */
 	redraw_curbuf_later(NOT_VALID);
@@ -4781,6 +4786,8 @@ get_errorlist_properties(win_T *wp, dict_T *what, dict_T *retdict)
 	    (void)get_errorlist(wp, qf_idx, l);
 	    dict_add_list(retdict, "items", l);
 	}
+	else
+	    status = FAIL;
     }
 
     if ((status == OK) && (flags & QF_GETLIST_CONTEXT))
@@ -4791,9 +4798,12 @@ get_errorlist_properties(win_T *wp, dict_T *what, dict_T *retdict)
 	    if (di != NULL)
 	    {
 		copy_tv(qi->qf_lists[qf_idx].qf_ctx, &di->di_tv);
-		if (dict_add(retdict, di) == FAIL)
+		status = dict_add(retdict, di);
+		if (status == FAIL)
 		    dictitem_free(di);
 	    }
+	    else
+		status = FAIL;
 	}
 	else
 	    status = dict_add_nr_str(retdict, "context", 0L, (char_u *)"");
@@ -5016,6 +5026,7 @@ qf_set_properties(qf_info_T *qi, dict_T *what, int action)
 	if (ctx != NULL)
 	    copy_tv(&di->di_tv, ctx);
 	qi->qf_lists[qf_idx].qf_ctx = ctx;
+	retval = OK;
     }
 
     return retval;
