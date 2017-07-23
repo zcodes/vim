@@ -77,6 +77,7 @@ CHANNEL=yes
 else
 CHANNEL=$(GUI)
 endif
+TERMINAL=no
 
 
 # Link against the shared version of libstdc++ by default.  Set
@@ -561,6 +562,10 @@ ifeq ($(CHANNEL),yes)
 DEFINES += -DFEAT_JOB_CHANNEL
 endif
 
+ifeq ($(TERMINAL),yes)
+DEFINES += -DFEAT_TERMINAL
+endif
+
 # DirectWrite (DirectX)
 ifeq ($(DIRECTX),yes)
 # Only allow DirectWrite for a GUI build.
@@ -747,6 +752,11 @@ LIB += -L$(XPM)/lib -lXpm
 endif
 endif
 
+ifeq ($(TERMINAL),yes)
+OBJ += $(OUTDIR)/terminal.o
+VTERM_LIB = libvterm/.libs/libvterm.a
+endif
+
 
 ifdef MZSCHEME
 MZSCHEME_SUFFIX = Z
@@ -844,7 +854,7 @@ uninstal.exe: uninstal.c
 	$(CC) $(CFLAGS) -o uninstal.exe uninstal.c $(LIB)
 
 $(TARGET): $(OUTDIR) $(OBJ)
-	$(CC) $(CFLAGS) $(LFLAGS) -o $@ $(OBJ) $(LIB) -lole32 -luuid $(LUA_LIB) $(MZSCHEME_LIBDIR) $(MZSCHEME_LIB) $(PYTHONLIB) $(PYTHON3LIB) $(RUBYLIB)
+	$(CC) $(CFLAGS) $(LFLAGS) -o $@ $(OBJ) $(LIB) -lole32 -luuid $(LUA_LIB) $(MZSCHEME_LIBDIR) $(MZSCHEME_LIB) $(PYTHONLIB) $(PYTHON3LIB) $(RUBYLIB) $(VTERM_LIB)
 
 upx: exes
 	upx gvim.exe
@@ -859,6 +869,9 @@ xxd/xxd.exe: xxd/xxd.c
 
 GvimExt/gvimext.dll: GvimExt/gvimext.cpp GvimExt/gvimext.rc GvimExt/gvimext.h
 	$(MAKE) -C GvimExt -f Make_ming.mak CROSS=$(CROSS) CROSS_COMPILE=$(CROSS_COMPILE) CXX='$(CXX)' STATIC_STDCPLUS=$(STATIC_STDCPLUS)
+
+libvterm/.libs/libvterm.a :
+	cd libvterm && $(MAKE) libvterm.la
 
 clean:
 	-$(DEL) $(OUTDIR)$(DIRSLASH)*.o
