@@ -2274,6 +2274,7 @@ test_arglist \
 	test_utf8_comparisons \
 	test_viminfo \
 	test_vimscript \
+	test_virtualedit \
 	test_visual \
 	test_window_cmd \
 	test_window_id \
@@ -3295,7 +3296,11 @@ objects/channel.o: channel.c
 Makefile:
 	@echo The name of the makefile MUST be "Makefile" (with capital M)!!!!
 
-CCCTERM = $(CCC) -Ilibvterm/include -DINLINE="" -DVSNPRINTF=vim_vsnprintf
+CCCTERM = $(CCC) -Ilibvterm/include -DINLINE="" \
+	  -DVSNPRINTF=vim_vsnprintf \
+	  -DIS_COMBINING_FUNCTION=utf_iscomposing_uint \
+	  -DWCWIDTH_FUNCTION=utf_uint2cells
+
 objects/term_encoding.o: libvterm/src/encoding.c $(TERM_DEPS)
 	$(CCCTERM) -o $@ libvterm/src/encoding.c
 
