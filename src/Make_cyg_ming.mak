@@ -344,6 +344,7 @@ endif
 #	  TCL_VER=[TCL version, eg 83, 84] (default is 86)
 #	  TCL_VER_LONG=[Tcl version, eg 8.3] (default is 8.6)
 #	    You must set TCL_VER_LONG when you set TCL_VER.
+#	  TCL_DLL=[TCL dll name, eg tcl86.dll] (default is tcl86.dll)
 ifdef TCL
 ifndef DYNAMIC_TCL
 DYNAMIC_TCL=yes
@@ -353,6 +354,9 @@ TCL_VER = 86
 endif
 ifndef TCL_VER_LONG
 TCL_VER_LONG = 8.6
+endif
+ifndef TCL_DLL
+TCL_DLL = tcl$(TCL_VER).dll
 endif
 TCLINC += -I$(TCL)/include
 endif
@@ -530,7 +534,7 @@ endif
 ifdef TCL
 CFLAGS += -DFEAT_TCL $(TCLINC)
 ifeq (yes, $(DYNAMIC_TCL))
-CFLAGS += -DDYNAMIC_TCL -DDYNAMIC_TCL_DLL=\"tcl$(TCL_VER).dll\" -DDYNAMIC_TCL_VER=\"$(TCL_VER_LONG)\"
+CFLAGS += -DDYNAMIC_TCL -DDYNAMIC_TCL_DLL=\"$(TCL_DLL)\" -DDYNAMIC_TCL_VER=\"$(TCL_VER_LONG)\"
 endif
 endif
 
