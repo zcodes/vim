@@ -59,7 +59,7 @@ static int	block_redo = FALSE;
  * Returns a value between 0 and 255, index in maphash.
  * Put Normal/Visual mode mappings mostly separately from Insert/Cmdline mode.
  */
-#define MAP_HASH(mode, c1) (((mode) & (NORMAL + VISUAL + SELECTMODE + OP_PENDING)) ? (c1) : ((c1) ^ 0x80))
+#define MAP_HASH(mode, c1) (((mode) & (NORMAL + VISUAL + SELECTMODE + OP_PENDING + TERMINAL)) ? (c1) : ((c1) ^ 0x80))
 
 /*
  * Each mapping is put in one of the 256 hash lists, to speed up finding it.
@@ -1598,8 +1598,13 @@ vgetc(void)
       {
 	int did_inc = FALSE;
 
-	if (mod_mask)		/* no mapping after modifier has been read */
+	if (mod_mask
+#if defined(FEAT_XIM) && defined(FEAT_GUI_GTK)
+	    || im_is_preediting()
+#endif
+		)
 	{
+	    /* no mapping after modifier has been read */
 	    ++no_mapping;
 	    ++allow_keys;
 	    did_inc = TRUE;	/* mod_mask may change value */
@@ -3183,6 +3188,7 @@ input_available(void)
  * for :xmap  mode is VISUAL
  * for :smap  mode is SELECTMODE
  * for :omap  mode is OP_PENDING
+ * for :tmap  mode is TERMINAL
  *
  * for :abbr  mode is INSERT + CMDLINE
  * for :iabbr mode is INSERT
@@ -3827,6 +3833,8 @@ get_map_mode(char_u **cmdp, int forceit)
 	mode = SELECTMODE;			/* :smap */
     else if (modec == 'o')
 	mode = OP_PENDING;			/* :omap */
+    else if (modec == 't')
+	mode = TERMINAL;			/* :tmap */
     else
     {
 	--p;
@@ -4886,6 +4894,9 @@ makemap(
 			break;
 		    case LANGMAP:
 			c1 = 'l';
+			break;
+		    case TERMINAL:
+			c1 = 't';
 			break;
 		    default:
 			IEMSG(_("E228: makemap: Illegal mode"));

@@ -538,8 +538,9 @@ update_curbuf(int type)
 /*
  * Based on the current value of curwin->w_topline, transfer a screenfull
  * of stuff from Filemem to ScreenLines[], and update curwin->w_botline.
+ * Return OK when the screen was updated, FAIL if it was not done.
  */
-    void
+    int
 update_screen(int type_arg)
 {
     int		type = type_arg;
@@ -557,7 +558,7 @@ update_screen(int type_arg)
 
     /* Don't do anything if the screen structures are (not yet) valid. */
     if (!screen_valid(TRUE))
-	return;
+	return FAIL;
 
     if (type == VALID_NO_UPDATE)
     {
@@ -589,7 +590,7 @@ update_screen(int type_arg)
 	must_redraw = type;
 	if (type > INVERTED_ALL)
 	    curwin->w_lines_valid = 0;	/* don't use w_lines[].wl_size now */
-	return;
+	return FAIL;
     }
 
     updating_screen = TRUE;
@@ -842,6 +843,7 @@ update_screen(int type_arg)
 	gui_update_scrollbars(FALSE);
     }
 #endif
+    return OK;
 }
 
 #if defined(FEAT_SIGNS) || defined(FEAT_GUI) || defined(FEAT_CONCEAL)
@@ -3139,6 +3141,7 @@ win_line(
 #endif
 #ifdef FEAT_TERMINAL
     int		get_term_attr = FALSE;
+    int		term_attr = 0;		/* background for terminal window */
 #endif
 
     /* draw_state: items that are drawn in sequence: */
@@ -3256,6 +3259,7 @@ win_line(
     {
 	extra_check = TRUE;
 	get_term_attr = TRUE;
+	term_attr = term_get_attr(wp->w_buffer, lnum, -1);
     }
 #endif
 
@@ -5057,6 +5061,9 @@ win_line(
 # ifdef FEAT_DIFF
 			    diff_hlf != (hlf_T)0 ||
 # endif
+# ifdef FEAT_TERMINAL
+			    term_attr != 0 ||
+# endif
 			    line_attr != 0
 			) && (
 # ifdef FEAT_RIGHTLEFT
@@ -5089,6 +5096,15 @@ win_line(
 				char_attr = hl_combine_attr(char_attr,
 							    HL_ATTR(HLF_CUL));
 			}
+		    }
+# endif
+# ifdef FEAT_TERMINAL
+		    if (term_attr != 0)
+		    {
+			char_attr = term_attr;
+			if (wp->w_p_cul && lnum == wp->w_cursor.lnum)
+			    char_attr = hl_combine_attr(char_attr,
+							    HL_ATTR(HLF_CUL));
 		    }
 # endif
 		}
