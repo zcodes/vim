@@ -94,13 +94,11 @@
  */
 
 /*
+ * These features used to be optional but are now always enabled.
  * +windows		Multiple windows.  Without this there is no help
  *			window and no status lines.
  * +vertsplit		Vertically split windows.
  */
-#ifdef FEAT_SMALL
-# define FEAT_WINDOWS
-#endif
 
 /*
  * +listcmds		Vim commands for the buffer list and the argument
@@ -134,8 +132,8 @@
 # define FEAT_JUMPLIST
 #endif
 
-/* the cmdline-window requires FEAT_WINDOWS and FEAT_CMDHIST */
-#if defined(FEAT_WINDOWS) && defined(FEAT_CMDHIST)
+/* the cmdline-window requires FEAT_CMDHIST */
+#if defined(FEAT_CMDHIST)
 # define FEAT_CMDWIN
 #endif
 
@@ -454,7 +452,7 @@
  * +diff		Displaying diffs in a nice way.
  *			Requires +windows and +autocmd.
  */
-#if defined(FEAT_NORMAL) && defined(FEAT_WINDOWS) && defined(FEAT_AUTOCMD)
+#if defined(FEAT_NORMAL) && defined(FEAT_AUTOCMD)
 # define FEAT_DIFF
 #endif
 
@@ -492,7 +490,7 @@
 /*
  * +wildmenu		'wildmenu' option
  */
-#if defined(FEAT_NORMAL) && defined(FEAT_WINDOWS)
+#if defined(FEAT_NORMAL)
 # define FEAT_WILDMENU
 #endif
 
@@ -598,7 +596,7 @@
  * +mksession		":mksession" command.
  *			Requires +windows and +vertsplit.
  */
-#if defined(FEAT_NORMAL) && defined(FEAT_WINDOWS)
+#if defined(FEAT_NORMAL)
 # define FEAT_SESSION
 #endif
 
@@ -709,14 +707,14 @@
 /*
  * +scrollbind		synchronization of split windows
  */
-#if defined(FEAT_NORMAL) && defined(FEAT_WINDOWS)
+#if defined(FEAT_NORMAL)
 # define FEAT_SCROLLBIND
 #endif
 
 /*
  * +cursorbind		synchronization of split windows
  */
-#if defined(FEAT_NORMAL) && defined(FEAT_WINDOWS)
+#if defined(FEAT_NORMAL)
 # define FEAT_CURSORBIND
 #endif
 
@@ -757,7 +755,7 @@
 /*
  * GUI tabline
  */
-#if defined(FEAT_WINDOWS) && defined(FEAT_NORMAL) \
+#if defined(FEAT_NORMAL) \
     && (defined(FEAT_GUI_GTK) \
 	|| (defined(FEAT_GUI_MOTIF) && defined(HAVE_XM_NOTEBOOK_H)) \
 	|| defined(FEAT_GUI_MAC) \
