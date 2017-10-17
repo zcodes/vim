@@ -859,12 +859,12 @@ extern int (*dyn_libintl_putenv)(const char *envstring);
 #define FINDFILE_DIR	1	/* only directories */
 #define FINDFILE_BOTH	2	/* files and directories */
 
-#define W_WINCOL(wp)	(wp->w_wincol)
-#define W_WIDTH(wp)	(wp->w_width)
 #define W_ENDCOL(wp)	(wp->w_wincol + wp->w_width)
-#define W_VSEP_WIDTH(wp) (wp->w_vsep_width)
-#define W_STATUS_HEIGHT(wp) (wp->w_status_height)
-#define W_WINROW(wp)	(wp->w_winrow)
+#ifdef FEAT_MENU
+# define W_WINROW(wp)	(wp->w_winrow + wp->w_winbar_height)
+#else
+# define W_WINROW(wp)	(wp->w_winrow)
+#endif
 
 #ifdef NO_EXPANDPATH
 # define gen_expand_wildcards mch_expand_wildcards
@@ -1896,6 +1896,7 @@ typedef int sock_T;
 # define CURSOR_MOVED		0x100
 # define MOUSE_FOLD_CLOSE	0x200	/* clicked on '-' in fold column */
 # define MOUSE_FOLD_OPEN	0x400	/* clicked on '+' in fold column */
+# define MOUSE_WINBAR		0x800	/* in window toolbar */
 
 /* flags for jump_to_mouse() */
 # define MOUSE_FOCUS		0x01	/* need to stay in this window */
@@ -1997,11 +1998,12 @@ typedef int sock_T;
 #define VV_TYPE_NONE	78
 #define VV_TYPE_JOB	79
 #define VV_TYPE_CHANNEL	80
-#define VV_TERMRGBRESP	81
-#define VV_TERMU7RESP	82
-#define VV_TERMSTYLERESP 83
-#define VV_TERMBLINKRESP 84
-#define VV_LEN		85	/* number of v: vars */
+#define VV_TERMRFGRESP	81
+#define VV_TERMRBGRESP	82
+#define VV_TERMU7RESP	83
+#define VV_TERMSTYLERESP 84
+#define VV_TERMBLINKRESP 85
+#define VV_LEN		86	/* number of v: vars */
 
 /* used for v_number in VAR_SPECIAL */
 #define VVAL_FALSE	0L

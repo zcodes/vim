@@ -466,8 +466,27 @@ close_buffer(
     int		del_buf = (action == DOBUF_DEL || action == DOBUF_WIPE);
     int		wipe_buf = (action == DOBUF_WIPE);
 
+    /*
+     * Force unloading or deleting when 'bufhidden' says so.
+     * The caller must take care of NOT deleting/freeing when 'bufhidden' is
+     * "hide" (otherwise we could never free or delete a buffer).
+     */
+    if (buf->b_p_bh[0] == 'd')		/* 'bufhidden' == "delete" */
+    {
+	del_buf = TRUE;
+	unload_buf = TRUE;
+    }
+    else if (buf->b_p_bh[0] == 'w')	/* 'bufhidden' == "wipe" */
+    {
+	del_buf = TRUE;
+	unload_buf = TRUE;
+	wipe_buf = TRUE;
+    }
+    else if (buf->b_p_bh[0] == 'u')	/* 'bufhidden' == "unload" */
+	unload_buf = TRUE;
+
 #ifdef FEAT_TERMINAL
-    if (bt_terminal(buf))
+    if (bt_terminal(buf) && (buf->b_nwindows == 1 || del_buf))
     {
 	if (term_job_running(buf->b_term))
 	{
@@ -489,26 +508,7 @@ close_buffer(
 	    wipe_buf = TRUE;
 	}
     }
-    else
 #endif
-    /*
-     * Force unloading or deleting when 'bufhidden' says so.
-     * The caller must take care of NOT deleting/freeing when 'bufhidden' is
-     * "hide" (otherwise we could never free or delete a buffer).
-     */
-    if (buf->b_p_bh[0] == 'd')		/* 'bufhidden' == "delete" */
-    {
-	del_buf = TRUE;
-	unload_buf = TRUE;
-    }
-    else if (buf->b_p_bh[0] == 'w')	/* 'bufhidden' == "wipe" */
-    {
-	del_buf = TRUE;
-	unload_buf = TRUE;
-	wipe_buf = TRUE;
-    }
-    else if (buf->b_p_bh[0] == 'u')	/* 'bufhidden' == "unload" */
-	unload_buf = TRUE;
 
 #ifdef FEAT_AUTOCMD
     /* Disallow deleting the buffer when it is locked (already being closed or
@@ -837,6 +837,8 @@ free_buffer(buf_T *buf)
     ++buf_free_count;
     free_buffer_stuff(buf, TRUE);
 #ifdef FEAT_EVAL
+    /* b:changedtick uses an item in buf_T, remove it now */
+    dictitem_remove(buf->b_vars, (dictitem_T *)&buf->b_ct_di);
     unref_var_dict(buf->b_vars);
 #endif
 #ifdef FEAT_LUA
@@ -3910,7 +3912,6 @@ build_stl_str_hl(
     struct stl_hlrec *sp;
     int		save_must_redraw = must_redraw;
     int		save_redr_type = curwin->w_redr_type;
-    int		save_highlight_shcnaged = need_highlight_changed;
 
 #ifdef FEAT_EVAL
     /*
@@ -4683,12 +4684,13 @@ build_stl_str_hl(
 	sp->userhl = 0;
     }
 
-    /* We do not want redrawing a stausline, ruler, title, etc. to trigger
-     * another redraw, it may cause an endless loop.  This happens when a
-     * statusline changes a highlight group. */
-    must_redraw = save_must_redraw;
-    curwin->w_redr_type = save_redr_type;
-    need_highlight_changed = save_highlight_shcnaged;
+    /* When inside update_screen we do not want redrawing a stausline, ruler,
+     * title, etc. to trigger another redraw, it may cause an endless loop. */
+    if (updating_screen)
+    {
+	must_redraw = save_must_redraw;
+	curwin->w_redr_type = save_redr_type;
+    }
 
     return width;
 }

@@ -757,7 +757,7 @@ mzscheme_runtime_link_init(char *sch_dll, char *gc_dll, int verbose)
 mzscheme_enabled(int verbose)
 {
     return mzscheme_runtime_link_init(
-	    DYNAMIC_MZSCH_DLL, DYNAMIC_MZGC_DLL, verbose) == OK;
+	    (char *)p_mzschemedll, (char *)p_mzschemegcdll, verbose) == OK;
 }
 
     static void
@@ -2063,7 +2063,7 @@ get_window_width(void *data, int argc, Scheme_Object **argv)
     Vim_Prim	    *prim = (Vim_Prim *)data;
     vim_mz_window   *win = get_window_arg(prim->name, 0, argc, argv);
 
-    return scheme_make_integer(W_WIDTH(win->win));
+    return scheme_make_integer(win->win->w_width);
 }
 
 /* (set-win-width {width} [window]) */

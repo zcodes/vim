@@ -187,7 +187,8 @@ static struct vimvar
     {VV_NAME("t_none",		 VAR_NUMBER), VV_RO},
     {VV_NAME("t_job",		 VAR_NUMBER), VV_RO},
     {VV_NAME("t_channel",	 VAR_NUMBER), VV_RO},
-    {VV_NAME("termrgbresp",	 VAR_STRING), VV_RO},
+    {VV_NAME("termrfgresp",	 VAR_STRING), VV_RO},
+    {VV_NAME("termrbgresp",	 VAR_STRING), VV_RO},
     {VV_NAME("termu7resp",	 VAR_STRING), VV_RO},
     {VV_NAME("termstyleresp",	VAR_STRING), VV_RO},
     {VV_NAME("termblinkresp",	VAR_STRING), VV_RO},
@@ -1704,7 +1705,10 @@ ex_let_one(
 						       &stringval, opt_flags);
 		if ((opt_type == 1 && *op == '.')
 			|| (opt_type == 0 && *op != '.'))
+		{
 		    EMSG2(_(e_letwrong), op);
+		    s = NULL;  /* don't set the value */
+		}
 		else
 		{
 		    if (opt_type == 1)  /* number */
@@ -8252,13 +8256,7 @@ ex_echo(exarg_T *eap)
     void
 ex_echohl(exarg_T *eap)
 {
-    int		id;
-
-    id = syn_name2id(eap->arg);
-    if (id == 0)
-	echo_attr = 0;
-    else
-	echo_attr = syn_id2attr(id);
+    echo_attr = syn_name2attr(eap->arg);
 }
 
 /*

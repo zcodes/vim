@@ -76,6 +76,10 @@ typedef int			scid_T;		/* script ID */
 typedef struct file_buffer	buf_T;  /* forward declaration */
 typedef struct terminal_S	term_T;
 
+#ifdef FEAT_MENU
+typedef struct VimMenu vimmenu_T;
+#endif
+
 /*
  * Reference to a buffer that stores the value of buf_free_count.
  * bufref_valid() only needs to check "buf" when the count differs.
@@ -2617,6 +2621,14 @@ struct matchitem
 #endif
 };
 
+#ifdef FEAT_MENU
+typedef struct {
+    int		wb_startcol;
+    int		wb_endcol;
+    vimmenu_T	*wb_menu;
+} winbar_item_T;
+#endif
+
 /*
  * Structure which contains all information that belongs to a window
  *
@@ -2692,14 +2704,12 @@ struct window_S
      */
     int		w_winrow;	    /* first row of window in screen */
     int		w_height;	    /* number of rows in window, excluding
-				       status/command line(s) */
+				       status/command/winbar line(s) */
     int		w_status_height;    /* number of status lines (0 or 1) */
-    int		w_wincol;	    /* Leftmost column of window in screen.
-				       use W_WINCOL() */
-    int		w_width;	    /* Width of window, excluding separation.
-				       use W_WIDTH() */
-    int		w_vsep_width;	    /* Number of separator columns (0 or 1).
-				       use W_VSEP_WIDTH() */
+    int		w_wincol;	    /* Leftmost column of window in screen. */
+    int		w_width;	    /* Width of window, excluding separation. */
+    int		w_vsep_width;	    /* Number of separator columns (0 or 1). */
+
     /*
      * === start of cached values ====
      */
@@ -2804,6 +2814,12 @@ struct window_S
 
     char_u	*w_localdir;	    /* absolute path of local directory or
 				       NULL */
+#ifdef FEAT_MENU
+    vimmenu_T	*w_winbar;	    /* The root of the WinBar menu hierarchy. */
+    winbar_item_T *w_winbar_items;  /* list of items in the WinBar */
+    int		w_winbar_height;    /* 1 if there is a window toolbar */
+#endif
+
     /*
      * Options local to a window.
      * They are local because they influence the layout of the window or
@@ -3069,8 +3085,6 @@ typedef struct cursor_entry
 
 /* Start a menu name with this to not include it on the main menu bar */
 #define MNU_HIDDEN_CHAR		']'
-
-typedef struct VimMenu vimmenu_T;
 
 struct VimMenu
 {
@@ -3397,3 +3411,16 @@ typedef struct lval_S
     dictitem_T	*ll_di;		/* The dictitem or NULL */
     char_u	*ll_newkey;	/* New key for Dict in alloc. mem or NULL. */
 } lval_T;
+
+/* Structure used to save the current state.  Used when executing Normal mode
+ * commands while in any other mode. */
+typedef struct {
+    int		save_msg_scroll;
+    int		save_restart_edit;
+    int		save_msg_didout;
+    int		save_State;
+    int		save_insertmode;
+    int		save_finish_op;
+    int		save_opcount;
+    tasave_T	tabuf;
+} save_state_T;

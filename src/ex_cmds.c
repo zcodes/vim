@@ -177,7 +177,7 @@ ex_align(exarg_T *eap)
 	if (width <= 0)
 	    width = curbuf->b_p_tw;
 	if (width == 0 && curbuf->b_p_wm > 0)
-	    width = W_WIDTH(curwin) - curbuf->b_p_wm;
+	    width = curwin->w_width - curbuf->b_p_wm;
 	if (width <= 0)
 	    width = 80;
     }
@@ -3400,7 +3400,7 @@ do_wqall(exarg_T *eap)
 
     FOR_ALL_BUFFERS(buf)
     {
-	if (bufIsChanged(buf))
+	if (bufIsChanged(buf) && !bt_dontwrite(buf))
 	{
 	    /*
 	     * Check if there is a reason the buffer cannot be written:
