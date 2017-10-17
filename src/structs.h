@@ -13,12 +13,18 @@
 /*
  * There is something wrong in the SAS compiler that makes typedefs not
  * valid in include files.  Has been fixed in version 6.58.
+ *
+ * about sas c see:
+ * http://pjhutchison.org/tutorial/sas_c.html
+ * https://www.warped.com/amiga/
+ *
+ * 下面的代码似乎太老了
  */
-#if defined(SASC) && SASC < 658
-typedef long		linenr_T;
-typedef int		colnr_T;
-typedef unsigned short	short_u;
-#endif
+/* #if defined(SASC) && SASC < 658 */
+/* typedef long		linenr_T; */
+/* typedef int		colnr_T; */
+/* typedef unsigned short	short_u; */
+/* #endif */
 
 /*
  * position in file or buffer
