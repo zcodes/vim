@@ -634,8 +634,17 @@ static struct vimoption options[] =
 #endif
 			    SCRIPTID_INIT},
     {"ballooneval", "beval",P_BOOL|P_VI_DEF|P_NO_MKRC,
-#ifdef FEAT_BEVAL
+#ifdef FEAT_BEVAL_GUI
 			    (char_u *)&p_beval, PV_NONE,
+			    {(char_u *)FALSE, (char_u *)0L}
+#else
+			    (char_u *)NULL, PV_NONE,
+			    {(char_u *)0L, (char_u *)0L}
+#endif
+			    SCRIPTID_INIT},
+    {"balloonevalterm", "bevalterm",P_BOOL|P_VI_DEF|P_NO_MKRC,
+#ifdef FEAT_BEVAL_TERM
+			    (char_u *)&p_bevalterm, PV_NONE,
 			    {(char_u *)FALSE, (char_u *)0L}
 #else
 			    (char_u *)NULL, PV_NONE,
@@ -1530,7 +1539,7 @@ static struct vimoption options[] =
 			    (char_u *)&p_ic, PV_NONE,
 			    {(char_u *)FALSE, (char_u *)0L} SCRIPTID_INIT},
     {"imactivatefunc","imaf",P_STRING|P_VI_DEF|P_SECURE,
-# if defined(FEAT_EVAL) && defined(FEAT_XIM) && defined(FEAT_GUI_GTK)
+#if defined(FEAT_EVAL) && defined(FEAT_MBYTE)
 			    (char_u *)&p_imaf, PV_NONE,
 			    {(char_u *)"", (char_u *)NULL}
 # else
@@ -1546,14 +1555,14 @@ static struct vimoption options[] =
 #endif
 			    {(char_u *)"", (char_u *)0L} SCRIPTID_INIT},
     {"imcmdline",   "imc",  P_BOOL|P_VI_DEF,
-#ifdef USE_IM_CONTROL
+#ifdef FEAT_MBYTE
 			    (char_u *)&p_imcmdline, PV_NONE,
 #else
 			    (char_u *)NULL, PV_NONE,
 #endif
 			    {(char_u *)FALSE, (char_u *)0L} SCRIPTID_INIT},
     {"imdisable",   "imd",  P_BOOL|P_VI_DEF,
-#ifdef USE_IM_CONTROL
+#ifdef FEAT_MBYTE
 			    (char_u *)&p_imdisable, PV_NONE,
 #else
 			    (char_u *)NULL, PV_NONE,
@@ -1573,7 +1582,7 @@ static struct vimoption options[] =
 			    {(char_u *)B_IMODE_USE_INSERT, (char_u *)0L}
 			    SCRIPTID_INIT},
     {"imstatusfunc","imsf",P_STRING|P_VI_DEF|P_SECURE,
-#if defined(FEAT_EVAL) && defined(FEAT_XIM) && defined(FEAT_GUI_GTK)
+#if defined(FEAT_EVAL) && defined(FEAT_MBYTE)
 			    (char_u *)&p_imsf, PV_NONE,
 			    {(char_u *)"", (char_u *)NULL}
 #else
@@ -8420,13 +8429,22 @@ set_bool_option(
 	p_wiv = (*T_XS != NUL);
     }
 
-#ifdef FEAT_BEVAL
+#ifdef FEAT_BEVAL_GUI
     else if ((int *)varp == &p_beval)
     {
-	if (p_beval && !old_value)
-	    gui_mch_enable_beval_area(balloonEval);
-	else if (!p_beval && old_value)
-	    gui_mch_disable_beval_area(balloonEval);
+	if (!balloonEvalForTerm)
+	{
+	    if (p_beval && !old_value)
+		gui_mch_enable_beval_area(balloonEval);
+	    else if (!p_beval && old_value)
+		gui_mch_disable_beval_area(balloonEval);
+	}
+    }
+#endif
+#ifdef FEAT_BEVAL_TERM
+    else if ((int *)varp == &p_bevalterm)
+    {
+	mch_bevalterm_changed();
     }
 #endif
 
@@ -8451,7 +8469,7 @@ set_bool_option(
     }
 #endif
 
-#ifdef USE_IM_CONTROL
+#ifdef FEAT_MBYTE
     /* 'imdisable' */
     else if ((int *)varp == &p_imdisable)
     {

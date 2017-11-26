@@ -738,9 +738,12 @@ gui_init(void)
 	 * resized. */
 	win_new_shellsize();
 
-#ifdef FEAT_BEVAL
+#ifdef FEAT_BEVAL_GUI
 	/* Always create the Balloon Evaluation area, but disable it when
-	 * 'ballooneval' is off */
+	 * 'ballooneval' is off. */
+	if (balloonEval != NULL)
+	    vim_free(balloonEval);
+	balloonEvalForTerm = FALSE;
 # ifdef FEAT_GUI_GTK
 	balloonEval = gui_mch_create_beval_area(gui.drawarea, NULL,
 						     &general_beval_cb, NULL);
@@ -1075,7 +1078,7 @@ gui_update_cursor(
 	gui_undraw_cursor();
 	if (gui.row < 0)
 	    return;
-#ifdef USE_IM_CONTROL
+#ifdef FEAT_MBYTE
 	if (gui.row != gui.cursor_row || gui.col != gui.cursor_col)
 	    im_set_position(gui.row, gui.col);
 #endif
@@ -1118,7 +1121,8 @@ gui_update_cursor(
 	gui_mch_set_blinking(shape->blinkwait,
 			     shape->blinkon,
 			     shape->blinkoff);
-	if (shape->blinkoff == 0 || shape->blinkon == 0 || shape->blinkoff == 0)
+	if (shape->blinkwait == 0 || shape->blinkon == 0
+						       || shape->blinkoff == 0)
 	    gui_mch_stop_blink();
 #ifdef FEAT_TERMINAL
 	if (shape_bg != INVALCOLOR)
@@ -1132,7 +1136,7 @@ gui_update_cursor(
 	if (id > 0)
 	{
 	    cattr = syn_id2colors(id, &cfg, &cbg);
-#if defined(USE_IM_CONTROL) || defined(FEAT_HANGULIN)
+#if defined(FEAT_MBYTE) || defined(FEAT_HANGULIN)
 	    {
 		static int iid;
 		guicolor_T fg, bg;
