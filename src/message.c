@@ -761,7 +761,7 @@ emsgn(char_u *s, long n)
     void
 iemsg(char_u *s)
 {
-    msg(s);
+    emsg(s);
 #ifdef ABORT_ON_INTERNAL_ERROR
     abort();
 #endif
@@ -2316,7 +2316,9 @@ msg_scroll_up(void)
 	gui_undraw_cursor();
 #endif
     /* scrolling up always works */
+    mch_disable_flush();
     screen_del_lines(0, 0, 1, (int)Rows, TRUE, 0, NULL);
+    mch_enable_flush();
 
     if (!can_clear((char_u *)" "))
     {
@@ -4991,7 +4993,7 @@ vim_vsnprintf_typval(
 			    zero_padding = 0;
 			}
 			else
-                        {
+			{
 			    /* Regular float number */
 			    format[0] = '%';
 			    l = 1;
@@ -5014,7 +5016,7 @@ vim_vsnprintf_typval(
 			    format[l + 1] = NUL;
 
 			    str_arg_l = sprintf(tmp, format, f);
-                        }
+			}
 
 			if (remove_trailing_zeroes)
 			{
