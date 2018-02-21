@@ -3428,6 +3428,14 @@ do_wqall(exarg_T *eap)
 
     FOR_ALL_BUFFERS(buf)
     {
+#ifdef FEAT_TERMINAL
+	if (exiting && term_job_running(buf->b_term))
+	{
+	    no_write_message_nobang(buf);
+	    ++error;
+	}
+	else
+#endif
 	if (bufIsChanged(buf) && !bt_dontwrite(buf))
 	{
 	    /*
@@ -6918,7 +6926,7 @@ fix_help_buffer(void)
 		copy_option_part(&p, NameBuff, MAXPATHL, ",");
 		mustfree = FALSE;
 		rt = vim_getenv((char_u *)"VIMRUNTIME", &mustfree);
-		if (fullpathcmp(rt, NameBuff, FALSE) != FPC_SAME)
+		if (rt != NULL && fullpathcmp(rt, NameBuff, FALSE) != FPC_SAME)
 		{
 		    int		fcount;
 		    char_u	**fnames;
@@ -8335,7 +8343,6 @@ ex_smile(exarg_T *eap UNUSED)
     msg_clr_eos();
 }
 
-#if defined(FEAT_GUI) || defined(FEAT_CLIENTSERVER) || defined(PROTO)
 /*
  * ":drop"
  * Opens the first argument in a window.  When there are two or more arguments
@@ -8415,7 +8422,6 @@ ex_drop(exarg_T *eap)
 	ex_rewind(eap);
     }
 }
-#endif
 
 /*
  * Skip over the pattern argument of ":vimgrep /pat/[g][j]".

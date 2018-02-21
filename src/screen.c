@@ -1176,6 +1176,11 @@ win_update(win_T *wp)
      */
     if (term_update_window(wp) == OK)
     {
+# ifdef FEAT_MENU
+	/* Draw the window toolbar, if there is one. */
+	if (winbar_height(wp) > 0)
+	    redraw_win_toolbar(wp);
+# endif
 	wp->w_redr_type = 0;
 	return;
     }
@@ -10177,7 +10182,7 @@ screen_del_lines(
 }
 
 /*
- * show the current mode and ruler
+ * Show the current mode and ruler.
  *
  * If clear_cmdline is TRUE, clear the rest of the cmdline.
  * If clear_cmdline is FALSE there may be a message there that needs to be
@@ -10286,7 +10291,6 @@ showmode(void)
 			msg_puts_attr(edit_submode_extra, sub_attr);
 		    }
 		}
-		length = 0;
 	    }
 	    else
 #endif
