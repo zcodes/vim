@@ -1265,8 +1265,7 @@ syn_stack_alloc(void)
 	if (syn_block->b_sst_array != NULL)
 	{
 	    /* Move the states from the old array to the new one. */
-	    for (from = syn_block->b_sst_first; from != NULL;
-							from = from->sst_next)
+	    for (from = syn_block->b_sst_first; from != NULL; from = from->sst_next)
 	    {
 		++to;
 		*to = *from;
