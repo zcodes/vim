@@ -2005,8 +2005,7 @@ syn_current_attr(
 	else
 	    cur_si = NULL;
 
-	if (syn_block->b_syn_containedin || cur_si == NULL
-					      || cur_si->si_cont_list != NULL)
+	if (syn_block->b_syn_containedin || cur_si == NULL || cur_si->si_cont_list != NULL)
 	{
 	    /*
 	     * 2. Check for keywords, if on a keyword char after a non-keyword
@@ -2102,7 +2101,7 @@ syn_current_attr(
 		    for (idx = syn_block->b_syn_patterns.ga_len; --idx >= 0; )
 		    {
 			spp = &(SYN_ITEMS(syn_block)[idx]);
-			if (	   spp->sp_syncing == syncing
+			if (spp->sp_syncing == syncing
 				&& (displaying || !(spp->sp_flags & HL_DISPLAY))
 				&& (spp->sp_type == SPTYPE_MATCH
 				    || spp->sp_type == SPTYPE_START)
@@ -2571,7 +2570,7 @@ push_next_match(stateitem_T *cur_si)
 	 * If the start pattern has another highlight group, push another item
 	 * on the stack for the start pattern.
 	 */
-	if (	   spp->sp_type == SPTYPE_START
+	if (spp->sp_type == SPTYPE_START
 		&& spp->sp_syn_match_id != 0
 		&& push_current_state(next_match_idx) == OK)
 	{
