@@ -525,6 +525,7 @@ mb_init(void)
     char_u	*p;
 #endif
 
+    /* p_enc ==> 'encoding' */
     if (p_enc == NULL)
     {
 	/* Just starting up: set the whole table to one's. */

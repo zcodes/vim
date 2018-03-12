@@ -4220,7 +4220,7 @@ findswapname(
 	     * with a dot.
 	     */
 	    tail = gettail(buf_fname);
-	    if (       vim_strchr(tail, '.') != NULL
+	    if (vim_strchr(tail, '.') != NULL
 		    || STRLEN(tail) > (size_t)8
 		    || *gettail(fname) == '.')
 	    {

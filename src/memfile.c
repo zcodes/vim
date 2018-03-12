@@ -1027,6 +1027,7 @@ mf_write(memfile_T *mfp, bhdr_T *hp)
 	else
 	    hp2 = hp;
 
+	/* nr / mfp->mf_infile_count 是按照page_size 的倍数增加的 */
 	offset = (off_T)page_size * nr;
 	if (vim_lseek(mfp->mf_fd, offset, SEEK_SET) != offset)
 	{
