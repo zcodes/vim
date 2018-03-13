@@ -415,6 +415,7 @@ readfile(
 	}
     }
 
+    /* 检查文件权限 */
     if (!read_stdin && !read_buffer && !read_fifo)
     {
 #ifdef UNIX
@@ -478,6 +479,7 @@ readfile(
     if (check_readonly && !readonlymode)
 	curbuf->b_p_ro = FALSE;
 
+    /* 检查文件状态 */
     if (newfile && !read_stdin && !read_buffer && !read_fifo)
     {
 	/* Remember time of file. */
@@ -675,6 +677,7 @@ readfile(
 #endif
     }
 
+    /* 创建交换文件 */
     /* Create a swap file now, so that other Vims are warned that we are
      * editing this file.
      * Don't do this for a "nofile" or "nowrite" buffer type. */
@@ -2268,7 +2271,7 @@ rewind_retry:
 			     */
 			    else if (ff_error != EOL_DOS)
 			    {
-				if (   try_unix
+				if (try_unix
 				    && !read_stdin
 				    && (read_buffer
 					|| vim_lseek(fd, (off_T)0L, SEEK_SET)
