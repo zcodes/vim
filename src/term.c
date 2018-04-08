@@ -3642,7 +3642,7 @@ swapping_screen(void)
     return (full_screen && *T_TI != NUL);
 }
 
-#ifdef FEAT_MOUSE
+#if defined(FEAT_MOUSE) || defined(PROTO)
 /*
  * setmouse() - switch mouse on/off depending on current mode and 'mouse'
  */
@@ -5195,10 +5195,13 @@ check_termcode(
 #    ifdef FEAT_GUI
 			&& !gui.in_use
 #    endif
-			&& (mouse_code == 0x23 || mouse_code == 0x24))
+			&& (mouse_code == 0x23 || mouse_code == 0x24
+			    || mouse_code == 0x40 || mouse_code == 0x41))
 		{
-		    /* Apparently used by rxvt scroll wheel. */
-		    wheel_code = mouse_code - 0x23 + MOUSEWHEEL_LOW;
+		    /* Apparently 0x23 and 0x24 are used by rxvt scroll wheel.
+		     * And 0x40 and 0x41 are used by some xterm emulator. */
+		    wheel_code = mouse_code - (mouse_code >= 0x40 ? 0x40 : 0x23)
+							      + MOUSEWHEEL_LOW;
 		}
 #   endif
 
@@ -6805,6 +6808,7 @@ gui_get_color_cmn(char_u *name)
 	    {(char_u *)"green",		RGB(0x00, 0xFF, 0x00)},
 	    {(char_u *)"grey",		RGB(0xBE, 0xBE, 0xBE)},
 	    {(char_u *)"grey40",	RGB(0x66, 0x66, 0x66)},
+	    {(char_u *)"grey50",	RGB(0x7F, 0x7F, 0x7F)},
 	    {(char_u *)"grey90",	RGB(0xE5, 0xE5, 0xE5)},
 	    {(char_u *)"lightblue",	RGB(0xAD, 0xD8, 0xE6)},
 	    {(char_u *)"lightcyan",	RGB(0xE0, 0xFF, 0xFF)},

@@ -430,6 +430,7 @@ static void f_timer_stopall(typval_T *argvars, typval_T *rettv);
 static void f_tolower(typval_T *argvars, typval_T *rettv);
 static void f_toupper(typval_T *argvars, typval_T *rettv);
 static void f_tr(typval_T *argvars, typval_T *rettv);
+static void f_trim(typval_T *argvars, typval_T *rettv);
 #ifdef FEAT_FLOAT
 static void f_trunc(typval_T *argvars, typval_T *rettv);
 #endif
@@ -899,6 +900,7 @@ static struct fst
     {"tolower",		1, 1, f_tolower},
     {"toupper",		1, 1, f_toupper},
     {"tr",		3, 3, f_tr},
+    {"trim",		1, 2, f_trim},
 #ifdef FEAT_FLOAT
     {"trunc",		1, 1, f_trunc},
 #endif
@@ -1991,7 +1993,7 @@ f_ch_log(typval_T *argvars, typval_T *rettv UNUSED)
     if (argvars[1].v_type != VAR_UNKNOWN)
 	channel = get_channel_arg(&argvars[1], FALSE, FALSE, 0);
 
-    ch_log(channel, (char *)msg);
+    ch_log(channel, "%s", msg);
 }
 
 /*
@@ -5539,7 +5541,7 @@ f_getwinpos(typval_T *argvars UNUSED, typval_T *rettv)
 	return;
 #ifdef FEAT_GUI
     if (gui.in_use)
-	gui_mch_get_winpos(&x, &y);
+	(void)gui_mch_get_winpos(&x, &y);
 # if defined(HAVE_TGETENT) && defined(FEAT_TERMRESPONSE)
     else
 # endif
@@ -5978,9 +5980,7 @@ f_has(typval_T *argvars, typval_T *rettv)
 #ifdef FEAT_LISP
 	"lispindent",
 #endif
-#ifdef FEAT_LISTCMDS
 	"listcmds",
-#endif
 #ifdef FEAT_LOCALMAP
 	"localmap",
 #endif
@@ -7032,7 +7032,7 @@ f_job_start(typval_T *argvars, typval_T *rettv)
     rettv->v_type = VAR_JOB;
     if (check_restricted() || check_secure())
 	return;
-    rettv->vval.v_job = job_start(argvars, NULL);
+    rettv->vval.v_job = job_start(argvars, NULL, NULL);
 }
 
 /*
@@ -12927,7 +12927,7 @@ get_callback(typval_T *arg, partial_T **pp)
 }
 
 /*
- * Unref/free "callback" and "partial" retured by get_callback().
+ * Unref/free "callback" and "partial" returned by get_callback().
  */
     void
 free_callback(char_u *callback, partial_T *partial)
@@ -13201,6 +13201,72 @@ error:
     ga_append(&ga, NUL);
 
     rettv->vval.v_string = ga.ga_data;
+}
+
+/*
+ * "trim({expr})" function
+ */
+    static void
+f_trim(typval_T *argvars, typval_T *rettv)
+{
+    char_u	buf1[NUMBUFLEN];
+    char_u	buf2[NUMBUFLEN];
+    char_u	*head = get_tv_string_buf_chk(&argvars[0], buf1);
+    char_u	*mask = NULL;
+    char_u	*tail;
+    char_u	*prev;
+    char_u	*p;
+    int		c1;
+
+    rettv->v_type = VAR_STRING;
+    if (head == NULL)
+    {
+	rettv->vval.v_string = NULL;
+	return;
+    }
+
+    if (argvars[1].v_type == VAR_STRING)
+	mask = get_tv_string_buf_chk(&argvars[1], buf2);
+
+    while (*head != NUL)
+    {
+	c1 = PTR2CHAR(head);
+	if (mask == NULL)
+	{
+	    if (c1 > ' ' && c1 != 0xa0)
+		break;
+	}
+	else
+	{
+	    for (p = mask; *p != NUL; MB_PTR_ADV(p))
+		if (c1 == PTR2CHAR(p))
+		    break;
+	    if (*p == NUL)
+		break;
+	}
+	MB_PTR_ADV(head);
+    }
+
+    for (tail = head + STRLEN(head); tail > head; tail = prev)
+    {
+	prev = tail;
+	MB_PTR_BACK(head, prev);
+	c1 = PTR2CHAR(prev);
+	if (mask == NULL)
+	{
+	    if (c1 > ' ' && c1 != 0xa0)
+		break;
+	}
+	else
+	{
+	    for (p = mask; *p != NUL; MB_PTR_ADV(p))
+		if (c1 == PTR2CHAR(p))
+		    break;
+	    if (*p == NUL)
+		break;
+	}
+    }
+    rettv->vval.v_string = vim_strnsave(head, (int)(tail - head));
 }
 
 #ifdef FEAT_FLOAT

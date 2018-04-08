@@ -426,6 +426,10 @@ getcmdline(
 #endif
 	quit_more = FALSE;	/* reset after CTRL-D which had a more-prompt */
 
+	did_emsg = FALSE;	/* There can't really be a reason why an error
+				   that occurs while typing a command should
+				   cause the command not to be executed. */
+
 	cursorcmd();		/* set the cursor on the right spot */
 
 	/* Get a character.  Ignore K_IGNORE and K_NOP, they should not do
@@ -4989,6 +4993,7 @@ ExpandFromContext(
 #endif
 	    {EXPAND_ENV_VARS, get_env_name, TRUE, TRUE},
 	    {EXPAND_USER, get_users, TRUE, FALSE},
+	    {EXPAND_ARGLIST, get_arglist_name, TRUE, FALSE},
 	};
 	int	i;
 

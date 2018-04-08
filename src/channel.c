@@ -4150,8 +4150,9 @@ channel_select_check(int ret_in, void *rfds_in, void *wfds_in)
 	if (ret > 0 && in_part->ch_fd != INVALID_FD
 					    && FD_ISSET(in_part->ch_fd, wfds))
 	{
-	    channel_write_input(channel);
+	    /* Clear the flag first, ch_fd may change in channel_write_input(). */
 	    FD_CLR(in_part->ch_fd, wfds);
+	    channel_write_input(channel);
 	    --ret;
 	}
     }
@@ -4796,9 +4797,15 @@ get_job_options(typval_T *tv, jobopt_T *opt, int supported, int supported2)
 	    {
 		if (!(supported2 & JO2_ENV))
 		    break;
+		if (item->v_type != VAR_DICT)
+		{
+		    EMSG2(_(e_invargval), "env");
+		    return FAIL;
+		}
 		opt->jo_set2 |= JO2_ENV;
 		opt->jo_env = item->vval.v_dict;
-		++item->vval.v_dict->dv_refcount;
+		if (opt->jo_env != NULL)
+		    ++opt->jo_env->dv_refcount;
 	    }
 	    else if (STRCMP(hi->hi_key, "cwd") == 0)
 	    {
@@ -5383,11 +5390,13 @@ job_check_ended(void)
 
 /*
  * Create a job and return it.  Implements job_start().
+ * "argv_arg" is only for Unix.
+ * When "argv_arg" is NULL then "argvars" is used.
  * The returned job has a refcount of one.
  * Returns NULL when out of memory.
  */
     job_T *
-job_start(typval_T *argvars, jobopt_T *opt_arg)
+job_start(typval_T *argvars, char **argv_arg, jobopt_T *opt_arg)
 {
     job_T	*job;
     char_u	*cmd = NULL;
@@ -5474,6 +5483,13 @@ job_start(typval_T *argvars, jobopt_T *opt_arg)
 
     job_set_options(job, &opt);
 
+#ifdef USE_ARGV
+    if (argv_arg != NULL)
+    {
+	argv = argv_arg;
+    }
+    else
+#endif
     if (argvars[0].v_type == VAR_STRING)
     {
 	/* Command is a string. */
@@ -5551,7 +5567,8 @@ job_start(typval_T *argvars, jobopt_T *opt_arg)
 
 theend:
 #ifdef USE_ARGV
-    vim_free(argv);
+    if (argv != argv_arg)
+	vim_free(argv);
 #else
     vim_free(ga.ga_data);
 #endif
