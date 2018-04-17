@@ -2750,6 +2750,15 @@ static struct vimoption options[] =
 			    {(char_u *)FALSE, (char_u *)FALSE}
 #endif
 			    SCRIPTID_INIT},
+    {"terminalscroll", "tlsl", P_NUM|P_VI_DEF|P_VIM|P_RBUF,
+#ifdef FEAT_TERMINAL
+			    (char_u *)&p_tlsl, PV_NONE,
+			    {(char_u *)10000L, (char_u *)10000L}
+#else
+			    (char_u *)NULL, PV_NONE,
+			    {(char_u *)NULL, (char_u *)0L}
+#endif
+			    SCRIPTID_INIT},
     {"termkey", "tk",	    P_STRING|P_ALLOCED|P_RWIN|P_VI_DEF,
 #ifdef FEAT_TERMINAL
 			    (char_u *)VAR_WIN, PV_TK,
@@ -3367,7 +3376,11 @@ set_init_1(int clean_arg)
 	    mustfree = FALSE;
 # ifdef UNIX
 	    if (*names[n] == NUL)
+#  ifdef MACOS_X
+		p = (char_u *)"/private/tmp";
+#  else
 		p = (char_u *)"/tmp";
+#  endif
 	    else
 # endif
 		p = vim_getenv((char_u *)names[n], &mustfree);
@@ -7451,7 +7464,9 @@ did_set_string_option(
 	if (*curwin->w_p_tms != NUL)
 	{
 	    p = skipdigits(curwin->w_p_tms);
-	    if (p == curwin->w_p_tms || *p != 'x' || *skipdigits(p + 1) != NUL)
+	    if (p == curwin->w_p_tms
+		    || (*p != 'x' && *p != '*')
+		    || *skipdigits(p + 1) != NUL)
 		errmsg = e_invarg;
 	}
     }
