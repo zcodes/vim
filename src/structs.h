@@ -1494,7 +1494,7 @@ struct jobvar_S
     int		jv_copyID;
 
     channel_T	*jv_channel;	/* channel for I/O, reference counted */
-    char_u	**jv_argv;	/* command line used to start the job */
+    char	**jv_argv;	/* command line used to start the job */
 };
 
 /*
@@ -3429,3 +3429,9 @@ typedef struct {
     int		save_opcount;
     tasave_T	tabuf;
 } save_state_T;
+
+typedef struct {
+    varnumber_T vv_prevcount;
+    varnumber_T vv_count;
+    varnumber_T vv_count1;
+} vimvars_save_T;
