@@ -9852,7 +9852,9 @@ syn_id2colors(int hl_id, guicolor_T *fgp, guicolor_T *bgp)
 }
 #endif
 
-#if defined(FEAT_TERMINAL) || defined(PROTO)
+#if (defined(WIN3264) \
+	&& !defined(FEAT_GUI_W32) \
+	&& defined(FEAT_TERMGUICOLORS)) || defined(PROTO)
     void
 syn_id2cterm_bg(int hl_id, int *fgp, int *bgp)
 {
