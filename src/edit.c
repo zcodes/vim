@@ -811,6 +811,14 @@ edit(
 	    do
 	    {
 		c = safe_vgetc();
+
+		if (stop_insert_mode)
+		{
+		    // Insert mode ended, possibly from a callback.
+		    count = 0;
+		    nomove = TRUE;
+		    goto doESCkey;
+		}
 	    } while (c == K_IGNORE || c == K_NOP);
 
 	/* Don't want K_CURSORHOLD for the second key, e.g., after CTRL-V. */
@@ -1008,6 +1016,19 @@ edit(
 		goto doESCkey;
 	    }
 #endif
+#ifdef FEAT_JOB_CHANNEL
+	    if (c == Ctrl_C && bt_prompt(curbuf))
+	    {
+		if (invoke_prompt_interrupt())
+		{
+		    if (!bt_prompt(curbuf))
+			// buffer changed to a non-prompt buffer, get out of
+			// Insert mode
+			goto doESCkey;
+		    break;
+		}
+	    }
+#endif
 
 #ifdef UNIX
 do_intr:
@@ -1165,6 +1186,18 @@ doESCkey:
 	    break;
 
 	case Ctrl_W:	/* delete word before the cursor */
+#ifdef FEAT_JOB_CHANNEL
+	    if (bt_prompt(curbuf) && (mod_mask & MOD_MASK_SHIFT) == 0)
+	    {
+		// In a prompt window CTRL-W is used for window commands.
+		// Use Shift-CTRL-W to delete a word.
+		stuffcharReadbuff(Ctrl_W);
+		restart_edit = 'A';
+		nomove = TRUE;
+		count = 0;
+		goto doESCkey;
+	    }
+#endif
 	    did_backspace = ins_bs(c, BACKSPACE_WORD, &inserted_space);
 	    auto_format(FALSE, TRUE);
 	    break;
@@ -1391,11 +1424,10 @@ doESCkey:
 #ifdef FEAT_JOB_CHANNEL
 	    if (bt_prompt(curbuf))
 	    {
-		buf_T *buf = curbuf;
-
 		invoke_prompt_callback();
-		if (curbuf != buf)
-		    // buffer changed, get out of Insert mode
+		if (!bt_prompt(curbuf))
+		    // buffer changed to a non-prompt buffer, get out of
+		    // Insert mode
 		    goto doESCkey;
 		break;
 	    }
@@ -1685,7 +1717,12 @@ ins_redraw(
 #endif
 	    )
     {
+	aco_save_T	aco;
+
+	// save and restore curwin and curbuf, in case the autocmd changes them
+	aucmd_prepbuf(&aco, curbuf);
 	apply_autocmds(EVENT_TEXTCHANGEDI, NULL, NULL, FALSE, curbuf);
+	aucmd_restbuf(&aco);
 	curbuf->b_last_changedtick = CHANGEDTICK(curbuf);
     }
 
@@ -1697,7 +1734,12 @@ ins_redraw(
 	    && curbuf->b_last_changedtick_pum != CHANGEDTICK(curbuf)
 	    && pum_visible())
     {
+	aco_save_T	aco;
+
+	// save and restore curwin and curbuf, in case the autocmd changes them
+	aucmd_prepbuf(&aco, curbuf);
 	apply_autocmds(EVENT_TEXTCHANGEDP, NULL, NULL, FALSE, curbuf);
+	aucmd_restbuf(&aco);
 	curbuf->b_last_changedtick_pum = CHANGEDTICK(curbuf);
     }
 #endif
@@ -1869,10 +1911,25 @@ init_prompt(int cmdchar_todo)
 	coladvance((colnr_T)MAXCOL);
 	changed_bytes(curbuf->b_ml.ml_line_count, 0);
     }
+
+    // Insert always starts after the prompt, allow editing text after it.
+    if (Insstart_orig.lnum != curwin->w_cursor.lnum
+				   || Insstart_orig.col != (int)STRLEN(prompt))
+    {
+	Insstart.lnum = curwin->w_cursor.lnum;
+	Insstart.col = (int)STRLEN(prompt);
+	Insstart_orig = Insstart;
+	Insstart_textlen = Insstart.col;
+	Insstart_blank_vcol = MAXCOL;
+	arrow_used = FALSE;
+    }
+
     if (cmdchar_todo == 'A')
 	coladvance((colnr_T)MAXCOL);
     if (cmdchar_todo == 'I' || curwin->w_cursor.col <= (int)STRLEN(prompt))
-	curwin->w_cursor.col = STRLEN(prompt);
+	curwin->w_cursor.col = (int)STRLEN(prompt);
+    /* Make sure the cursor is in a valid position. */
+    check_cursor();
 }
 
 /*
@@ -4167,7 +4224,7 @@ expand_by_function(
 {
     list_T      *matchlist = NULL;
     dict_T	*matchdict = NULL;
-    char_u	*args[2];
+    typval_T	args[3];
     char_u	*funcname;
     pos_T	pos;
     win_T	*curwin_save;
@@ -4179,15 +4236,18 @@ expand_by_function(
 	return;
 
     /* Call 'completefunc' to obtain the list of matches. */
-    args[0] = (char_u *)"0";
-    args[1] = base;
+    args[0].v_type = VAR_NUMBER;
+    args[0].vval.v_number = 0;
+    args[1].v_type = VAR_STRING;
+    args[1].vval.v_string = base != NULL ? base : (char_u *)"";
+    args[2].v_type = VAR_UNKNOWN;
 
     pos = curwin->w_cursor;
     curwin_save = curwin;
     curbuf_save = curbuf;
 
     /* Call a function, which returns a list or dict. */
-    if (call_vim_function(funcname, 2, args, FALSE, FALSE, &rettv) == OK)
+    if (call_vim_function(funcname, 2, args, &rettv, FALSE) == OK)
     {
 	switch (rettv.v_type)
 	{
@@ -5494,7 +5554,7 @@ ins_complete(int c, int enable_pum)
 	     * Call user defined function 'completefunc' with "a:findstart"
 	     * set to 1 to obtain the length of text to use for completion.
 	     */
-	    char_u	*args[2];
+	    typval_T	args[3];
 	    int		col;
 	    char_u	*funcname;
 	    pos_T	pos;
@@ -5514,8 +5574,11 @@ ins_complete(int c, int enable_pum)
 		return FAIL;
 	    }
 
-	    args[0] = (char_u *)"1";
-	    args[1] = NULL;
+	    args[0].v_type = VAR_NUMBER;
+	    args[0].vval.v_number = 1;
+	    args[1].v_type = VAR_STRING;
+	    args[1].vval.v_string = (char_u *)"";
+	    args[2].v_type = VAR_UNKNOWN;
 	    pos = curwin->w_cursor;
 	    curwin_save = curwin;
 	    curbuf_save = curbuf;
@@ -9434,7 +9497,7 @@ ins_bs(
 
     /* If deleted before the insertion point, adjust it */
     if (curwin->w_cursor.lnum == Insstart_orig.lnum
-				       && curwin->w_cursor.col < Insstart_orig.col)
+				  && curwin->w_cursor.col < Insstart_orig.col)
 	Insstart_orig.col = curwin->w_cursor.col;
 
     /* vi behaviour: the cursor moves backward but the character that
@@ -9484,6 +9547,11 @@ ins_mouse(int c)
 	     * previous one to stop insert there properly. */
 	    curwin = old_curwin;
 	    curbuf = curwin->w_buffer;
+#ifdef FEAT_JOB_CHANNEL
+	    if (bt_prompt(curbuf))
+		// Restart Insert mode when re-entering the prompt buffer.
+		curbuf->b_prompt_insert = 'A';
+#endif
 	}
 	start_arrow(curwin == old_curwin ? &tpos : NULL);
 	if (curwin != new_curwin && win_valid(new_curwin))
