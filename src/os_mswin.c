@@ -3012,6 +3012,9 @@ get_logfont(
 	    case 'b':
 		lf->lfWeight = FW_BOLD;
 		break;
+	    case 'm':
+		lf->lfWeight = FW_MEDIUM;
+		break;
 	    case 'i':
 		lf->lfItalic = TRUE;
 		break;
