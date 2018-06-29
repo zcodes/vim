@@ -893,7 +893,7 @@ endif
 endif
 
 ifeq (yes, $(STATIC_WINPTHREAD))
-LIB += -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic
+LIB += -lgcc_eh -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic
 endif
 
 all: $(TARGET) vimrun.exe xxd/xxd.exe install.exe uninstal.exe GvimExt/gvimext.dll
