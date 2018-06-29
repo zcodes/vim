@@ -3592,7 +3592,7 @@ free_unref_funccal(int copyID, int testing)
     static funccall_T *
 get_funccal(void)
 {
-    int		i;
+    unsigned int i;
     funccall_T	*funccal;
     funccall_T	*temp_funccal;
 
