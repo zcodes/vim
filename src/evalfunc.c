@@ -6302,7 +6302,9 @@ f_has(typval_T *argvars, typval_T *rettv)
 #ifdef FEAT_OLE
 	"ole",
 #endif
+#ifdef FEAT_EVAL
 	"packages",
+#endif
 #ifdef FEAT_PATH_EXTRA
 	"path_extra",
 #endif
@@ -11639,6 +11641,7 @@ f_spellbadword(typval_T *argvars UNUSED, typval_T *rettv)
 		    break;
 		}
 		str += len;
+		capcol -= len;
 	    }
 	}
     }
