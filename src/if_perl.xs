@@ -831,8 +831,7 @@ newWINrv(SV *rv, win_T *ptr)
 	ptr->w_perl_private = newSV(0);
 	sv_setiv(ptr->w_perl_private, PTR2IV(ptr));
     }
-    else
-	SvREFCNT_inc_void_NN(ptr->w_perl_private);
+    SvREFCNT_inc_void_NN(ptr->w_perl_private);
     SvRV(rv) = ptr->w_perl_private;
     SvROK_on(rv);
     return sv_bless(rv, gv_stashpv("VIWIN", TRUE));
@@ -847,8 +846,7 @@ newBUFrv(SV *rv, buf_T *ptr)
 	ptr->b_perl_private = newSV(0);
 	sv_setiv(ptr->b_perl_private, PTR2IV(ptr));
     }
-    else
-	SvREFCNT_inc_void_NN(ptr->b_perl_private);
+    SvREFCNT_inc_void_NN(ptr->b_perl_private);
     SvRV(rv) = ptr->b_perl_private;
     SvROK_on(rv);
     return sv_bless(rv, gv_stashpv("VIBUF", TRUE));
@@ -918,11 +916,12 @@ I32 cur_val(IV iv, SV *sv)
     else
 	rv = newBUFrv(newSV(0), curbuf);
 
-    if (SvRV(sv) == SvRV(rv))
-	SvREFCNT_dec(SvRV(rv));
-    else // XXX: Not sure if the `else` condition are right
-	 // Test_SvREFCNT() pass in all case.
+    if (SvRV(sv) != SvRV(rv))
+	// XXX: This magic variable is a bit confusing...
+	// Is curently refcounted ?
 	sv_setsv(sv, rv);
+
+    SvREFCNT_dec(rv);
 
     return 0;
 }
@@ -1691,6 +1690,7 @@ Cursor(win, ...)
       col = (int) SvIV(ST(2));
       win->w_cursor.lnum = lnum;
       win->w_cursor.col = col;
+      win->w_set_curswant = TRUE;
       check_cursor();		    /* put cursor on an existing line */
       update_screen(NOT_VALID);
     }
