@@ -404,13 +404,13 @@ run_command(char *cmd)
 	/* Replace the slashes with backslashes. */
 	while ((p = strchr(cmd_path, '/')) != NULL)
 	    *p = '\\';
-	sprintf(cmd_buf, "%s /c start \"vimcmd\" /wait %s", cmd_path, cmd);
+	snprintf(cmd_buf, BUFSIZE, "%s /c start \"vimcmd\" /wait %s", cmd_path, cmd);
 	free(cmd_path);
     }
     else
     {
 	/* No cmd.exe, just make the call and let the system handle it. */
-	sprintf(cmd_buf, "start /w %s", cmd);
+	snprintf(cmd_buf, BUFSIZE, "start /w %s", cmd);
     }
     system(cmd_buf);
 }

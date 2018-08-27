@@ -204,7 +204,7 @@ check_unpack(void)
 
     /* check if filetype.vim is present, which means the runtime archive has
      * been unpacked  */
-    sprintf(buf, "%s\\filetype.vim", installdir);
+    snprintf(buf, BUFSIZE, "%s\\filetype.vim", installdir);
     if (stat(buf, &st) < 0)
     {
 	printf("ERROR: Cannot find filetype.vim in \"%s\"\n", installdir);
@@ -553,7 +553,7 @@ uninstall_check(int skip_question)
 			    char buf[BUFSIZE];
 
 			    if (strchr(temp_string_buffer, ' ') != NULL)
-				sprintf(buf, "\"%s\"", temp_string_buffer);
+				snprintf(buf, BUFSIZE, "\"%s\"", temp_string_buffer);
 			    else
 				strcpy(buf, temp_string_buffer);
 			    run_command(buf);
@@ -1398,11 +1398,11 @@ register_inproc_server(
     CHAR subkey[BUFSIZE];
     LONG lRet;
 
-    sprintf(subkey, "CLSID\\%s", clsid);
+    snprintf(subkey, BUFSIZE, "CLSID\\%s", clsid);
     lRet = reg_create_key_and_value(hRootKey, subkey, NULL, extname, flag);
     if (ERROR_SUCCESS == lRet)
     {
-	sprintf(subkey, "CLSID\\%s\\InProcServer32", clsid);
+	snprintf(subkey, BUFSIZE, "CLSID\\%s\\InProcServer32", clsid);
 	lRet = reg_create_key_and_value(hRootKey, subkey, NULL, module, flag);
 	if (ERROR_SUCCESS == lRet)
 	{
@@ -1459,7 +1459,7 @@ register_openwith(
     char	exe_cmd[BUFSIZE];
     LONG	lRet;
 
-    sprintf(exe_cmd, "\"%s\" \"%%1\"", exe_path);
+    snprintf(exe_cmd, BUFSIZE, "\"%s\" \"%%1\"", exe_path);
     lRet = reg_create_key_and_value(
 	    hRootKey,
 	    "Applications\\gvim.exe\\shell\\edit\\command",
@@ -1523,7 +1523,7 @@ install_registry(void)
     int		loop_count = is_64bit_os() ? 2 : 1;
     DWORD	flag;
 
-    sprintf(vim_exe_path, "%s\\gvim.exe", installdir);
+    snprintf(vim_exe_path, BUFSIZE, "%s\\gvim.exe", installdir);
 
     if (install_popup)
     {
@@ -1535,12 +1535,12 @@ install_registry(void)
 	{
 	    if (i == 0)
 	    {
-		sprintf(bufg, "%s\\" GVIMEXT32_PATH, installdir);
+		snprintf(bufg, BUFSIZE, "%s\\" GVIMEXT32_PATH, installdir);
 		flag = KEY_WOW64_32KEY;
 	    }
 	    else
 	    {
-		sprintf(bufg, "%s\\" GVIMEXT64_PATH, installdir);
+		snprintf(bufg, BUFSIZE, "%s\\" GVIMEXT64_PATH, installdir);
 		flag = KEY_WOW64_64KEY;
 	    }
 
@@ -1575,13 +1575,13 @@ install_registry(void)
     }
 
     printf("Creating an uninstall entry\n");
-    sprintf(display_name, "Vim " VIM_VERSION_SHORT);
+    snprintf(display_name, BUFSIZE, "Vim " VIM_VERSION_SHORT);
 
     /* For the NSIS installer use the generated uninstaller. */
     if (interactive)
-	sprintf(uninstall_string, "%s\\uninstal.exe", installdir);
+	snprintf(uninstall_string, BUFSIZE, "%s\\uninstal.exe", installdir);
     else
-	sprintf(uninstall_string, "%s\\uninstall-gui.exe", installdir);
+	snprintf(uninstall_string, BUFSIZE, "%s\\uninstall-gui.exe", installdir);
 
     lRet = register_uninstall(
 	HKEY_LOCAL_MACHINE,
@@ -1775,7 +1775,7 @@ build_link_name(
     vim_mkdir(shell_folder_path, 0755);
 
     /* build the path to the shortcut and the path to gvim.exe */
-    sprintf(link_path, "%s\\%s.lnk", shell_folder_path, link_name);
+    snprintf(link_path, BUFSIZE, "%s\\%s.lnk", shell_folder_path, link_name);
 
     return OK;
 }
@@ -1791,7 +1791,7 @@ build_shortcut(
     char	executable_path[BUFSIZE];
     char	link_name[BUFSIZE];
 
-    sprintf(executable_path, "%s\\%s", installdir, exename);
+    snprintf(executable_path, BUFSIZE, "%s\\%s", installdir, exename);
 
     if (build_link_name(link_name, name, shell_folder) == FAIL)
     {
@@ -2018,7 +2018,7 @@ install_OLE_register(void)
     printf("\n--- Attempting to register Vim with OLE ---\n");
     printf("(There is no message whether this works or not.)\n");
 
-    sprintf(register_command_string, "\"%s\\gvim.exe\" -silent -register", installdir);
+    snprintf(register_command_string, BUFSIZE + 30, "\"%s\\gvim.exe\" -silent -register", installdir);
     system(register_command_string);
 }
 
@@ -2124,13 +2124,13 @@ install_vimfilesdir(int idx)
 
     /* Now, just create the directory.	If it already exists, it will fail
      * silently.  */
-    sprintf(vimfiles_path, "%s\\vimfiles", vimdir_path);
+    snprintf(vimfiles_path, BUFSIZE, "%s\\vimfiles", vimdir_path);
     vim_mkdir(vimfiles_path, 0755);
 
     printf("Creating the following directories in \"%s\":\n", vimfiles_path);
     for (i = 0; i < TABLE_SIZE(vimfiles_subdirs); i++)
     {
-	sprintf(tmp_dirname, "%s\\%s", vimfiles_path, vimfiles_subdirs[i]);
+	snprintf(tmp_dirname, BUFSIZE, "%s\\%s", vimfiles_path, vimfiles_subdirs[i]);
 	printf("  %s", vimfiles_subdirs[i]);
 	vim_mkdir(tmp_dirname, 0755);
     }
@@ -2157,7 +2157,7 @@ init_directories_choice(void)
     if (getenv("HOME") != NULL)
     {
 	vimfiles_dir_choice = (int)vimfiles_dir_home;
-	sprintf(tmp_dirname, "%s\\vimfiles\\compiler", getenv("HOME"));
+	snprintf(tmp_dirname, BUFSIZE, "%s\\vimfiles\\compiler", getenv("HOME"));
 	if (stat(tmp_dirname, &st) == 0)
 	    vimfiles_dir_choice = (int)vimfiles_dir_none;
     }
