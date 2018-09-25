@@ -2411,7 +2411,7 @@ failed:
     {
 	/* Use stderr for stdin, makes shell commands work. */
 	close(0);
-	ignored = dup(2);
+	vim_ignored = dup(2);
     }
 #endif
 
@@ -3754,7 +3754,7 @@ buf_write(
 		{
 # ifdef UNIX
 #  ifdef HAVE_FCHOWN
-		    ignored = fchown(fd, st_old.st_uid, st_old.st_gid);
+		    vim_ignored = fchown(fd, st_old.st_uid, st_old.st_gid);
 #  endif
 		    if (mch_stat((char *)IObuff, &st) < 0
 			    || st.st_uid != st_old.st_uid
@@ -4512,7 +4512,7 @@ restore_backup:
 #endif
 #ifdef HAVE_FTRUNCATE
 	    if (!append)
-		ignored = ftruncate(fd, (off_t)0);
+		vim_ignored = ftruncate(fd, (off_t)0);
 #endif
 
 #if defined(WIN3264)
@@ -4792,7 +4792,7 @@ restore_backup:
 		    || st.st_gid != st_old.st_gid)
 	    {
 		/* changing owner might not be possible */
-		ignored = fchown(fd, st_old.st_uid, -1);
+		vim_ignored = fchown(fd, st_old.st_uid, -1);
 		/* if changing group fails clear the group permissions */
 		if (fchown(fd, -1, st_old.st_gid) == -1 && perm > 0)
 		    perm &= ~070;
@@ -6485,9 +6485,9 @@ vim_fgets(char_u *buf, int size, FILE *fp)
 	{
 	    tbuf[FGETS_SIZE - 2] = NUL;
 #ifdef USE_CR
-	    ignoredp = fgets_cr((char *)tbuf, FGETS_SIZE, fp);
+	    vim_ignoredp = fgets_cr((char *)tbuf, FGETS_SIZE, fp);
 #else
-	    ignoredp = fgets((char *)tbuf, FGETS_SIZE, fp);
+	    vim_ignoredp = fgets((char *)tbuf, FGETS_SIZE, fp);
 #endif
 	} while (tbuf[FGETS_SIZE - 2] != NUL && tbuf[FGETS_SIZE - 2] != '\n');
     }
@@ -7703,7 +7703,7 @@ typedef struct AutoCmd
     char	    nested;		/* If autocommands nest here */
     char	    last;		/* last command in list */
 #ifdef FEAT_EVAL
-    scid_T	    scriptID;		/* script ID where defined */
+    sctx_T	    script_ctx;		/* script context where defined */
 #endif
     struct AutoCmd  *next;		/* Next AutoCmd in list */
 } AutoCmd;
@@ -7764,6 +7764,7 @@ static struct event_name
     {"CursorHoldI",	EVENT_CURSORHOLDI},
     {"CursorMoved",	EVENT_CURSORMOVED},
     {"CursorMovedI",	EVENT_CURSORMOVEDI},
+    {"DiffUpdated",	EVENT_DIFFUPDATED},
     {"DirChanged",	EVENT_DIRCHANGED},
     {"EncodingChanged",	EVENT_ENCODINGCHANGED},
     {"ExitPre",		EVENT_EXITPRE},
@@ -7965,7 +7966,7 @@ show_autocmd(AutoPat *ap, event_T event)
 	    msg_outtrans(ac->cmd);
 #ifdef FEAT_EVAL
 	    if (p_verbose > 0)
-		last_set_msg(ac->scriptID);
+		last_set_msg(ac->script_ctx);
 #endif
 	    if (got_int)
 		return;
@@ -8848,7 +8849,8 @@ do_autocmd_event(
 		return FAIL;
 	    ac->cmd = vim_strsave(cmd);
 #ifdef FEAT_EVAL
-	    ac->scriptID = current_SID;
+	    ac->script_ctx = current_sctx;
+	    ac->script_ctx.sc_lnum += sourcing_lnum;
 #endif
 	    if (ac->cmd == NULL)
 	    {
@@ -9415,7 +9417,7 @@ apply_autocmds_group(
     AutoPatCmd	patcmd;
     AutoPat	*ap;
 #ifdef FEAT_EVAL
-    scid_T	save_current_SID;
+    sctx_T	save_current_sctx;
     void	*save_funccalp;
     char_u	*save_cmdarg;
     long	save_cmdbang;
@@ -9624,7 +9626,7 @@ apply_autocmds_group(
     sourcing_lnum = 0;		/* no line number here */
 
 #ifdef FEAT_EVAL
-    save_current_SID = current_SID;
+    save_current_sctx = current_sctx;
 
 # ifdef FEAT_PROFILE
     if (do_profiling == PROF_YES)
@@ -9728,7 +9730,7 @@ apply_autocmds_group(
     autocmd_bufnr = save_autocmd_bufnr;
     autocmd_match = save_autocmd_match;
 #ifdef FEAT_EVAL
-    current_SID = save_current_SID;
+    current_sctx = save_current_sctx;
     restore_funccal(save_funccalp);
 # ifdef FEAT_PROFILE
     if (do_profiling == PROF_YES)
@@ -9952,7 +9954,7 @@ getnextac(int c UNUSED, void *cookie, int indent UNUSED)
     retval = vim_strsave(ac->cmd);
     autocmd_nested = ac->nested;
 #ifdef FEAT_EVAL
-    current_SID = ac->scriptID;
+    current_sctx = ac->script_ctx;
 #endif
     if (ac->last)
 	acp->nextcmd = NULL;

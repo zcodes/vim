@@ -1529,15 +1529,19 @@ WaitForChar(long msec, int ignore_input)
      */
     for (;;)
     {
+	// Only process messages when waiting.
+	if (msec != 0)
+	{
 #ifdef MESSAGE_QUEUE
-	parse_queued_messages();
+	    parse_queued_messages();
 #endif
 #ifdef FEAT_MZSCHEME
-	mzvim_check_threads();
+	    mzvim_check_threads();
 #endif
 #ifdef FEAT_CLIENTSERVER
-	serverProcessPendingMessages();
+	    serverProcessPendingMessages();
 #endif
+	}
 
 	if (0
 #ifdef FEAT_MOUSE
@@ -4384,7 +4388,8 @@ sub_process_writer(LPVOID param)
 		    && (lnum != curbuf->b_ml.ml_line_count
 			|| curbuf->b_p_eol)))
 	    {
-		WriteFile(g_hChildStd_IN_Wr, "\n", 1, (LPDWORD)&ignored, NULL);
+		WriteFile(g_hChildStd_IN_Wr, "\n", 1,
+						  (LPDWORD)&vim_ignored, NULL);
 	    }
 
 	    ++lnum;
