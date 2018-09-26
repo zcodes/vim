@@ -42,6 +42,25 @@ char *searchpath(char *name);
 # include <errno.h>
 #endif
 
+#if defined(_MSC_VER) && _MSC_VER < 1900
+# include <limits.h>
+# include <stdarg.h>
+
+# if !defined(va_copy) && defined(_MSC_VER)
+#  define va_copy(dst, src) ((dst) = (src))
+# endif
+
+int c99_snprintf(char *s, size_t n, const char *fmt, ...);
+int c99_vsnprintf(char *s, size_t n, const char *fmt, va_list ap);
+
+# undef snprintf
+# undef _snprintf
+# undef vsnprintf
+# define snprintf c99_snprintf
+# define _snprintf c99_snprintf
+# define vsnprintf c99_vsnprintf
+#endif
+
 #include "version.h"
 
 #if defined(UNIX_LINT)
