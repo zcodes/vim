@@ -123,6 +123,9 @@ endif
 ifndef STATIC_WINPTHREAD
 STATIC_WINPTHREAD=$(STATIC_STDCPLUS)
 endif
+# If you use TDM-GCC(-64), change HAS_GCC_EH to "no".
+# This is used when STATIC_STDCPLUS=yes.
+HAS_GCC_EH=yes
 
 # If the user doesn't want gettext, undefine it.
 ifeq (no, $(GETTEXT))
@@ -503,7 +506,7 @@ endif
 #>>>>> end of choices
 ###########################################################################
 
-CFLAGS = -Iproto $(DEFINES) -pipe -march=$(ARCH) -Wall
+CFLAGS = -I. -Iproto $(DEFINES) -pipe -march=$(ARCH) -Wall
 CXXFLAGS = -std=gnu++11
 WINDRES_FLAGS = --preprocessor="$(WINDRES_CC) -E -xc" -DRC_INVOKED
 EXTRA_LIBS =
@@ -930,22 +933,26 @@ DEFINES+=-DDYNAMIC_ICONV
 endif
 
 ifeq (yes, $(USE_STDCPLUS))
+LINK = $(CXX)
 ifeq (yes, $(STATIC_STDCPLUS))
-LIB += -Wl,-Bstatic -lstdc++ -Wl,-Bdynamic
-else
-LIB += -lstdc++
+LIB += -static-libstdc++ -static-libgcc
 endif
+else
+LINK = $(CC)
 endif
 
 ifeq (yes, $(STATIC_WINPTHREAD))
-LIB += -lgcc_eh -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic
+ifeq (yes, $(HAS_GCC_EH))
+LIB += -lgcc_eh
+endif
+LIB += -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic
 endif
 
 ifeq (yes, $(MAP))
 LFLAGS += -Wl,-Map=$(TARGET).map
 endif
 
-all: $(TARGET) vimrun.exe xxd/xxd.exe install.exe uninstal.exe GvimExt/gvimext.dll
+all: $(TARGET) vimrun.exe xxd/xxd.exe tee/tee.exe install.exe uninstal.exe GvimExt/gvimext.dll
 
 vimrun.exe: vimrun.c
 	$(CC) $(CFLAGS) -o vimrun.exe vimrun.c $(LIB)
@@ -957,7 +964,7 @@ uninstal.exe: uninstal.c
 	$(CC) $(CFLAGS) -o uninstal.exe uninstal.c $(LIB)
 
 $(TARGET): $(OUTDIR) $(OBJ)
-	$(CC) $(CFLAGS) $(LFLAGS) -o $@ $(OBJ) $(LIB) -lole32 -luuid $(LUA_LIB) $(MZSCHEME_LIBDIR) $(MZSCHEME_LIB) $(PYTHONLIB) $(PYTHON3LIB) $(RUBYLIB)
+	$(LINK) $(CFLAGS) $(LFLAGS) -o $@ $(OBJ) $(LIB) -lole32 -luuid $(LUA_LIB) $(MZSCHEME_LIBDIR) $(MZSCHEME_LIB) $(PYTHONLIB) $(PYTHON3LIB) $(RUBYLIB)
 
 upx: exes
 	upx gvim.exe
@@ -970,11 +977,18 @@ mpress: exes
 xxd/xxd.exe: xxd/xxd.c
 	$(MAKE) -C xxd -f Make_ming.mak CC='$(CC)'
 
+tee/tee.exe: tee/tee.c
+	$(MAKE) -C tee CC='$(CC)'
+
 GvimExt/gvimext.dll: GvimExt/gvimext.cpp GvimExt/gvimext.rc GvimExt/gvimext.h
 	$(MAKE) -C GvimExt -f Make_ming.mak CROSS=$(CROSS) CROSS_COMPILE=$(CROSS_COMPILE) CXX='$(CXX)' STATIC_STDCPLUS=$(STATIC_STDCPLUS)
 
 tags: notags
-	$(CTAGS) *.c *.cpp *.h if_perl.xs
+	$(CTAGS) *.c *.cpp *.h
+ifdef PERL
+	$(CTAGS) --append=yes auto$(DIRSLASH)if_perl.c
+endif
+
 
 notags:
 	-$(DEL) tags
@@ -983,16 +997,18 @@ clean:
 	-$(DEL) $(OUTDIR)$(DIRSLASH)*.o
 	-$(DEL) $(OUTDIR)$(DIRSLASH)*.res
 	-rmdir $(OUTDIR)
-	-$(DEL) *.exe
+	-$(DEL) $(TARGET) vimrun.exe install.exe uninstal.exe
 	-$(DEL) pathdef.c
 ifdef PERL
 	-$(DEL) if_perl.c
+	-$(DEL) auto$(DIRSLASH)if_perl.c
 endif
 ifdef MZSCHEME
 	-$(DEL) mzscheme_base.c
 endif
 	$(MAKE) -C GvimExt -f Make_ming.mak clean
 	$(MAKE) -C xxd -f Make_ming.mak clean
+	$(MAKE) -C tee clean
 
 ###########################################################################
 INCL =	vim.h alloc.h arabic.h ascii.h ex_cmds.h farsi.h feature.h globals.h \
@@ -1045,9 +1061,13 @@ mzscheme_base.c:
 $(OUTDIR)/if_ole.o:	if_ole.cpp $(INCL) if_ole.h
 	$(CC) $(CFLAGS) $(CXXFLAGS) -c -o $(OUTDIR)/if_ole.o if_ole.cpp
 
-if_perl.c:		if_perl.xs typemap
+auto/if_perl.c:		if_perl.xs typemap
 	$(XSUBPP) -prototypes -typemap \
 	     $(PERLTYPEMAP) if_perl.xs -output $@
+
+$(OUTDIR)/if_perl.o:	auto/if_perl.c $(INCL)
+	$(CC) -c $(CFLAGS) auto/if_perl.c -o $(OUTDIR)/if_perl.o
+
 
 $(OUTDIR)/if_ruby.o:	if_ruby.c $(INCL)
 ifeq (16, $(RUBY))
@@ -1131,7 +1151,7 @@ ifneq (sh.exe, $(SHELL))
 	@echo 'char_u *default_vim_dir = (char_u *)"$(VIMRCLOC)";' >> pathdef.c
 	@echo 'char_u *default_vimruntime_dir = (char_u *)"$(VIMRUNTIMEDIR)";' >> pathdef.c
 	@echo 'char_u *all_cflags = (char_u *)"$(CC) $(CFLAGS)";' >> pathdef.c
-	@echo 'char_u *all_lflags = (char_u *)"$(CC) $(CFLAGS) $(LFLAGS) -o $(TARGET) $(LIB) -lole32 -luuid $(LUA_LIB) $(MZSCHEME_LIBDIR) $(MZSCHEME_LIB) $(PYTHONLIB) $(PYTHON3LIB) $(RUBYLIB)";' >> pathdef.c
+	@echo 'char_u *all_lflags = (char_u *)"$(LINK) $(CFLAGS) $(LFLAGS) -o $(TARGET) $(LIB) -lole32 -luuid $(LUA_LIB) $(MZSCHEME_LIBDIR) $(MZSCHEME_LIB) $(PYTHONLIB) $(PYTHON3LIB) $(RUBYLIB)";' >> pathdef.c
 	@echo 'char_u *compiled_user = (char_u *)"$(USERNAME)";' >> pathdef.c
 	@echo 'char_u *compiled_sys = (char_u *)"$(USERDOMAIN)";' >> pathdef.c
 else
