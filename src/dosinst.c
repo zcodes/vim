@@ -1617,7 +1617,7 @@ install_registry(void)
     else
 	snprintf(uninstall_string, BUFSIZE, "%s\\uninstall-gui.exe", installdir);
 
-    sprintf(icon_string, "%s\\gvim.exe,0", installdir);
+    snprintf(icon_string, BUFSIZE, "%s\\gvim.exe,0", installdir);
 
     lRet = register_uninstall(
 	HKEY_LOCAL_MACHINE,

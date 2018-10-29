@@ -80,8 +80,7 @@ OLE=no
 
 # Set the default $(WINVER).  Use 0x0501 to make it work with WinXP.
 ifndef WINVER
-# WINVER = 0x0501
-WINVER = 0x0600
+WINVER = 0x0501
 endif
 
 # Set to yes to enable Cscope support.
@@ -180,15 +179,15 @@ endif
 # If the makefile is executed with mingw32-make and sh.exe is not found in
 # $PATH, then $SHELL is set to "sh.exe" (without any path). In this case,
 # unix-like commands might not work and a dos-style path is needed.
-# 
+#
 # If the makefile is executed with mingw32-make and sh.exe IS found in $PATH,
 # then $SHELL is set with the actual path of sh.exe (e.g.
 # "C:/msys64/usr/bin/sh.exe").  In this case, unix-like commands can be used.
-# 
+#
 # If it is executed by the "make" command from cmd.exe, $SHELL is set to
 # "/bin/sh". If the "make" command is in the $PATH, other unix-like commands
 # might also work.
-# 
+#
 # If it is executed by the "make" command from a unix-like shell,
 # $SHELL is set with the unix-style path (e.g. "/bin/bash").
 # In this case, unix-like commands can be used.
@@ -935,7 +934,7 @@ endif
 ifeq (yes, $(USE_STDCPLUS))
 LINK = $(CXX)
 ifeq (yes, $(STATIC_STDCPLUS))
-LIB += -static-libstdc++ -static-libgcc
+LIB += -static-libgcc -static-libstdc++
 endif
 else
 LINK = $(CC)
@@ -945,7 +944,7 @@ ifeq (yes, $(STATIC_WINPTHREAD))
 ifeq (yes, $(HAS_GCC_EH))
 LIB += -lgcc_eh
 endif
-LIB += -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic
+LIB += -Wl,-Bstatic -lstdc++ -lwinpthread -Wl,-Bdynamic
 endif
 
 ifeq (yes, $(MAP))

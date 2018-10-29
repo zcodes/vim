@@ -260,7 +260,7 @@ remove_if_exists(char *path, char *filename)
     char buf[BUFSIZE];
     FILE *fd;
 
-    sprintf(buf, "%s\\%s", path, filename);
+    snprintf(buf, BUFSIZE, "%s\\%s", path, filename);
 
     fd = fopen(buf, "r");
     if (fd != NULL)
@@ -363,7 +363,7 @@ main(int argc, char *argv[])
 	printf("\n");
 	for (i = 0; i < ICON_COUNT; ++i)
 	{
-	    sprintf(icon, "%s\\%s", path, icon_link_names[i]);
+	    snprintf(icon, BUFSIZE, "%s\\%s", path, icon_link_names[i]);
 	    if (stat(icon, &st) == 0)
 	    {
 		printf(" - the \"%s\" icon on the desktop\n", icon_names[i]);

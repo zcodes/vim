@@ -2,6 +2,11 @@
 
 CC=gcc
 CFLAGS=-O2 -fno-strength-reduce
+ifneq (sh.exe, $(SHELL))
+DEL = rm
+else
+DEL = del
+endif
 
 tee.exe: tee.o
 	$(CC) $(CFLAGS) -s -o $@ $<
@@ -10,6 +15,6 @@ tee.o: tee.c
 	$(CC) $(CFLAGS) -c $<
 
 clean:
-	- del tee.o
-	- del tee.exe
+	- $(DEL) tee.o
+	- $(DEL) tee.exe
 
