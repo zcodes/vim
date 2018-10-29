@@ -8,6 +8,12 @@ else
 DEL = del
 endif
 
+ifneq (sh.exe, $(SHELL))
+DEL = rm
+else
+DEL = del
+endif
+
 tee.exe: tee.o
 	$(CC) $(CFLAGS) -s -o $@ $<
 
