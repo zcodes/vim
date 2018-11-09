@@ -88,7 +88,7 @@ static PyObject *py_getcwd;
 static PyObject *vim_module;
 static PyObject *vim_special_path_object;
 
-#if PY_VERSION_HEX >= 0x030700f0
+#if PY_VERSION_HEX >= 0x030400f0
 static PyObject *py_find_spec;
 #else
 static PyObject *py_find_module;
@@ -543,7 +543,7 @@ PythonIO_Init_io(void)
     return 0;
 }
 
-#if PY_VERSION_HEX < 0x030700f0
+#if PY_VERSION_HEX < 0x030400f0
 static PyObject *call_load_module(char *name, int len, PyObject *find_module_result);
 
 typedef struct
@@ -1199,7 +1199,7 @@ Vim_GetPaths(PyObject *self UNUSED)
     return ret;
 }
 
-#if PY_VERSION_HEX >= 0x030700f0
+#if PY_VERSION_HEX >= 0x030400f0
     static PyObject *
 FinderFindSpec(PyObject *self, PyObject *args)
 {
@@ -1405,7 +1405,7 @@ static struct PyMethodDef VimMethods[] = {
     {"chdir",	    (PyCFunction)VimChdir,	METH_VARARGS|METH_KEYWORDS,	"Change directory"},
     {"fchdir",	    (PyCFunction)VimFchdir,	METH_VARARGS|METH_KEYWORDS,	"Change directory"},
     {"foreach_rtp", VimForeachRTP,		METH_O,				"Call given callable for each path in &rtp"},
-#if PY_VERSION_HEX >= 0x030700f0
+#if PY_VERSION_HEX >= 0x030400f0
     {"find_spec",   FinderFindSpec,		METH_VARARGS,			"Internal use only, returns spec object for any input it receives"},
 #else
     {"find_module", FinderFindModule,		METH_VARARGS,			"Internal use only, returns loader object for any input it receives"},
@@ -6619,7 +6619,7 @@ init_structs(void)
     OptionsType.tp_traverse = (traverseproc)OptionsTraverse;
     OptionsType.tp_clear = (inquiry)OptionsClear;
 
-#if PY_VERSION_HEX < 0x030700f0
+#if PY_VERSION_HEX < 0x030400f0
     vim_memset(&LoaderType, 0, sizeof(LoaderType));
     LoaderType.tp_name = "vim.Loader";
     LoaderType.tp_basicsize = sizeof(LoaderObject);
@@ -6659,7 +6659,7 @@ init_types(void)
     PYTYPE_READY(FunctionType);
     PYTYPE_READY(OptionsType);
     PYTYPE_READY(OutputType);
-#if PY_VERSION_HEX < 0x030700f0
+#if PY_VERSION_HEX < 0x030400f0
     PYTYPE_READY(LoaderType);
 #endif
     return 0;
@@ -6785,7 +6785,7 @@ static struct object_constant {
     {"List",       (PyObject *)&ListType},
     {"Function",   (PyObject *)&FunctionType},
     {"Options",    (PyObject *)&OptionsType},
-#if PY_VERSION_HEX < 0x030700f0
+#if PY_VERSION_HEX < 0x030400f0
     {"_Loader",    (PyObject *)&LoaderType},
 #endif
 };
@@ -6809,7 +6809,7 @@ populate_module(PyObject *m)
     PyObject	*other_module;
     PyObject	*attr;
     PyObject	*imp;
-#if PY_VERSION_HEX >= 0x030700f0
+#if PY_VERSION_HEX >= 0x030400f0
     PyObject	*dict;
     PyObject	*cls;
 #endif
@@ -6885,7 +6885,7 @@ populate_module(PyObject *m)
 
     ADD_OBJECT(m, "VIM_SPECIAL_PATH", vim_special_path_object);
 
-#if PY_VERSION_HEX >= 0x030700f0
+#if PY_VERSION_HEX >= 0x030400f0
     if (!(imp = PyImport_ImportModule("importlib.machinery")))
 	return -1;
 
