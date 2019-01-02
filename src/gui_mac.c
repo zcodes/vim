@@ -2278,7 +2278,7 @@ gui_mac_doKeyEvent(EventRecord *theEvent)
     if (p_mh)
 	ObscureCursor();
 
-    /* Get the key code and it's ASCII representation */
+    /* Get the key code and its ASCII representation */
     key_sym = ((theEvent->message & keyCodeMask) >> 8);
     key_char = theEvent->message & charCodeMask;
     num = 1;
@@ -2597,7 +2597,7 @@ gui_mac_mouse_wheel(EventHandlerCallRef nextHandler, EventRef theEvent,
 bail:
     /*
      * when we fail give any additional callback handler a chance to perform
-     * it's actions
+     * its actions
      */
     return CallNextEventHandler(nextHandler, theEvent);
 }
@@ -6705,8 +6705,7 @@ initialise_tabline(void)
 
     // create tabline popup menu required by vim docs (see :he tabline-menu)
     CreateNewMenu(kTabContextMenuId, 0, &contextMenu);
-    if (first_tabpage->tp_next != NULL)
-	AppendMenuItemTextWithCFString(contextMenu, CFSTR("Close Tab"), 0,
+    AppendMenuItemTextWithCFString(contextMenu, CFSTR("Close Tab"), 0,
 						    TABLINE_MENU_CLOSE, NULL);
     AppendMenuItemTextWithCFString(contextMenu, CFSTR("New Tab"), 0,
 						      TABLINE_MENU_NEW, NULL);

@@ -514,21 +514,18 @@ gui_x11_create_widgets(void)
     XtVaSetValues(scroller, XmNwidth, 0, XmNresizable, False,
 		  XmNtraversalOn, False, NULL);
 
-    /* Create the tabline popup menu */
+    // Create the tabline popup menu
     tabLine_menu = XmCreatePopupMenu(tabLine, "tabline popup", NULL, 0);
 
-    /* Add the buttons to the menu */
-    if (first_tabpage->tp_next != NULL)
-    {
-	n = 0;
-	XtSetArg(args[n], XmNuserData, TABLINE_MENU_CLOSE); n++;
-	xms = XmStringCreate((char *)"Close tab", STRING_TAG);
-	XtSetArg(args[n], XmNlabelString, xms); n++;
-	button = XmCreatePushButton(tabLine_menu, "Close", args, n);
-	XtAddCallback(button, XmNactivateCallback,
-		      (XtCallbackProc)tabline_button_cb, NULL);
-	XmStringFree(xms);
-    }
+    // Add the buttons to the tabline popup menu
+    n = 0;
+    XtSetArg(args[n], XmNuserData, TABLINE_MENU_CLOSE); n++;
+    xms = XmStringCreate((char *)"Close tab", STRING_TAG);
+    XtSetArg(args[n], XmNlabelString, xms); n++;
+    button = XmCreatePushButton(tabLine_menu, "Close", args, n);
+    XtAddCallback(button, XmNactivateCallback,
+		  (XtCallbackProc)tabline_button_cb, NULL);
+    XmStringFree(xms);
 
     n = 0;
     XtSetArg(args[n], XmNuserData, TABLINE_MENU_NEW); n++;
@@ -1114,7 +1111,7 @@ gui_mch_compute_menu_height(
 	XtManageChild(id);
 
     /*
-     * Now find the menu item that is the furthest down, and get it's position.
+     * Now find the menu item that is the furthest down, and get its position.
      */
     maxy = 0;
     for (mp = root_menu; mp != NULL; mp = mp->next)
@@ -1550,7 +1547,7 @@ submenu_change(
 		    XtSetValues(mp->id, args, n);
 		}
 # ifdef FEAT_BEVAL_GUI
-		/* If we have a tooltip, then we need to change it's font */
+		/* If we have a tooltip, then we need to change its font */
 		if (mp->tip != NULL)
 		{
 		    Arg args[2];
@@ -1568,7 +1565,7 @@ submenu_change(
 	    {
 		gui_motif_menu_fontlist(mp->id);
 #ifdef FEAT_BEVAL_GUI
-		/* If we have a tooltip, then we need to change it's font */
+		/* If we have a tooltip, then we need to change its font */
 		if (mp->tip != NULL)
 		{
 		    Arg args[1];
@@ -2089,7 +2086,7 @@ set_fontlist(Widget id)
 	    {
 		XtUnmanageChild(id);
 		XtVaSetValues(id, XmNfontList, fl, NULL);
-		/* We should force the widget to recalculate it's
+		/* We should force the widget to recalculate its
 		 * geometry now. */
 		XtManageChild(id);
 	    }
@@ -2108,7 +2105,7 @@ set_fontlist(Widget id)
 	    {
 		XtUnmanageChild(id);
 		XtVaSetValues(id, XmNfontList, fl, NULL);
-		/* We should force the widget to recalculate it's
+		/* We should force the widget to recalculate its
 		 * geometry now. */
 		XtManageChild(id);
 	    }
@@ -3407,7 +3404,7 @@ gui_motif_menu_fontlist(Widget id UNUSED)
 	    {
 		XtUnmanageChild(id);
 		XtVaSetValues(id, XmNfontList, fl, NULL);
-		/* We should force the widget to recalculate it's
+		/* We should force the widget to recalculate its
 		 * geometry now. */
 		XtManageChild(id);
 	    }
@@ -3428,7 +3425,7 @@ gui_motif_menu_fontlist(Widget id UNUSED)
 	    {
 		XtUnmanageChild(id);
 		XtVaSetValues(id, XmNfontList, fl, NULL);
-		/* We should force the widget to recalculate it's
+		/* We should force the widget to recalculate its
 		 * geometry now. */
 		XtManageChild(id);
 	    }

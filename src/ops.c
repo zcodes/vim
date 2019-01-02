@@ -334,7 +334,7 @@ shift_line(
 {
     int		count;
     int		i, j;
-    int		p_sw = (int)get_sw_value(curbuf);
+    int		p_sw = (int)get_sw_value_indent(curbuf);
 
     count = get_indent();	/* get current indent */
 
@@ -386,7 +386,7 @@ shift_block(oparg_T *oap, int amount)
     int			total;
     char_u		*newp, *oldp;
     int			oldcol = curwin->w_cursor.col;
-    int			p_sw = (int)get_sw_value(curbuf);
+    int			p_sw = (int)get_sw_value_indent(curbuf);
 #ifdef FEAT_VARTABS
     int			*p_vts = curbuf->b_p_vts_array;
 #endif
@@ -4707,6 +4707,8 @@ do_join(
      */
     for (t = count - 1; ; --t)
     {
+	int spaces_removed;
+
 	cend -= currsize;
 	mch_memmove(cend, curr, (size_t)currsize);
 	if (spaces[t] > 0)
@@ -4714,8 +4716,13 @@ do_join(
 	    cend -= spaces[t];
 	    vim_memset(cend, ' ', (size_t)(spaces[t]));
 	}
+
+	// If deleting more spaces than adding, the cursor moves no more than
+	// what is added if it is inside these spaces.
+	spaces_removed = (curr - curr_start) - spaces[t];
+
 	mark_col_adjust(curwin->w_cursor.lnum + t, (colnr_T)0, (linenr_T)-t,
-			 (long)(cend - newp + spaces[t] - (curr - curr_start)));
+			 (long)(cend - newp - spaces_removed), spaces_removed);
 	if (t == 0)
 	    break;
 	curr = curr_start = ml_get((linenr_T)(curwin->w_cursor.lnum + t - 1));
@@ -5225,7 +5232,7 @@ format_lines(
 		{
 		    (void)del_bytes((long)next_leader_len, FALSE, FALSE);
 		    mark_col_adjust(curwin->w_cursor.lnum, (colnr_T)0, 0L,
-						      (long)-next_leader_len);
+						      (long)-next_leader_len, 0);
 		} else
 #endif
 		    if (second_indent > 0)  /* the "leader" for FO_Q_SECOND */
@@ -5236,7 +5243,7 @@ format_lines(
 		    {
 			(void)del_bytes(indent, FALSE, FALSE);
 			mark_col_adjust(curwin->w_cursor.lnum,
-					       (colnr_T)0, 0L, (long)-indent);
+					       (colnr_T)0, 0L, (long)-indent, 0);
 		    }
 		}
 		curwin->w_cursor.lnum--;
@@ -5549,12 +5556,27 @@ op_addsub(
     int			change_cnt = 0;
     linenr_T		amount = Prenum1;
 
+   // do_addsub() might trigger re-evaluation of 'foldexpr' halfway, when the
+   // buffer is not completly updated yet. Postpone updating folds until before
+   // the call to changed_lines().
+#ifdef FEAT_FOLDING
+   disable_fold_update++;
+#endif
+
     if (!VIsual_active)
     {
 	pos = curwin->w_cursor;
 	if (u_save_cursor() == FAIL)
+	{
+#ifdef FEAT_FOLDING
+	    disable_fold_update--;
+#endif
 	    return;
+	}
 	change_cnt = do_addsub(oap->op_type, &pos, 0, amount);
+#ifdef FEAT_FOLDING
+	disable_fold_update--;
+#endif
 	if (change_cnt)
 	    changed_lines(pos.lnum, 0, pos.lnum + 1, 0L);
     }
@@ -5566,7 +5588,12 @@ op_addsub(
 
 	if (u_save((linenr_T)(oap->start.lnum - 1),
 					(linenr_T)(oap->end.lnum + 1)) == FAIL)
+	{
+#ifdef FEAT_FOLDING
+	    disable_fold_update--;
+#endif
 	    return;
+	}
 
 	pos = oap->start;
 	for (; pos.lnum <= oap->end.lnum; ++pos.lnum)
@@ -5624,6 +5651,10 @@ op_addsub(
 	    if (g_cmd && one_change)
 		amount += Prenum1;
 	}
+
+#ifdef FEAT_FOLDING
+	disable_fold_update--;
+#endif
 	if (change_cnt)
 	    changed_lines(oap->start.lnum, 0, oap->end.lnum + 1, 0L);
 

@@ -1,5 +1,5 @@
 #
-# Common Makefile, defines the list of tests to run.
+# Common Makefile, defines the list of tests to run and other things.
 #
 
 # Individual tests, including the ones part of test_alot.
@@ -123,6 +123,7 @@ NEW_TESTS = \
 	test_mksession \
 	test_mksession_utf8 \
 	test_modeline \
+	test_move \
 	test_nested_function \
 	test_netbeans \
 	test_normal \
@@ -152,6 +153,7 @@ NEW_TESTS = \
 	test_reltime \
 	test_retab \
 	test_ruby \
+	test_scriptnames \
 	test_scroll_opt \
 	test_scrollbind \
 	test_search \
@@ -184,6 +186,7 @@ NEW_TESTS = \
 	test_terminal_fail \
 	test_textformat \
 	test_textobjects \
+	test_textprop \
 	test_timers \
 	test_true_false \
 	test_undo \
@@ -207,3 +210,15 @@ NEW_TESTS = \
 	test_alot_latin \
 	test_alot_utf8 \
 	test_alot
+
+# Argument for running ctags.
+TAGS_FILES = \
+	*.c \
+	*.cpp \
+	*.h \
+	auto/*.c \
+	libvterm/src/*.c \
+	libvterm/src/*.h \
+	libvterm/include/*.h \
+	xdiff/*.c \
+	xdiff/*.h

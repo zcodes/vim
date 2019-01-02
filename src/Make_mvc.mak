@@ -749,11 +749,13 @@ OBJ = \
 	$(OUTDIR)\screen.obj \
 	$(OUTDIR)\search.obj \
 	$(OUTDIR)\sha256.obj \
+	$(OUTDIR)\sign.obj \
 	$(OUTDIR)\spell.obj \
 	$(OUTDIR)\spellfile.obj \
 	$(OUTDIR)\syntax.obj \
 	$(OUTDIR)\tag.obj \
 	$(OUTDIR)\term.obj \
+	$(OUTDIR)\textprop.obj \
 	$(OUTDIR)\ui.obj \
 	$(OUTDIR)\undo.obj \
 	$(OUTDIR)\userfunc.obj \
@@ -1269,7 +1271,7 @@ GvimExt/gvimext.dll: GvimExt/gvimext.cpp GvimExt/gvimext.rc GvimExt/gvimext.h
 
 
 tags: notags
-	$(CTAGS) *.c *.cpp *.h if_perl.xs
+	$(CTAGS) $(TAGS_FILES)
 
 notags:
 	- if exist tags del tags
@@ -1323,7 +1325,7 @@ $(NEW_TESTS):
 	$(MAKE) /NOLOGO -f Make_dos.mak nolog
 	$(MAKE) /NOLOGO -f Make_dos.mak $@.res
 	$(MAKE) /NOLOGO -f Make_dos.mak report
-	cat messages
+	type messages
 	cd ..
 
 ###########################################################################
@@ -1518,6 +1520,8 @@ $(OUTDIR)/search.obj:	$(OUTDIR) search.c  $(INCL)
 
 $(OUTDIR)/sha256.obj:	$(OUTDIR) sha256.c  $(INCL)
 
+$(OUTDIR)/sign.obj:	$(OUTDIR) sign.c  $(INCL)
+
 $(OUTDIR)/spell.obj:	$(OUTDIR) spell.c  $(INCL)
 
 $(OUTDIR)/spellfile.obj:	$(OUTDIR) spellfile.c  $(INCL)
@@ -1527,6 +1531,8 @@ $(OUTDIR)/syntax.obj:	$(OUTDIR) syntax.c  $(INCL)
 $(OUTDIR)/tag.obj:	$(OUTDIR) tag.c  $(INCL)
 
 $(OUTDIR)/term.obj:	$(OUTDIR) term.c  $(INCL)
+
+$(OUTDIR)/textprop.obj:	$(OUTDIR) textprop.c  $(INCL)
 
 $(OUTDIR)/ui.obj:	$(OUTDIR) ui.c  $(INCL)
 
@@ -1661,11 +1667,13 @@ proto.h: \
 	proto/screen.pro \
 	proto/search.pro \
 	proto/sha256.pro \
+	proto/sign.pro \
 	proto/spell.pro \
 	proto/spellfile.pro \
 	proto/syntax.pro \
 	proto/tag.pro \
 	proto/term.pro \
+	proto/textprop.pro \
 	proto/ui.pro \
 	proto/undo.pro \
 	proto/userfunc.pro \

@@ -1395,8 +1395,11 @@ do_pending_operator(cmdarg_T *cap, int old_col, int gui_yank)
 	else if (oap->motion_force == Ctrl_V)
 	{
 	    /* Change line- or characterwise motion into Visual block mode. */
-	    VIsual_active = TRUE;
-	    VIsual = oap->start;
+	    if (!VIsual_active)
+	    {
+		VIsual_active = TRUE;
+		VIsual = oap->start;
+	    }
 	    VIsual_mode = Ctrl_V;
 	    VIsual_select = FALSE;
 	    VIsual_reselect = FALSE;
@@ -2129,6 +2132,7 @@ do_pending_operator(cmdarg_T *cap, int old_col, int gui_yank)
 	}
 	oap->block_mode = FALSE;
 	clearop(oap);
+	motion_force = NUL;
     }
 #ifdef FEAT_LINEBREAK
     curwin->w_p_lbr = lbr_saved;
@@ -4338,7 +4342,7 @@ find_decl(
     for (;;)
     {
 	valid = FALSE;
-	t = searchit(curwin, curbuf, &curwin->w_cursor, FORWARD,
+	t = searchit(curwin, curbuf, &curwin->w_cursor, NULL, FORWARD,
 		       pat, 1L, searchflags, RE_LAST, (linenr_T)0, NULL, NULL);
 	if (curwin->w_cursor.lnum >= old_pos.lnum)
 	    t = FAIL;	/* match after start is failure too */
@@ -5496,7 +5500,8 @@ nv_ctrlo(cmdarg_T *cap)
 }
 
 /*
- * CTRL-^ command, short for ":e #"
+ * CTRL-^ command, short for ":e #".  Works even when the alternate buffer is
+ * not named.
  */
     static void
 nv_hat(cmdarg_T *cap)
@@ -7688,7 +7693,7 @@ nv_visual(cmdarg_T *cap)
      * characterwise, linewise, or blockwise. */
     if (cap->oap->op_type != OP_NOP)
     {
-	cap->oap->motion_force = cap->cmdchar;
+	motion_force = cap->oap->motion_force = cap->cmdchar;
 	finish_op = FALSE;	/* operator doesn't finish now but later */
 	return;
     }
@@ -8142,6 +8147,7 @@ nv_g_cmd(cmdarg_T *cap)
 	    do
 		i = gchar_cursor();
 	    while (VIM_ISWHITE(i) && oneright() == OK);
+	    curwin->w_valid &= ~VALID_WCOL;
 	}
 	curwin->w_set_curswant = TRUE;
 	break;

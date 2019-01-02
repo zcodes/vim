@@ -2738,7 +2738,7 @@ ex_args(exarg_T *eap)
 	    alist_new();
     }
 
-    if (!ends_excmd(*eap->arg))
+    if (*eap->arg != NUL)
     {
 	/*
 	 * ":args file ..": define new argument list, handle like ":next"
@@ -4344,6 +4344,7 @@ do_source(
 #ifdef FEAT_EVAL
     sctx_T		    save_current_sctx;
     static scid_T	    last_current_SID = 0;
+    static int		    last_current_SID_seq = 0;
     funccal_entry_T	    funccalp_entry;
     int			    save_debug_break_level = debug_break_level;
     scriptitem_T	    *si = NULL;
@@ -4508,11 +4509,11 @@ do_source(
      * Also starts profiling timer for nested script. */
     save_funccal(&funccalp_entry);
 
-    /*
-     * Check if this script was sourced before to finds its SID.
-     * If it's new, generate a new SID.
-     */
+    // Check if this script was sourced before to finds its SID.
+    // If it's new, generate a new SID.
+    // Always use a new sequence number.
     save_current_sctx = current_sctx;
+    current_sctx.sc_seq = ++last_current_SID_seq;
     current_sctx.sc_lnum = 0;
 # ifdef UNIX
     stat_ok = (mch_stat((char *)fname_exp, &st) >= 0);
@@ -4689,9 +4690,22 @@ theend:
  * ":scriptnames"
  */
     void
-ex_scriptnames(exarg_T *eap UNUSED)
+ex_scriptnames(exarg_T *eap)
 {
     int i;
+
+    if (eap->addr_count > 0)
+    {
+	// :script {scriptId}: edit the script
+	if (eap->line2 < 1 || eap->line2 > script_items.ga_len)
+	    EMSG(_(e_invarg));
+	else
+	{
+	    eap->arg = SCRIPT_ITEM(eap->line2).sn_name;
+	    do_exedit(eap, NULL);
+	}
+	return;
+    }
 
     for (i = 1; i <= script_items.ga_len && !got_int; ++i)
 	if (SCRIPT_ITEM(i).sn_name != NULL)

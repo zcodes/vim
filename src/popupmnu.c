@@ -41,7 +41,6 @@ static int pum_do_redraw = FALSE;	/* do redraw anyway */
 static int pum_set_selected(int n, int repeat);
 
 #define PUM_DEF_HEIGHT 10
-#define PUM_DEF_WIDTH  15
 
     static void
 pum_compute_size(void)
@@ -196,20 +195,11 @@ pum_display(
 	    return;
 
 #if defined(FEAT_QUICKFIX)
-	// If there is a preview window at the above avoid drawing over it.
-	// Do keep at least 10 entries.
-	if (pvwin != NULL && pum_row < above_row && pum_height > 10)
+	// If there is a preview window above avoid drawing over it.
+	if (pvwin != NULL && pum_row < above_row && pum_height > above_row)
 	{
-	    if (pum_win_row - above_row < 10)
-	    {
-		pum_row = pum_win_row - 10;
-		pum_height = 10;
-	    }
-	    else
-	    {
-		pum_row = above_row;
-		pum_height = pum_win_row - above_row;
-	    }
+	    pum_row = above_row;
+	    pum_height = pum_win_row - above_row;
 	}
 #endif
 
@@ -1112,7 +1102,7 @@ ui_post_balloon(char_u *mesg, list_T *list)
 	    return;
 	for (idx = 0, li = list->lv_first; li != NULL; li = li->li_next, ++idx)
 	{
-	    char_u *text = get_tv_string_chk(&li->li_tv);
+	    char_u *text = tv_get_string_chk(&li->li_tv);
 
 	    balloon_array[idx].pum_text = vim_strsave(
 					   text == NULL ? (char_u *)"" : text);
