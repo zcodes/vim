@@ -5713,7 +5713,7 @@ failed:
 	char_u *msg = utf16_to_enc(
 				(short_u *)winpty_error_msg(winpty_err), NULL);
 
-	emsg(msg);
+	emsg((char *) msg);
 	winpty_error_free(winpty_err);
     }
     return FAIL;
