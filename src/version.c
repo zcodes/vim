@@ -709,11 +709,7 @@ static char *(features[]) =
 	"-virtualedit",
 #endif
 	"+visual",
-#ifdef FEAT_VISUALEXTRA
 	"+visualextra",
-#else
-	"-visualextra",
-#endif
 #ifdef FEAT_VIMINFO
 	"+viminfo",
 #else
@@ -799,6 +795,168 @@ static char *(features[]) =
 
 static int included_patches[] =
 {   /* Add new patch number below this line */
+/**/
+    759,
+/**/
+    758,
+/**/
+    757,
+/**/
+    756,
+/**/
+    755,
+/**/
+    754,
+/**/
+    753,
+/**/
+    752,
+/**/
+    751,
+/**/
+    750,
+/**/
+    749,
+/**/
+    748,
+/**/
+    747,
+/**/
+    746,
+/**/
+    745,
+/**/
+    744,
+/**/
+    743,
+/**/
+    742,
+/**/
+    741,
+/**/
+    740,
+/**/
+    739,
+/**/
+    738,
+/**/
+    737,
+/**/
+    736,
+/**/
+    735,
+/**/
+    734,
+/**/
+    733,
+/**/
+    732,
+/**/
+    731,
+/**/
+    730,
+/**/
+    729,
+/**/
+    728,
+/**/
+    727,
+/**/
+    726,
+/**/
+    725,
+/**/
+    724,
+/**/
+    723,
+/**/
+    722,
+/**/
+    721,
+/**/
+    720,
+/**/
+    719,
+/**/
+    718,
+/**/
+    717,
+/**/
+    716,
+/**/
+    715,
+/**/
+    714,
+/**/
+    713,
+/**/
+    712,
+/**/
+    711,
+/**/
+    710,
+/**/
+    709,
+/**/
+    708,
+/**/
+    707,
+/**/
+    706,
+/**/
+    705,
+/**/
+    704,
+/**/
+    703,
+/**/
+    702,
+/**/
+    701,
+/**/
+    700,
+/**/
+    699,
+/**/
+    698,
+/**/
+    697,
+/**/
+    696,
+/**/
+    695,
+/**/
+    694,
+/**/
+    693,
+/**/
+    692,
+/**/
+    691,
+/**/
+    690,
+/**/
+    689,
+/**/
+    688,
+/**/
+    687,
+/**/
+    686,
+/**/
+    685,
+/**/
+    684,
+/**/
+    683,
+/**/
+    682,
+/**/
+    681,
+/**/
+    680,
+/**/
+    679,
 /**/
     678,
 /**/
@@ -2264,6 +2422,9 @@ list_in_columns(char_u **items, int size, int current)
     int		nrow;
     int		item_count = 0;
     int		width = 0;
+#ifdef FEAT_SYN_HL
+    int		use_highlight = (items == (char_u **)features);
+#endif
 
     /* Find the length of the longest item, use that + 1 as the column
      * width. */
@@ -2305,7 +2466,12 @@ list_in_columns(char_u **items, int size, int current)
 
 	    if (idx == current)
 		msg_putchar('[');
-	    msg_puts(items[idx]);
+#ifdef FEAT_SYN_HL
+	    if (use_highlight && items[idx][0] == '-')
+		msg_puts_attr(items[idx], HL_ATTR(HLF_W));
+	    else
+#endif
+		msg_puts(items[idx]);
 	    if (idx == current)
 		msg_putchar(']');
 	    if (last_col)
