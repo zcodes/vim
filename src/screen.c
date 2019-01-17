@@ -2564,10 +2564,10 @@ text_to_screenline(win_T *wp, char_u *text, int col)
 	{
 #ifdef FEAT_RIGHTLEFT
 	    if (wp->w_p_rl)
-		STRNCPY(current_ScreenLine, text, len);
+		mch_memmove(current_ScreenLine, text, len);
 	    else
 #endif
-		STRNCPY(current_ScreenLine + col, text, len);
+		mch_memmove(current_ScreenLine + col, text, len);
 	    col += len;
 	}
     }
