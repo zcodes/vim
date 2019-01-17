@@ -7,7 +7,7 @@ TAGS_FILES = \
 	*.c \
 	*.cpp \
 	*.h \
-	auto/*.c \
+	auto/*.h \
 	libvterm/src/*.c \
 	libvterm/src/*.h \
 	libvterm/include/*.h \
