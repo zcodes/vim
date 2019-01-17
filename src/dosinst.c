@@ -472,7 +472,7 @@ run_silent_uninstall(char *uninst_exe)
     tick = GetTickCount();
     for (i = 0; ; i++)
     {
-	sprintf(temp_uninst, "%s\\vimun%04X.exe", temp_dir,
+	sprintf(temp_uninst, "%s\\vimun%04lX.exe", temp_dir,
 							(i + tick) & 0xFFFF);
 	if (CopyFile(uninst_exe, temp_uninst, TRUE))
 	    break;
@@ -618,7 +618,7 @@ uninstall_check(int skip_question)
 				char buf[BUFSIZE];
 
 				if (strchr(temp_string_buffer, ' ') != NULL)
-				    sprintf(buf, "\"%s\"", temp_string_buffer);
+				    snprintf(buf, BUFSIZE, "\"%s\"", temp_string_buffer);
 				else
 				    strcpy(buf, temp_string_buffer);
 				run_command(buf);
