@@ -2582,8 +2582,8 @@ add_text_props_for_append(
     int		count;
     int		n;
     char_u	*props;
-    int		new_len;
-    char_u	*new_line;
+    int		new_len = 0;
+    char_u	*new_line = NULL;
     textprop_T	prop;
 
     // Make two rounds:
