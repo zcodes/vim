@@ -430,7 +430,9 @@ get_exe_name(void)
 		else
 		{
 		    STRCPY(temp, p);
-		    STRCAT(temp, ";");
+		    if (p[STRLEN(p) - 1] != ';') {
+			STRCAT(temp, ";");
+		    }
 		}
 		STRCAT(temp, exe_path);
 		vim_setenv((char_u *)"PATH", (char_u *)temp);
