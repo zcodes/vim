@@ -873,7 +873,7 @@ get_tty_part(term_T *term)
     {
 	int fd = term->tl_job->jv_channel->ch_part[parts[i]].ch_fd;
 
-	if (isatty(fd))
+	if (mch_isatty(fd))
 	    return parts[i];
     }
 #endif
@@ -2182,7 +2182,7 @@ terminal_loop(int blocking)
 	 * them for every typed character is a bit of overhead, but it's needed
 	 * for the first character typed, e.g. when Vim starts in a shell.
 	 */
-	if (isatty(tty_fd))
+	if (mch_isatty(tty_fd))
 	{
 	    ttyinfo_T info;
 
@@ -2305,35 +2305,6 @@ theend:
 	may_move_terminal_to_buffer(curbuf->b_term, FALSE);
 
     return ret;
-}
-
-/*
- * Called when a job has finished.
- * This updates the title and status, but does not close the vterm, because
- * there might still be pending output in the channel.
- */
-    void
-term_job_ended(job_T *job)
-{
-    term_T *term;
-    int	    did_one = FALSE;
-
-    for (term = first_term; term != NULL; term = term->tl_next)
-	if (term->tl_job == job)
-	{
-	    VIM_CLEAR(term->tl_title);
-	    VIM_CLEAR(term->tl_status_text);
-	    redraw_buf_and_status_later(term->tl_buffer, VALID);
-	    did_one = TRUE;
-	}
-    if (did_one)
-	redraw_statuslines();
-    if (curbuf->b_term != NULL)
-    {
-	if (curbuf->b_term->tl_job == job)
-	    maketitle();
-	update_cursor(curbuf->b_term, TRUE);
-    }
 }
 
     static void
@@ -3072,7 +3043,7 @@ update_system_term(term_T *term)
 
 	p_more = FALSE;
 	msg_row = Rows - 1;
-	msg_puts((char_u *)"\n");
+	msg_puts("\n");
 	p_more = save_p_more;
 	--term->tl_toprow;
     }
@@ -5408,11 +5379,13 @@ term_send_eof(channel_T *ch)
 	}
 }
 
+#if defined(FEAT_GUI) || defined(PROTO)
     job_T *
 term_getjob(term_T *term)
 {
     return term != NULL ? term->tl_job : NULL;
 }
+#endif
 
 # if defined(WIN3264) || defined(PROTO)
 
@@ -5909,7 +5882,7 @@ term_report_winsize(term_T *term, int rows, int cols)
 	for (part = PART_OUT; part < PART_COUNT; ++part)
 	{
 	    fd = term->tl_job->jv_channel->ch_part[part].ch_fd;
-	    if (isatty(fd))
+	    if (mch_isatty(fd))
 		break;
 	}
 	if (part < PART_COUNT && mch_report_winsize(fd, rows, cols) == OK)

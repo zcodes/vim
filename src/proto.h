@@ -62,6 +62,7 @@ extern int _stricoll(char *a, char *b);
 #  include "crypt.pro"
 #  include "crypt_zip.pro"
 # endif
+# include "autocmd.pro"
 # include "buffer.pro"
 # include "charset.pro"
 # ifdef FEAT_CSCOPE
@@ -168,10 +169,7 @@ char_u *vim_strpbrk(char_u *s, char_u *charset);
 void qsort(void *base, size_t elm_count, size_t elm_size, int (*cmp)(const void *, const void *));
 #endif
 # include "move.pro"
-# if defined(FEAT_MBYTE) || defined(FEAT_XIM) || defined(FEAT_KEYMAP) \
-	|| defined(FEAT_POSTSCRIPT)
-#  include "mbyte.pro"
-# endif
+# include "mbyte.pro"
 # include "normal.pro"
 # include "ops.pro"
 # include "option.pro"
@@ -256,7 +254,7 @@ void ch_log(channel_T *ch, const char *fmt, ...)
 # endif
 
 # if defined(FEAT_GUI) || defined(FEAT_JOB_CHANNEL)
-#  if defined(UNIX) || defined(MACOS_X)
+#  if defined(UNIX) || defined(MACOS_X) || defined(VMS)
 #   include "pty.pro"
 #  endif
 # endif
