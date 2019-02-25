@@ -611,7 +611,7 @@ sign_list_placed(buf_T *rbuf, char_u *sign_group)
     char	lbuf[MSG_BUF_LEN];
     char	group[MSG_BUF_LEN];
 
-    MSG_PUTS_TITLE(_("\n--- Signs ---"));
+    msg_puts_title(_("\n--- Signs ---"));
     msg_putchar('\n');
     if (rbuf == NULL)
 	buf = firstbuf;
@@ -622,7 +622,7 @@ sign_list_placed(buf_T *rbuf, char_u *sign_group)
 	if (buf->b_signlist != NULL)
 	{
 	    vim_snprintf(lbuf, MSG_BUF_LEN, _("Signs for %s:"), buf->b_fname);
-	    MSG_PUTS_ATTR(lbuf, HL_ATTR(HLF_D));
+	    msg_puts_attr(lbuf, HL_ATTR(HLF_D));
 	    msg_putchar('\n');
 	}
 	FOR_ALL_SIGNS_IN_BUF(buf, sign)
@@ -640,7 +640,7 @@ sign_list_placed(buf_T *rbuf, char_u *sign_group)
 			   _("    line=%ld  id=%d%s  name=%s  priority=%d"),
 			   (long)sign->lnum, sign->id, group,
 			   sign_typenr2name(sign->typenr), sign->priority);
-	    MSG_PUTS(lbuf);
+	    msg_puts(lbuf);
 	    msg_putchar('\n');
 	}
 	if (rbuf != NULL)
@@ -727,6 +727,138 @@ sign_find(char_u *name, sign_T **sp_prev)
 }
 
 /*
+ * Allocate a new sign
+ */
+    static sign_T *
+alloc_new_sign(char_u *name)
+{
+    sign_T	*sp;
+    sign_T	*lp;
+    int	start = next_sign_typenr;
+
+    // Allocate a new sign.
+    sp = (sign_T *)alloc_clear_id((unsigned)sizeof(sign_T),
+	    aid_sign_define_by_name);
+    if (sp == NULL)
+	return NULL;
+
+    // Check that next_sign_typenr is not already being used.
+    // This only happens after wrapping around.  Hopefully
+    // another one got deleted and we can use its number.
+    for (lp = first_sign; lp != NULL; )
+    {
+	if (lp->sn_typenr == next_sign_typenr)
+	{
+	    ++next_sign_typenr;
+	    if (next_sign_typenr == MAX_TYPENR)
+		next_sign_typenr = 1;
+	    if (next_sign_typenr == start)
+	    {
+		vim_free(sp);
+		emsg(_("E612: Too many signs defined"));
+		return NULL;
+	    }
+	    lp = first_sign;  // start all over
+	    continue;
+	}
+	lp = lp->sn_next;
+    }
+
+    sp->sn_typenr = next_sign_typenr;
+    if (++next_sign_typenr == MAX_TYPENR)
+	next_sign_typenr = 1; // wrap around
+
+    sp->sn_name = vim_strsave(name);
+    if (sp->sn_name == NULL)  // out of memory
+    {
+	vim_free(sp);
+	return NULL;
+    }
+
+    return sp;
+}
+
+/*
+ * Initialize the icon information for a new sign
+ */
+    static void
+sign_define_init_icon(sign_T *sp, char_u *icon)
+{
+    vim_free(sp->sn_icon);
+    sp->sn_icon = vim_strsave(icon);
+    backslash_halve(sp->sn_icon);
+# ifdef FEAT_SIGN_ICONS
+    if (gui.in_use)
+    {
+	out_flush();
+	if (sp->sn_image != NULL)
+	    gui_mch_destroy_sign(sp->sn_image);
+	sp->sn_image = gui_mch_register_sign(sp->sn_icon);
+    }
+# endif
+}
+
+/*
+ * Initialize the text for a new sign
+ */
+    static int
+sign_define_init_text(sign_T *sp, char_u *text)
+{
+    char_u	*s;
+    char_u	*endp;
+    int		cells;
+    int		len;
+
+    endp = text + (int)STRLEN(text);
+
+    // Remove backslashes so that it is possible to use a space.
+    for (s = text; s + 1 < endp; ++s)
+	if (*s == '\\')
+	{
+	    STRMOVE(s, s + 1);
+	    --endp;
+	}
+
+    // Count cells and check for non-printable chars
+    if (has_mbyte)
+    {
+	cells = 0;
+	for (s = text; s < endp; s += (*mb_ptr2len)(s))
+	{
+	    if (!vim_isprintc((*mb_ptr2char)(s)))
+		break;
+	    cells += (*mb_ptr2cells)(s);
+	}
+    }
+    else
+    {
+	for (s = text; s < endp; ++s)
+	    if (!vim_isprintc(*s))
+		break;
+	cells = (int)(s - text);
+    }
+
+    // Currently sign text must be one or two display cells
+    if (s != endp || cells < 1 || cells > 2)
+    {
+	semsg(_("E239: Invalid sign text: %s"), text);
+	return FAIL;
+    }
+
+    vim_free(sp->sn_text);
+    // Allocate one byte more if we need to pad up
+    // with a space.
+    len = (int)(endp - text + ((cells == 1) ? 1 : 0));
+    sp->sn_text = vim_strnsave(text, len);
+
+    // For single character sign text, pad with a space.
+    if (sp->sn_text != NULL && cells == 1)
+	STRCPY(sp->sn_text + len - 1, " ");
+
+    return OK;
+}
+
+/*
  * Define a new sign or update an existing sign
  */
     int
@@ -743,47 +875,9 @@ sign_define_by_name(
     sp = sign_find(name, &sp_prev);
     if (sp == NULL)
     {
-	sign_T	*lp;
-	int	start = next_sign_typenr;
-
-	// Allocate a new sign.
-	sp = (sign_T *)alloc_clear_id((unsigned)sizeof(sign_T),
-						aid_sign_define_by_name);
+	sp = alloc_new_sign(name);
 	if (sp == NULL)
 	    return FAIL;
-
-	// Check that next_sign_typenr is not already being used.
-	// This only happens after wrapping around.  Hopefully
-	// another one got deleted and we can use its number.
-	for (lp = first_sign; lp != NULL; )
-	{
-	    if (lp->sn_typenr == next_sign_typenr)
-	    {
-		++next_sign_typenr;
-		if (next_sign_typenr == MAX_TYPENR)
-		    next_sign_typenr = 1;
-		if (next_sign_typenr == start)
-		{
-		    vim_free(sp);
-		    emsg(_("E612: Too many signs defined"));
-		    return FAIL;
-		}
-		lp = first_sign;  // start all over
-		continue;
-	    }
-	    lp = lp->sn_next;
-	}
-
-	sp->sn_typenr = next_sign_typenr;
-	if (++next_sign_typenr == MAX_TYPENR)
-	    next_sign_typenr = 1; // wrap around
-
-	sp->sn_name = vim_strsave(name);
-	if (sp->sn_name == NULL)  // out of memory
-	{
-	    vim_free(sp);
-	    return FAIL;
-	}
 
 	// add the new sign to the list of signs
 	if (sp_prev == NULL)
@@ -794,73 +888,10 @@ sign_define_by_name(
 
     // set values for a defined sign.
     if (icon != NULL)
-    {
-	vim_free(sp->sn_icon);
-	sp->sn_icon = vim_strsave(icon);
-	backslash_halve(sp->sn_icon);
-# ifdef FEAT_SIGN_ICONS
-	if (gui.in_use)
-	{
-	    out_flush();
-	    if (sp->sn_image != NULL)
-		gui_mch_destroy_sign(sp->sn_image);
-	    sp->sn_image = gui_mch_register_sign(sp->sn_icon);
-	}
-# endif
-    }
+	sign_define_init_icon(sp, icon);
 
-    if (text != NULL)
-    {
-	char_u	*s;
-	char_u	*endp;
-	int	cells;
-	int	len;
-
-	endp = text + (int)STRLEN(text);
-	for (s = text; s + 1 < endp; ++s)
-	    if (*s == '\\')
-	    {
-		// Remove a backslash, so that it is possible
-		// to use a space.
-		STRMOVE(s, s + 1);
-		--endp;
-	    }
-# ifdef FEAT_MBYTE
-	// Count cells and check for non-printable chars
-	if (has_mbyte)
-	{
-	    cells = 0;
-	    for (s = text; s < endp; s += (*mb_ptr2len)(s))
-	    {
-		if (!vim_isprintc((*mb_ptr2char)(s)))
-		    break;
-		cells += (*mb_ptr2cells)(s);
-	    }
-	}
-	else
-# endif
-	{
-	    for (s = text; s < endp; ++s)
-		if (!vim_isprintc(*s))
-		    break;
-	    cells = (int)(s - text);
-	}
-	// Currently must be one or two display cells
-	if (s != endp || cells < 1 || cells > 2)
-	{
-	    semsg(_("E239: Invalid sign text: %s"), text);
-	    return FAIL;
-	}
-
-	vim_free(sp->sn_text);
-	// Allocate one byte more if we need to pad up
-	// with a space.
-	len = (int)(endp - text + ((cells == 1) ? 1 : 0));
-	sp->sn_text = vim_strnsave(text, len);
-
-	if (sp->sn_text != NULL && cells == 1)
-	    STRCPY(sp->sn_text + len - 1, " ");
-    }
+    if (text != NULL && (sign_define_init_text(sp, text) == FAIL))
+	return FAIL;
 
     if (linehl != NULL)
 	sp->sn_line_hl = syn_check_group(linehl, (int)STRLEN(linehl));
@@ -1607,37 +1638,37 @@ sign_list_defined(sign_T *sp)
     smsg("sign %s", sp->sn_name);
     if (sp->sn_icon != NULL)
     {
-	MSG_PUTS(" icon=");
+	msg_puts(" icon=");
 	msg_outtrans(sp->sn_icon);
 # ifdef FEAT_SIGN_ICONS
 	if (sp->sn_image == NULL)
-	    MSG_PUTS(_(" (NOT FOUND)"));
+	    msg_puts(_(" (NOT FOUND)"));
 # else
-	MSG_PUTS(_(" (not supported)"));
+	msg_puts(_(" (not supported)"));
 # endif
     }
     if (sp->sn_text != NULL)
     {
-	MSG_PUTS(" text=");
+	msg_puts(" text=");
 	msg_outtrans(sp->sn_text);
     }
     if (sp->sn_line_hl > 0)
     {
-	MSG_PUTS(" linehl=");
+	msg_puts(" linehl=");
 	p = get_highlight_name_ext(NULL, sp->sn_line_hl - 1, FALSE);
 	if (p == NULL)
-	    MSG_PUTS("NONE");
+	    msg_puts("NONE");
 	else
-	    msg_puts(p);
+	    msg_puts((char *)p);
     }
     if (sp->sn_text_hl > 0)
     {
-	MSG_PUTS(" texthl=");
+	msg_puts(" texthl=");
 	p = get_highlight_name_ext(NULL, sp->sn_text_hl - 1, FALSE);
 	if (p == NULL)
-	    MSG_PUTS("NONE");
+	    msg_puts("NONE");
 	else
-	    msg_puts(p);
+	    msg_puts((char *)p);
     }
 }
 
@@ -1736,9 +1767,57 @@ static enum
     EXP_SUBCMD,		// expand :sign sub-commands
     EXP_DEFINE,		// expand :sign define {name} args
     EXP_PLACE,		// expand :sign place {id} args
+    EXP_LIST,		// expand :sign place args
     EXP_UNPLACE,	// expand :sign unplace"
-    EXP_SIGN_NAMES	// expand with name of placed signs
+    EXP_SIGN_NAMES,	// expand with name of placed signs
+    EXP_SIGN_GROUPS	// expand with name of placed sign groups
 } expand_what;
+
+/*
+ * Return the n'th sign name (used for command line completion)
+ */
+    static char_u *
+get_nth_sign_name(int idx)
+{
+    int		current_idx;
+    sign_T	*sp;
+
+    // Complete with name of signs already defined
+    current_idx = 0;
+    for (sp = first_sign; sp != NULL; sp = sp->sn_next)
+	if (current_idx++ == idx)
+	    return sp->sn_name;
+    return NULL;
+}
+
+/*
+ * Return the n'th sign group name (used for command line completion)
+ */
+    static char_u *
+get_nth_sign_group_name(int idx)
+{
+    int		current_idx;
+    int		todo;
+    hashitem_T	*hi;
+    signgroup_T	*group;
+
+    // Complete with name of sign groups already defined
+    current_idx = 0;
+    todo = (int)sg_table.ht_used;
+    for (hi = sg_table.ht_array; todo > 0; ++hi)
+    {
+	if (!HASHITEM_EMPTY(hi))
+	{
+	    --todo;
+	    if (current_idx++ == idx)
+	    {
+		group = HI2SG(hi);
+		return group->sg_name;
+	    }
+	}
+    }
+    return NULL;
+}
 
 /*
  * Function given to ExpandGeneric() to obtain the sign command
@@ -1747,9 +1826,6 @@ static enum
     char_u *
 get_sign_name(expand_T *xp UNUSED, int idx)
 {
-    sign_T	*sp;
-    int		current_idx;
-
     switch (expand_what)
     {
     case EXP_SUBCMD:
@@ -1771,18 +1847,23 @@ get_sign_name(expand_T *xp UNUSED, int idx)
 	    };
 	    return (char_u *)place_arg[idx];
 	}
+    case EXP_LIST:
+	{
+	    char *list_arg[] =
+	    {
+		"group=", "file=", "buffer=", NULL
+	    };
+	    return (char_u *)list_arg[idx];
+	}
     case EXP_UNPLACE:
 	{
 	    char *unplace_arg[] = { "group=", "file=", "buffer=", NULL };
 	    return (char_u *)unplace_arg[idx];
 	}
     case EXP_SIGN_NAMES:
-	// Complete with name of signs already defined
-	current_idx = 0;
-	for (sp = first_sign; sp != NULL; sp = sp->sn_next)
-	    if (current_idx++ == idx)
-		return sp->sn_name;
-	return NULL;
+	return get_nth_sign_name(idx);
+    case EXP_SIGN_GROUPS:
+	return get_nth_sign_group_name(idx);
     default:
 	return NULL;
     }
@@ -1817,28 +1898,6 @@ set_context_in_sign_cmd(expand_T *xp, char_u *arg)
     //		      |
     //		      begin_subcmd_args
     begin_subcmd_args = skipwhite(end_subcmd);
-    p = skiptowhite(begin_subcmd_args);
-    if (*p == NUL)
-    {
-	//
-	// Expand first argument of subcmd when possible.
-	// For ":jump {id}" and ":unplace {id}", we could
-	// possibly expand the ids of all signs already placed.
-	//
-	xp->xp_pattern = begin_subcmd_args;
-	switch (cmd_idx)
-	{
-	    case SIGNCMD_LIST:
-	    case SIGNCMD_UNDEFINE:
-		// :sign list <CTRL-D>
-		// :sign undefine <CTRL-D>
-		expand_what = EXP_SIGN_NAMES;
-		break;
-	    default:
-		xp->xp_context = EXPAND_NOTHING;
-	}
-	return;
-    }
 
     // expand last argument of subcmd
 
@@ -1847,6 +1906,7 @@ set_context_in_sign_cmd(expand_T *xp, char_u *arg)
     //		    p
 
     // Loop until reaching last argument.
+    p = begin_subcmd_args;
     do
     {
 	p = skipwhite(p);
@@ -1869,7 +1929,19 @@ set_context_in_sign_cmd(expand_T *xp, char_u *arg)
 		expand_what = EXP_DEFINE;
 		break;
 	    case SIGNCMD_PLACE:
-		expand_what = EXP_PLACE;
+		// List placed signs
+		if (VIM_ISDIGIT(*begin_subcmd_args))
+		    //   :sign place {id} {args}...
+		    expand_what = EXP_PLACE;
+		else
+		    //   :sign place {args}...
+		    expand_what = EXP_LIST;
+		break;
+	    case SIGNCMD_LIST:
+	    case SIGNCMD_UNDEFINE:
+		// :sign list <CTRL-D>
+		// :sign undefine <CTRL-D>
+		expand_what = EXP_SIGN_NAMES;
 		break;
 	    case SIGNCMD_JUMP:
 	    case SIGNCMD_UNPLACE:
@@ -1886,17 +1958,30 @@ set_context_in_sign_cmd(expand_T *xp, char_u *arg)
 	switch (cmd_idx)
 	{
 	    case SIGNCMD_DEFINE:
-		if (STRNCMP(last, "texthl", p - last) == 0
-			|| STRNCMP(last, "linehl", p - last) == 0)
+		if (STRNCMP(last, "texthl", 6) == 0
+			|| STRNCMP(last, "linehl", 6) == 0)
 		    xp->xp_context = EXPAND_HIGHLIGHT;
-		else if (STRNCMP(last, "icon", p - last) == 0)
+		else if (STRNCMP(last, "icon", 4) == 0)
 		    xp->xp_context = EXPAND_FILES;
 		else
 		    xp->xp_context = EXPAND_NOTHING;
 		break;
 	    case SIGNCMD_PLACE:
-		if (STRNCMP(last, "name", p - last) == 0)
+		if (STRNCMP(last, "name", 4) == 0)
 		    expand_what = EXP_SIGN_NAMES;
+		else if (STRNCMP(last, "group", 5) == 0)
+		    expand_what = EXP_SIGN_GROUPS;
+		else if (STRNCMP(last, "file", 4) == 0)
+		    xp->xp_context = EXPAND_BUFFERS;
+		else
+		    xp->xp_context = EXPAND_NOTHING;
+		break;
+	    case SIGNCMD_UNPLACE:
+	    case SIGNCMD_JUMP:
+		if (STRNCMP(last, "group", 5) == 0)
+		    expand_what = EXP_SIGN_GROUPS;
+		else if (STRNCMP(last, "file", 4) == 0)
+		    xp->xp_context = EXPAND_BUFFERS;
 		else
 		    xp->xp_context = EXPAND_NOTHING;
 		break;

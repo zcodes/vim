@@ -38,7 +38,7 @@
 # if defined(UNIX) || defined(VMS)
 #  include "os_unix.pro"
 # endif
-# ifdef WIN3264
+# ifdef MSWIN
 #  include "os_win32.pro"
 #  include "os_mswin.pro"
 #  include "winclip.pro"
@@ -62,6 +62,7 @@ extern int _stricoll(char *a, char *b);
 #  include "crypt.pro"
 #  include "crypt_zip.pro"
 # endif
+# include "autocmd.pro"
 # include "buffer.pro"
 # include "charset.pro"
 # ifdef FEAT_CSCOPE
@@ -79,6 +80,7 @@ extern int _stricoll(char *a, char *b);
 # include "ex_eval.pro"
 # include "ex_getln.pro"
 # include "fileio.pro"
+# include "findfile.pro"
 # include "fold.pro"
 # include "getchar.pro"
 # ifdef FEAT_HANGULIN
@@ -86,6 +88,7 @@ extern int _stricoll(char *a, char *b);
 # endif
 # include "hardcopy.pro"
 # include "hashtab.pro"
+# include "indent.pro"
 # include "json.pro"
 # include "list.pro"
 # include "blob.pro"
@@ -95,9 +98,6 @@ extern int _stricoll(char *a, char *b);
 # include "memline.pro"
 # ifdef FEAT_MENU
 #  include "menu.pro"
-# endif
-# ifdef FEAT_FKMAP
-#  include "farsi.pro"
 # endif
 # ifdef FEAT_ARABIC
 #  include "arabic.pro"
@@ -131,6 +131,28 @@ _RTLENTRYF
 smsg_attr_keep(int, const char *, ...)
 #ifdef USE_PRINTF_FORMAT_ATTRIBUTE
     __attribute__((format(printf, 2, 3)))
+#endif
+    ;
+
+/* These prototypes cannot be produced automatically. */
+int
+#  ifdef __BORLANDC__
+_RTLENTRYF
+#  endif
+semsg(const char *, ...)
+#ifdef USE_PRINTF_FORMAT_ATTRIBUTE
+    __attribute__((format(printf, 1, 0)))
+#endif
+    ;
+
+/* These prototypes cannot be produced automatically. */
+void
+#  ifdef __BORLANDC__
+_RTLENTRYF
+#  endif
+siemsg(const char *, ...)
+#ifdef USE_PRINTF_FORMAT_ATTRIBUTE
+    __attribute__((format(printf, 1, 0)))
 #endif
     ;
 
@@ -168,10 +190,7 @@ char_u *vim_strpbrk(char_u *s, char_u *charset);
 void qsort(void *base, size_t elm_count, size_t elm_size, int (*cmp)(const void *, const void *));
 #endif
 # include "move.pro"
-# if defined(FEAT_MBYTE) || defined(FEAT_XIM) || defined(FEAT_KEYMAP) \
-	|| defined(FEAT_POSTSCRIPT)
-#  include "mbyte.pro"
-# endif
+# include "mbyte.pro"
 # include "normal.pro"
 # include "ops.pro"
 # include "option.pro"
@@ -256,7 +275,7 @@ void ch_log(channel_T *ch, const char *fmt, ...)
 # endif
 
 # if defined(FEAT_GUI) || defined(FEAT_JOB_CHANNEL)
-#  if defined(UNIX) || defined(MACOS_X)
+#  if defined(UNIX) || defined(MACOS_X) || defined(VMS)
 #   include "pty.pro"
 #  endif
 # endif
@@ -269,7 +288,7 @@ extern int putenv(const char *string);			/* in misc2.c */
 extern char_u *vimpty_getenv(const char_u *string);	/* in misc2.c */
 #   endif
 #  endif
-#  ifdef FEAT_GUI_W32
+#  ifdef FEAT_GUI_MSWIN
 #   include "gui_w32.pro"
 #  endif
 #  ifdef FEAT_GUI_GTK

@@ -1498,7 +1498,7 @@ Optional Features:
   --enable-multibyte      Include multibyte editing support.
   --disable-rightleft     Do not include Right-to-Left language support.
   --disable-arabic        Do not include Arabic language support.
-  --disable-farsi         Do not include Farsi language support.
+  --disable-farsi         Deprecated.
   --enable-hangulinput    Include Hangul input support.
   --enable-xim            Include XIM input support.
   --enable-fontset        Include X fontset output support.
@@ -7937,10 +7937,7 @@ fi
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: result: $enable_multibyte" >&5
 $as_echo "$enable_multibyte" >&6; }
-if test "$enable_multibyte" = "yes"; then
-  $as_echo "#define FEAT_MBYTE 1" >>confdefs.h
-
-else
+if test "$enable_multibyte" != "yes"; then
   as_fn_error $? "The multi-byte feature can no longer be disabled. If you have
 		a problem with this, discuss on the Vim mailing list." "$LINENO" 5
 fi
@@ -7983,24 +7980,11 @@ $as_echo "yes" >&6; }
 
 fi
 
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking --disable-farsi argument" >&5
-$as_echo_n "checking --disable-farsi argument... " >&6; }
 # Check whether --enable-farsi was given.
 if test "${enable_farsi+set}" = set; then :
   enableval=$enable_farsi;
-else
-  enable_farsi="yes"
 fi
 
-if test "$enable_farsi" = "yes"; then
-	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
-$as_echo "no" >&6; }
-else
-	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
-$as_echo "yes" >&6; }
-	$as_echo "#define DISABLE_FARSI 1" >>confdefs.h
-
-fi
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking --enable-hangulinput argument" >&5
 $as_echo_n "checking --enable-hangulinput argument... " >&6; }
@@ -11134,7 +11118,7 @@ for ac_header in stdint.h stdlib.h string.h \
 	unistd.h stropts.h errno.h sys/resource.h \
 	sys/systeminfo.h locale.h sys/stream.h termios.h \
 	libc.h sys/statfs.h poll.h sys/poll.h pwd.h \
-	utime.h sys/param.h libintl.h libgen.h \
+	utime.h sys/param.h sys/ptms.h libintl.h libgen.h \
 	util/debug.h util/msg18n.h frame.h sys/acl.h \
 	sys/access.h sys/sysinfo.h wchar.h wctype.h
 do :

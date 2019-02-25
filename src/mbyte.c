@@ -97,7 +97,7 @@
 # define WINBYTE BYTE
 #endif
 
-#if (defined(WIN3264) || defined(WIN32UNIX)) && !defined(__MINGW32__)
+#if (defined(MSWIN) || defined(WIN32UNIX)) && !defined(__MINGW32__)
 # include <winnls.h>
 #endif
 
@@ -117,7 +117,7 @@
 # else
 #  include <gdk/gdkkeysyms.h>
 # endif
-# ifdef WIN3264
+# ifdef MSWIN
 #  include <gdk/gdkwin32.h>
 # else
 #  include <gdk/gdkx.h>
@@ -135,8 +135,6 @@
 #  define USE_WCHAR_FUNCTIONS
 # endif
 #endif
-
-#if defined(FEAT_MBYTE) || defined(PROTO)
 
 static int dbcs_char2len(int c);
 static int dbcs_char2bytes(int c, char_u *buf);
@@ -211,9 +209,7 @@ xim_log(char *s, ...)
 }
 #endif
 
-#endif
 
-#if defined(FEAT_MBYTE) || defined(FEAT_POSTSCRIPT) || defined(PROTO)
 /*
  * Canonical encoding names and their properties.
  * "iso-8859-n" is handled by enc_canonize() directly.
@@ -368,7 +364,7 @@ enc_alias_table[] =
     {"cyrillic",	IDX_ISO_5},
     {"arabic",		IDX_ISO_6},
     {"greek",		IDX_ISO_7},
-#ifdef WIN3264
+#ifdef MSWIN
     {"hebrew",		IDX_CP1255},
 #else
     {"hebrew",		IDX_ISO_8},
@@ -416,7 +412,7 @@ enc_alias_table[] =
     {"euccn",		IDX_EUC_CN},
     {"gb2312",		IDX_EUC_CN},
     {"euctw",		IDX_EUC_TW},
-#if defined(WIN3264) || defined(WIN32UNIX) || defined(MACOS_X)
+#if defined(MSWIN) || defined(WIN32UNIX) || defined(MACOS_X)
     {"japan",		IDX_CP932},
     {"korea",		IDX_CP949},
     {"prc",		IDX_CP936},
@@ -456,9 +452,6 @@ enc_canon_search(char_u *name)
     return -1;
 }
 
-#endif
-
-#if defined(FEAT_MBYTE) || defined(PROTO)
 
 /*
  * Find canonical encoding "name" in the list and return its properties.
@@ -472,7 +465,7 @@ enc_canon_props(char_u *name)
     i = enc_canon_search(name);
     if (i >= 0)
 	return enc_canon_table[i].prop;
-#ifdef WIN3264
+#ifdef MSWIN
     if (name[0] == 'c' && name[1] == 'p' && VIM_ISDIGIT(name[2]))
     {
 	CPINFO	cpinfo;
@@ -516,7 +509,7 @@ mb_init(void)
     int		idx;
     int		n;
     int		enc_dbcs_new = 0;
-#if defined(USE_ICONV) && !defined(WIN3264) && !defined(WIN32UNIX) \
+#if defined(USE_ICONV) && !defined(MSWIN) && !defined(WIN32UNIX) \
 	&& !defined(MACOS_CONVERT)
 # define LEN_FROM_CONV
     vimconv_T	vimconv;
@@ -535,7 +528,7 @@ mb_init(void)
 	return NULL;
     }
 
-#ifdef WIN3264
+#ifdef MSWIN
     if (p_enc[0] == 'c' && p_enc[1] == 'p' && VIM_ISDIGIT(p_enc[2]))
     {
 	CPINFO	cpinfo;
@@ -574,7 +567,7 @@ codepage_invalid:
     }
     else if (STRNCMP(p_enc, "2byte-", 6) == 0)
     {
-#ifdef WIN3264
+#ifdef MSWIN
 	/* Windows: accept only valid codepage numbers, check below. */
 	if (p_enc[6] != 'c' || p_enc[7] != 'p'
 			      || (enc_dbcs_new = atoi((char *)p_enc + 8)) == 0)
@@ -615,7 +608,7 @@ codepage_invalid:
 
     if (enc_dbcs_new != 0)
     {
-#ifdef WIN3264
+#ifdef MSWIN
 	/* Check if the DBCS code page is OK. */
 	if (!IsValidCodePage(enc_dbcs_new))
 	    goto codepage_invalid;
@@ -626,7 +619,7 @@ codepage_invalid:
     enc_dbcs = enc_dbcs_new;
     has_mbyte = (enc_dbcs != 0 || enc_utf8);
 
-#if defined(WIN3264) || defined(FEAT_CYGWIN_WIN32_CLIPBOARD)
+#if defined(MSWIN) || defined(FEAT_CYGWIN_WIN32_CLIPBOARD)
     enc_codepage = encname2codepage(p_enc);
     enc_latin9 = (STRCMP(p_enc, "iso-8859-15") == 0);
 #endif
@@ -707,7 +700,7 @@ codepage_invalid:
 	    n = 1;
 	else
 	{
-#if defined(WIN3264) || defined(WIN32UNIX)
+#if defined(MSWIN) || defined(WIN32UNIX)
 	    /* enc_dbcs is set by setting 'fileencoding'.  It becomes a Windows
 	     * CodePage identifier, which we can pass directly in to Windows
 	     * API */
@@ -791,7 +784,7 @@ codepage_invalid:
 					  enc_utf8 ? "utf-8" : (char *)p_enc);
 #endif
 
-#ifdef WIN32
+#ifdef MSWIN
     /* When changing 'encoding' while starting up, then convert the command
      * line arguments from the active codepage to 'encoding'. */
     if (starting != 0)
@@ -845,6 +838,7 @@ bomb_size(void)
     return n;
 }
 
+#if defined(FEAT_QUICKFIX) || defined(PROTO)
 /*
  * Remove all BOM from "s" by moving remaining text.
  */
@@ -864,6 +858,7 @@ remove_bom(char_u *s)
 	}
     }
 }
+#endif
 
 /*
  * Get class of pointer:
@@ -915,7 +910,7 @@ dbcs_class(unsigned lead, unsigned trail)
 		unsigned char tb = trail;
 
 		/* convert process code to JIS */
-# if defined(WIN3264) || defined(WIN32UNIX) || defined(MACOS_X)
+# if defined(MSWIN) || defined(WIN32UNIX) || defined(MACOS_X)
 		/* process code is SJIS */
 		if (lb <= 0x9f)
 		    lb = (lb - 0x81) * 2 + 0x21;
@@ -1012,7 +1007,7 @@ dbcs_class(unsigned lead, unsigned trail)
 		if (c1 >= 0xB0 && c1 <= 0xC8)
 		    /* Hangul */
 		    return 20;
-#if defined(WIN3264) || defined(WIN32UNIX)
+#if defined(MSWIN) || defined(WIN32UNIX)
 		else if (c1 <= 0xA0 || c2 <= 0xA0)
 		    /* Extended Hangul Region : MS UHC(Unified Hangul Code) */
 		    /* c1: 0x81-0xA0 with c2: 0x41-0x5A, 0x61-0x7A, 0x81-0xFE
@@ -3746,7 +3741,7 @@ show_utf8(void)
     len = utfc_ptr2len(line);
     if (len == 0)
     {
-	MSG("NUL");
+	msg("NUL");
 	return;
     }
 
@@ -3771,7 +3766,7 @@ show_utf8(void)
 	    break;
     }
 
-    msg(IObuff);
+    msg((char *)IObuff);
 }
 
 /*
@@ -4000,9 +3995,7 @@ utf_find_illegal(void)
 	convert_setup(&vimconv, p_enc, curbuf->b_p_fenc);
     }
 
-#ifdef FEAT_VIRTUALEDIT
     curwin->w_cursor.coladd = 0;
-#endif
     for (;;)
     {
 	p = ml_get_cursor();
@@ -4124,18 +4117,13 @@ mb_adjustpos(buf_T *buf, pos_T *lp)
 {
     char_u	*p;
 
-    if (lp->col > 0
-#ifdef FEAT_VIRTUALEDIT
-	    || lp->coladd > 1
-#endif
-	    )
+    if (lp->col > 0 || lp->coladd > 1)
     {
 	p = ml_get_buf(buf, lp->lnum, FALSE);
 	if (*p == NUL || (int)STRLEN(p) < lp->col)
 	    lp->col = 0;
 	else
 	    lp->col -= (*mb_head_off)(p, p + lp->col);
-#ifdef FEAT_VIRTUALEDIT
 	/* Reset "coladd" when the cursor would be on the right half of a
 	 * double-wide character. */
 	if (lp->coladd == 1
@@ -4143,7 +4131,6 @@ mb_adjustpos(buf_T *buf, pos_T *lp)
 		&& vim_isprintc((*mb_ptr2char)(p + lp->col))
 		&& ptr2cells(p + lp->col) > 1)
 	    lp->coladd = 0;
-#endif
     }
 }
 
@@ -4293,9 +4280,7 @@ mb_fix_col(int col, int row)
 	return col - 1;
     return col;
 }
-#endif
 
-#if defined(FEAT_MBYTE) || defined(FEAT_POSTSCRIPT) || defined(PROTO)
 static int enc_alias_search(char_u *name);
 
 /*
@@ -4324,7 +4309,6 @@ enc_canonize(char_u *enc)
     char_u	*p, *s;
     int		i;
 
-# ifdef FEAT_MBYTE
     if (STRCMP(enc, "default") == 0)
     {
 	/* Use the default encoding as it's found by set_init_1(). */
@@ -4333,7 +4317,6 @@ enc_canonize(char_u *enc)
 	    r = (char_u *)"latin1";
 	return vim_strsave(r);
     }
-# endif
 
     /* copy "enc" to allocated memory, with room for two '-' */
     r = alloc((unsigned)(STRLEN(enc) + 3));
@@ -4405,15 +4388,13 @@ enc_alias_search(char_u *name)
 	    return enc_alias_table[i].canon;
     return -1;
 }
+
+
+#ifdef HAVE_LANGINFO_H
+# include <langinfo.h>
 #endif
 
-#if defined(FEAT_MBYTE) || defined(PROTO)
-
-# ifdef HAVE_LANGINFO_H
-#  include <langinfo.h>
-# endif
-
-# ifndef FEAT_GUI_W32
+#ifndef FEAT_GUI_MSWIN
 /*
  * Get the canonicalized encoding from the specified locale string "locale"
  * or from the environment variables LC_ALL, LC_CTYPE and LANG.
@@ -4471,7 +4452,7 @@ enc_locale_env(char *locale)
 
     return enc_canonize((char_u *)buf);
 }
-# endif
+#endif
 
 /*
  * Get the canonicalized encoding of the current locale.
@@ -4480,7 +4461,7 @@ enc_locale_env(char *locale)
     char_u *
 enc_locale(void)
 {
-# ifdef WIN3264
+#ifdef MSWIN
     char	buf[50];
     long	acp = GetACP();
 
@@ -4492,22 +4473,22 @@ enc_locale(void)
 	sprintf(buf, "cp%ld", acp);
 
     return enc_canonize((char_u *)buf);
-# else
+#else
     char	*s;
 
-#  ifdef HAVE_NL_LANGINFO_CODESET
+# ifdef HAVE_NL_LANGINFO_CODESET
     if ((s = nl_langinfo(CODESET)) == NULL || *s == NUL)
-#  endif
-#  if defined(HAVE_LOCALE_H) || defined(X_LOCALE)
+# endif
+# if defined(HAVE_LOCALE_H) || defined(X_LOCALE)
 	if ((s = setlocale(LC_CTYPE, NULL)) == NULL || *s == NUL)
-#  endif
+# endif
 	    s = NULL;
 
     return enc_locale_env(s);
-# endif
+#endif
 }
 
-# if defined(WIN3264) || defined(PROTO) || defined(FEAT_CYGWIN_WIN32_CLIPBOARD)
+# if defined(MSWIN) || defined(PROTO) || defined(FEAT_CYGWIN_WIN32_CLIPBOARD)
 /*
  * Convert an encoding name to an MS-Windows codepage.
  * Returns zero if no codepage can be figured out.
@@ -4799,7 +4780,6 @@ iconv_end(void)
 #  endif /* DYNAMIC_ICONV */
 # endif /* USE_ICONV */
 
-#endif /* FEAT_MBYTE */
 
 #ifdef FEAT_GUI
 # define USE_IMACTIVATEFUNC (!gui.in_use && *p_imaf != NUL)
@@ -4809,8 +4789,7 @@ iconv_end(void)
 # define USE_IMSTATUSFUNC (*p_imsf != NUL)
 #endif
 
-#if defined(FEAT_EVAL) && defined(FEAT_MBYTE) \
-	&& (defined(FEAT_XIM) || defined(IME_WITHOUT_XIM))
+#if defined(FEAT_EVAL) && (defined(FEAT_XIM) || defined(IME_WITHOUT_XIM))
     static void
 call_imactivatefunc(int active)
 {
@@ -6481,7 +6460,7 @@ static int im_was_set_active = FALSE;
     int
 im_get_status(void)
 {
-#  if defined(FEAT_MBYTE) && defined(FEAT_EVAL)
+#  if defined(FEAT_EVAL)
     if (USE_IMSTATUSFUNC)
 	return call_imstatusfunc();
 #  endif
@@ -6491,7 +6470,7 @@ im_get_status(void)
     void
 im_set_active(int active_arg)
 {
-#  if defined(FEAT_MBYTE) && defined(FEAT_EVAL)
+#  if defined(FEAT_EVAL)
     int	    active = !p_imdisable && active_arg;
 
     if (USE_IMACTIVATEFUNC && active != im_get_status())
@@ -6512,7 +6491,6 @@ im_set_position(int row UNUSED, int col UNUSED)
 
 #endif /* FEAT_XIM */
 
-#if defined(FEAT_MBYTE) || defined(PROTO)
 
 /*
  * Setup "vcp" for conversion from "from" to "to".
@@ -6547,10 +6525,10 @@ convert_setup_ext(
     int		to_is_utf8;
 
     /* Reset to no conversion. */
-# ifdef USE_ICONV
+#ifdef USE_ICONV
     if (vcp->vc_type == CONV_ICONV && vcp->vc_fd != (iconv_t)-1)
 	iconv_close(vcp->vc_fd);
-# endif
+#endif
     vcp->vc_type = CONV_NONE;
     vcp->vc_factor = 1;
     vcp->vc_fail = FALSE;
@@ -6593,7 +6571,7 @@ convert_setup_ext(
 	/* Internal utf-8 -> latin9 conversion. */
 	vcp->vc_type = CONV_TO_LATIN9;
     }
-#ifdef WIN3264
+#ifdef MSWIN
     /* Win32-specific codepage <-> codepage conversion without iconv. */
     else if ((from_is_utf8 || encname2codepage(from) > 0)
 	    && (to_is_utf8 || encname2codepage(to) > 0))
@@ -6623,7 +6601,7 @@ convert_setup_ext(
 	vcp->vc_type = CONV_UTF8_MAC;
     }
 #endif
-# ifdef USE_ICONV
+#ifdef USE_ICONV
     else
     {
 	/* Use iconv() for conversion. */
@@ -6636,14 +6614,14 @@ convert_setup_ext(
 	    vcp->vc_factor = 4;	/* could be longer too... */
 	}
     }
-# endif
+#endif
     if (vcp->vc_type == CONV_NONE)
 	return FAIL;
 
     return OK;
 }
 
-#if defined(FEAT_GUI) || defined(AMIGA) || defined(WIN3264) \
+#if defined(FEAT_GUI) || defined(AMIGA) || defined(MSWIN) \
 	|| defined(PROTO)
 /*
  * Do conversion on typed input characters in-place.
@@ -6893,7 +6871,7 @@ string_convert_ext(
 	    retval = iconv_string(vcp, ptr, len, unconvlenp, lenp);
 	    break;
 # endif
-# ifdef WIN3264
+# ifdef MSWIN
 	case CONV_CODEPAGE:		/* codepage -> codepage */
 	{
 	    int		retlen;
@@ -6957,4 +6935,3 @@ string_convert_ext(
 
     return retval;
 }
-#endif

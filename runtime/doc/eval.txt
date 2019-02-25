@@ -1,4 +1,4 @@
-*eval.txt*	For Vim version 8.1.  Last change: 2019 Jan 17
+*eval.txt*	For Vim version 8.1.  Last change: 2019 Feb 22
 
 
 		  VIM REFERENCE MANUAL	  by Bram Moolenaar
@@ -38,7 +38,7 @@ done, the features in this document are not available.  See |+eval| and
 1. Variables						*variables*
 
 1.1 Variable types ~
-							*E712*
+						*E712* *E896* *E897* *E899*
 There are nine types of variables:
 
 Number		A 32 or 64 bit signed number.  |expr-number| *Number*
@@ -633,6 +633,9 @@ Blob creation ~
 
 A Blob can be created with a |blob-literal|: >
 	:let b = 0zFF00ED015DAF
+Dots can be inserted between bytes (pair of hex characters) for readability,
+they don't change the value: >
+	:let b = 0zFF00.ED01.5DAF
 
 A blob can be read from a file with |readfile()| passing the {type} argument
 set to "B", for example: >
@@ -659,6 +662,16 @@ is not available it returns -1 or the default value you specify: >
 	:echo get(myblob, idx, 999)
 
 
+Blob iteration ~
+
+The |:for| loop executes commands for each byte of a Blob.  The loop variable is
+set to each byte in the Blob.  Example: >
+	:for byte in 0z112233
+	:   call Doit(byte)
+	:endfor
+This calls Doit() with 0x11, 0x22 and 0x33.
+
+
 Blob concatenation ~
 
 Two blobs can be concatenated with the "+" operator: >
@@ -683,7 +696,7 @@ similar to -1. >
 	:let otherblob = myblob[:]	" make a copy of the Blob
 
 If the first index is beyond the last byte of the Blob or the second index is
-before the first byte, the result is an empty list.  There is no error
+before the first index, the result is an empty Blob.  There is no error
 message.
 
 If the second index is equal to or greater than the length of the list the
@@ -790,8 +803,9 @@ Expression syntax summary, from least to most significant:
 	etc.			As above, append ? for ignoring case, # for
 				matching case
 
-	expr5 is expr5		same |List| instance
-	expr5 isnot expr5	different |List| instance
+	expr5 is expr5		same |List|, |Dictionary| or |Blob| instance
+	expr5 isnot expr5	different |List|, |Dictionary| or |Blob|
+				instance
 
 |expr5|	expr6
 	expr6 +	 expr6 ..	number addition, list or blob concatenation
@@ -959,12 +973,12 @@ Dictionary and arguments, use |get()| to get the function name: >
 	if get(Part1, 'name') == get(Part2, 'name')
 	   " Part1 and Part2 refer to the same function
 
-When using "is" or "isnot" with a |List| or a |Dictionary| this checks if the
-expressions are referring to the same |List| or |Dictionary| instance.  A copy
-of a |List| is different from the original |List|.  When using "is" without
-a |List| or a |Dictionary| it is equivalent to using "equal", using "isnot"
-equivalent to using "not equal".  Except that a different type means the
-values are different: >
+Using "is" or "isnot" with a |List|, |Dictionary| or |Blob| checks whether
+the expressions are referring to the same |List|, |Dictionary| or |Blob|
+instance.  A copy of a |List| is different from the original |List|.  When
+using "is" without a |List|, |Dictionary| or |Blob|, it is equivalent to
+using "equal", using "isnot" equivalent to using "not equal".  Except that
+a different type means the values are different: >
 	echo 4 == '4'
 	1
 	echo 4 is '4'
@@ -1009,16 +1023,16 @@ can be matched like an ordinary character.  Examples:
 
 expr5 and expr6						*expr5* *expr6*
 ---------------
-expr6 +	 expr6 ..	Number addition or |List| concatenation	*expr-+*
-expr6 -	 expr6 ..	Number subtraction			*expr--*
-expr6 .	 expr6 ..	String concatenation			*expr-.*
+expr6 + expr6  Number addition, |List| or |Blob| concatenation	*expr-+*
+expr6 - expr6  Number subtraction				*expr--*
+expr6 . expr6  String concatenation				*expr-.*
 
 For |Lists| only "+" is possible and then both expr6 must be a list.  The
 result is a new list with the two lists Concatenated.
 
-expr7 *	 expr7 ..	Number multiplication			*expr-star*
-expr7 /	 expr7 ..	Number division				*expr-/*
-expr7 %	 expr7 ..	Number modulo				*expr-%*
+expr7 * expr7  Number multiplication				*expr-star*
+expr7 / expr7  Number division					*expr-/*
+expr7 % expr7  Number modulo					*expr-%*
 
 For all, except ".", Strings are converted to Numbers.
 For bitwise operators see |and()|, |or()| and |xor()|.
@@ -2497,7 +2511,10 @@ remote_read({serverid} [, {timeout}])
 remote_send({server}, {string} [, {idvar}])
 				String	send key sequence
 remote_startserver({name})	none	become server {name}
-remove({list}, {idx} [, {end}])	any	remove items {idx}-{end} from {list}
+remove({list}, {idx} [, {end}])	any/List 
+					remove items {idx}-{end} from {list}
+remove({blob}, {idx} [, {end}])	Number/Blob
+					remove bytes {idx}-{end} from {blob}
 remove({dict}, {key})		any	remove entry {key} from {dict}
 rename({from}, {to})		Number	rename (move) file from {from} to {to}
 repeat({expr}, {count})		String	repeat {expr} {count} times
@@ -2876,9 +2893,9 @@ assert_false({actual} [, {msg}])				*assert_false()*
 		"Expected False but got {actual}" is produced.
 
 assert_inrange({lower}, {upper}, {actual} [, {msg}])	 *assert_inrange()*
-		This asserts number values.  When {actual}  is lower than
-		{lower} or higher than {upper} an error message is added to
-		|v:errors|.  Also see |assert-return|.
+		This asserts number and |Float| values.  When {actual}  is lower
+		than {lower} or higher than {upper} an error message is added
+		to |v:errors|.  Also see |assert-return|.
 		When {msg} is omitted an error in the form
 		"Expected range {lower} - {upper}, but got {actual}" is
 		produced.
@@ -3805,8 +3822,8 @@ escape({string}, {chars})				*escape()*
 							*eval()*
 eval({string})	Evaluate {string} and return the result.  Especially useful to
 		turn the result of |string()| back into the original value.
-		This works for Numbers, Floats, Strings and composites of
-		them.  Also works for |Funcref|s that refer to existing
+		This works for Numbers, Floats, Strings, Blobs and composites
+		of them.  Also works for |Funcref|s that refer to existing
 		functions.
 
 eventhandler()						*eventhandler()*
@@ -4118,6 +4135,9 @@ feedkeys({string} [, {mode}])				*feedkeys()*
 		't'	Handle keys as if typed; otherwise they are handled as
 			if coming from a mapping.  This matters for undo,
 			opening folds, etc.
+		'L'	Lowlevel input.  Only works for Unix or when using the
+			GUI. Keys are used as if they were coming from the
+			terminal.  Other flags are not used.  *E980*
 		'i'	Insert the string instead of appending (see above).
 		'x'	Execute commands until typeahead is empty.  This is
 			similar to using ":normal!".  You can call feedkeys()
@@ -5131,7 +5151,7 @@ gettabinfo([{arg}])					*gettabinfo()*
 			tabnr		tab page number.
 			variables	a reference to the dictionary with
 					tabpage-local variables
-			windows		List of |window-ID|s in the tag page.
+			windows		List of |window-ID|s in the tab page.
 
 gettabvar({tabnr}, {varname} [, {def}])				*gettabvar()*
 		Get the value of a tab-local variable {varname} in tab page
@@ -5518,7 +5538,6 @@ iconv({expr}, {from}, {to})				*iconv()*
 <		Note that Vim uses UTF-8 for all Unicode encodings, conversion
 		from/to UCS-2 is automatically changed to use UTF-8.  You
 		cannot use UCS-2 in a string anyway, because of the NUL bytes.
-		{only available when compiled with the |+multi_byte| feature}
 
 							*indent()*
 indent({lnum})	The result is a Number, which is indent of line {lnum} in the
@@ -5700,7 +5719,11 @@ items({dict})						*items()*
 		Return a |List| with all the key-value pairs of {dict}.  Each
 		|List| item is a list with two items: the key of a {dict}
 		entry and the value of this entry.  The |List| is in arbitrary
-		order.
+		order.  Also see |keys()| and |values()|.
+		Example: >
+			for [key, value] in items(mydict)
+			   echo key . ': ' . value
+			endfor
 
 job_getchannel({job})					 *job_getchannel()*
 		Get the channel handle that {job} is using.
@@ -5721,6 +5744,16 @@ job_info([{job}])					*job_info()*
 		   "exit_cb"	function to be called on exit
 		   "stoponexit"	|job-stoponexit|
 
+		   Only in Unix:
+		   "termsig"	the signal which terminated the process
+				(See |job_stop()| for the values)
+				only valid when "status" is "dead"
+
+		   Only in MS-Windows:
+		   "tty_type"	Type of virtual console in use.
+				Values are "winpty" or "conpty".
+				See 'termwintype'.
+
 		Without any arguments, returns a List with all Job objects.
 
 job_setoptions({job}, {options})			*job_setoptions()*
@@ -5732,6 +5765,10 @@ job_start({command} [, {options}])			*job_start()*
 		Start a job and return a Job object.  Unlike |system()| and
 		|:!cmd| this does not wait for the job to finish.
 		To start a job in a terminal window see |term_start()|.
+
+		If the job fails to start then |job_status()| on the returned
+		Job object results in "fail" and none of the callbacks will be
+		invoked.
 
 		{command} can be a String.  This works best on MS-Windows.  On
 		Unix it is split up in white-separated parts to be passed to
@@ -5885,7 +5922,7 @@ json_decode({string})					*json_decode()*
 		- A trailing comma in an array and object is ignored, e.g.
 		  "[1, 2, ]" is the same as "[1, 2]".
 		- Integer keys are accepted in objects, e.g. {1:2} is the
-		  same as {'1':2}.
+		  same as {"1":2}.
 		- More floating point numbers are recognized, e.g. "1." for
 		  "1.0", or "001.2" for "1.2". Special floating point values
 		  "Infinity", "-Infinity" and "NaN" (capitalization ignored)
@@ -5897,6 +5934,8 @@ json_decode({string})					*json_decode()*
 		- Control characters U+0000 through U+001F which are not
 		  escaped in strings are accepted, e.g. "	" (tab
 		  character in string) for "\t".
+		- An empty JSON expression or made of only spaces is accepted
+		  and results in v:none.
 		- Backslash in an invalid 2-character sequence escape is
 		  ignored, e.g. "\a" is decoded as "a".
 		- A correct surrogate pair in JSON strings should normally be
@@ -5936,7 +5975,7 @@ json_encode({expr})					*json_encode()*
 
 keys({dict})						*keys()*
 		Return a |List| with all the keys of {dict}.  The |List| is in
-		arbitrary order.
+		arbitrary order.  Also see |items()| and |values()|.
 
 							*len()* *E701*
 len({expr})	The result is a Number, which is the length of the argument.
@@ -6029,13 +6068,9 @@ line({expr})	The result is a Number, which is the line number of the file
 			line(".")		line number of the cursor
 			line("'t")		line number of mark t
 			line("'" . marker)	line number of mark marker
-<							*last-position-jump*
-		This autocommand jumps to the last known position in a file
-		just after opening it, if the '" mark is set: >
-     :au BufReadPost *
-	 \ if line("'\"") > 1 && line("'\"") <= line("$") && &ft !~# 'commit'
-	 \ |   exe "normal! g`\""
-	 \ | endif
+<
+		To jump to the last known position when opening a file see
+		|last-position-jump|.
 
 line2byte({lnum})					*line2byte()*
 		Return the byte count from the start of the buffer for line
@@ -6477,8 +6512,10 @@ min({expr})	Return the minimum value of all items in {expr}.
 							*mkdir()* *E739*
 mkdir({name} [, {path} [, {prot}]])
 		Create directory {name}.
+
 		If {path} is "p" then intermediate directories are created as
 		necessary.  Otherwise it must be "".
+
 		If {prot} is given it is used to set the protection bits of
 		the new directory.  The default is 0755 (rwxr-xr-x: r/w for
 		the user readable for others).  Use 0700 to make it unreadable
@@ -6487,9 +6524,17 @@ mkdir({name} [, {path} [, {prot}]])
 		with 0755.
 		Example: >
 			:call mkdir($HOME . "/tmp/foo/bar", "p", 0700)
+
 <		This function is not available in the |sandbox|.
+
 		There is no error if the directory already exists and the "p"
-		flag is passed (since patch 8.0.1708).
+		flag is passed (since patch 8.0.1708).  However, without the
+		"p" option the call will fail.  
+
+		The function result is a Number, which is 1 if the call was 
+		successful or 0 if the directory creation failed or partly
+		failed.
+
 		Not available on all systems.  To check use: >
 			:if exists("*mkdir")
 <
@@ -6770,8 +6815,7 @@ printf({fmt}, {expr1} ...)				*printf()*
 							*printf-S*
 		S	The text of the String argument is used.  If a
 			precision is specified, no more display cells than the
-			number specified are used.  Without the |+multi_byte|
-			feature works just like 's'.
+			number specified are used.
 
 							*printf-f* *E807*
 		f F	The Float argument is converted into a string of the
@@ -7298,6 +7342,9 @@ remove({list}, {idx} [, {end}])				*remove()*
 		Example: >
 			:echo "last item: " . remove(mylist, -1)
 			:call remove(mylist, 0, 9)
+<
+		Use |delete()| to remove a file.
+
 remove({blob}, {idx} [, {end}])
 		Without {end}: Remove the byte at {idx} from |Blob| {blob} and
 		return the byte.
@@ -7308,12 +7355,11 @@ remove({blob}, {idx} [, {end}])
 		Example: >
 			:echo "last byte: " . remove(myblob, -1)
 			:call remove(mylist, 0, 9)
+
 remove({dict}, {key})
 		Remove the entry from {dict} with key {key}.  Example: >
 			:echo "removed " . remove(dict, "one")
 <		If there is no {key} in {dict} this is an error.
-
-		Use |delete()| to remove a file.
 
 rename({from}, {to})					*rename()*
 		Rename the file by the name {from} to the name {to}.  This
@@ -7337,6 +7383,9 @@ repeat({expr}, {count})					*repeat()*
 resolve({filename})					*resolve()* *E655*
 		On MS-Windows, when {filename} is a shortcut (a .lnk file),
 		returns the path the shortcut points to in a simplified form.
+		When {filename} is a symbolic link or junction point, return
+		the full path to the target. If the target of junction is
+		removed, return {filename}.
 		On Unix, repeat resolving symbolic links in all path
 		components of {filename} and return the simplified result.
 		To cope with link cycles, resolving of symbolic links is
@@ -8560,10 +8609,10 @@ strcharpart({src}, {start} [, {len}])			*strcharpart()*
 
 strdisplaywidth({expr} [, {col}])			*strdisplaywidth()*
 		The result is a Number, which is the number of display cells
-		String {expr} occupies on the screen when it starts at {col}.
-		When {col} is omitted zero is used.  Otherwise it is the
-		screen column where to start.  This matters for Tab
-		characters.
+		String {expr} occupies on the screen when it starts at {col}
+		(first column is zero).  When {col} is omitted zero is used.
+		Otherwise it is the screen column where to start.  This
+		matters for Tab characters.
 		The option settings of the current window are used.  This
 		matters for anything that's displayed differently, such as
 		'tabstop' and 'display'.
@@ -8617,13 +8666,14 @@ stridx({haystack}, {needle} [, {start}])		*stridx()*
 
 							*string()*
 string({expr})	Return {expr} converted to a String.  If {expr} is a Number,
-		Float, String or a composition of them, then the result can be
-		parsed back with |eval()|.
+		Float, String, Blob or a composition of them, then the result
+		can be parsed back with |eval()|.
 			{expr} type	result ~
 			String		'string' (single quotes are doubled)
 			Number		123
 			Float		123.123456 or 1.123456e8
 			Funcref		function('name')
+			Blob		0z00112233.44556677.8899
 			List		[item, item]
 			Dictionary	{key: value, key: value}
 
@@ -9425,6 +9475,8 @@ term_start({cmd}, {options})				*term_start()*
 		   "ansi_colors"     A list of 16 color names or hex codes
 				     defining the ANSI palette used in GUI
 				     color modes.  See |g:terminal_ansi_colors|.
+		   "tty_type"	     (MS-Windows only): Specify which pty to
+				     use.  See 'termwintype' for the values.
 
 		{only available when compiled with the |+terminal| feature}
 
@@ -9696,10 +9748,10 @@ type({expr})	The result is a Number representing the type of {expr}.
 			Dictionary: 4  |v:t_dict|
 			Float:	    5  |v:t_float|
 			Boolean:    6  |v:t_bool| (v:false and v:true)
-			None	    7  |v:t_none| (v:null and v:none)
-			Job	    8  |v:t_job|
-			Channel	    9  |v:t_channel|
-			Blob	   10  |v:t_blob|
+			None:	    7  |v:t_none| (v:null and v:none)
+			Job:	    8  |v:t_job|
+			Channel:    9  |v:t_channel|
+			Blob:	   10  |v:t_blob|
 		For backward compatibility, this method can be used: >
 			:if type(myvar) == type(0)
 			:if type(myvar) == type("")
@@ -9778,7 +9830,7 @@ uniq({list} [, {func} [, {dict}]])			*uniq()* *E882*
 
 values({dict})						*values()*
 		Return a |List| with all the values of {dict}.  The |List| is
-		in arbitrary order.
+		in arbitrary order.  Also see |items()| and |keys()|.
 
 
 virtcol({expr})						*virtcol()*
@@ -10122,7 +10174,7 @@ all_builtin_terms	Compiled with all builtin terminals enabled.
 amiga			Amiga version of Vim.
 arabic			Compiled with Arabic support |Arabic|.
 arp			Compiled with ARP support (Amiga).
-autocmd			Compiled with autocommand support. |autocommand|
+autocmd			Compiled with autocommand support. (always true)
 autochdir		Compiled with support for 'autochdir'
 autoservername		Automatically enable |clientserver|
 balloon_eval		Compiled with |balloon-eval| support.
@@ -10131,6 +10183,7 @@ beos			BeOS version of Vim.
 browse			Compiled with |:browse| support, and browse() will
 			work.
 browsefilter		Compiled with support for |browsefilter|.
+bsd			Compiled on an OS in the BSD family (excluding macOS).
 builtin_terms		Compiled with some builtin terminals.
 byte_offset		Compiled with support for 'o' in 'statusline'
 cindent			Compiled with 'cindent' support.
@@ -10141,8 +10194,10 @@ cmdline_hist		Compiled with |cmdline-history| support.
 cmdline_info		Compiled with 'showcmd' and 'ruler' support.
 comments		Compiled with |'comments'| support.
 compatible		Compiled to be very Vi compatible.
+conpty			Platform where |ConPTY| can be used.
 cryptv			Compiled with encryption support |encryption|.
 cscope			Compiled with |cscope| support.
+cursorbind		Compiled with |'cursorbind'| (always true)
 debug			Compiled with "DEBUG" defined.
 dialog_con		Compiled with console dialog support.
 dialog_gui		Compiled with GUI dialog support.
@@ -10154,7 +10209,7 @@ ebcdic			Compiled on a machine with ebcdic character set.
 emacs_tags		Compiled with support for Emacs tags.
 eval			Compiled with expression evaluation support.  Always
 			true, of course!
-ex_extra		|+ex_extra|, always true now
+ex_extra		|+ex_extra| (always true)
 extra_search		Compiled with support for |'incsearch'| and
 			|'hlsearch'|
 farsi			Compiled with Farsi support |farsi|.
@@ -10183,6 +10238,7 @@ gui_running		Vim is running in the GUI, or it will start soon.
 gui_win32		Compiled with MS Windows Win32 GUI.
 gui_win32s		idem, and Win32s system being used (Windows 3.1)
 hangul_input		Compiled with Hangul input support. |hangul|
+hpux			HP-UX version of Vim.
 iconv			Can use iconv() for conversion.
 insert_expand		Compiled with support for CTRL-X expansion commands in
 			Insert mode.
@@ -10193,6 +10249,7 @@ langmap			Compiled with 'langmap' support.
 libcall			Compiled with |libcall()| support.
 linebreak		Compiled with 'linebreak', 'breakat', 'showbreak' and
 			'breakindent' support.
+linux			Linux version of Vim.
 lispindent		Compiled with support for lisp indenting.
 listcmds		Compiled with commands for the buffer list |:files|
 			and the argument list |arglist|.
@@ -10213,7 +10270,7 @@ mouse_sgr		Compiled with support for sgr mouse.
 mouse_urxvt		Compiled with support for urxvt mouse.
 mouse_xterm		Compiled with support for xterm mouse.
 mouseshape		Compiled with support for 'mouseshape'.
-multi_byte		Compiled with support for 'encoding'
+multi_byte		Compiled with support for 'encoding' (always true)
 multi_byte_encoding	'encoding' is set to a multi-byte encoding.
 multi_byte_ime		Compiled with support for IME input method.
 multi_lang		Compiled with support for multiple languages.
@@ -10243,7 +10300,7 @@ quickfix		Compiled with |quickfix| support.
 reltime			Compiled with |reltime()| support.
 rightleft		Compiled with 'rightleft' support.
 ruby			Compiled with Ruby interface |ruby|.
-scrollbind		Compiled with 'scrollbind' support.
+scrollbind		Compiled with 'scrollbind' support. (always true)
 showcmd			Compiled with 'showcmd' support.
 signs			Compiled with |:sign| support.
 smartindent		Compiled with 'smartindent' support.
@@ -10251,6 +10308,7 @@ spell			Compiled with spell checking support |spell|.
 startuptime		Compiled with |--startuptime| support.
 statusline		Compiled with support for 'statusline', 'rulerformat'
 			and special formats of 'titlestring' and 'iconstring'.
+sun			SunOS version of Vim.
 sun_workshop		Support for Sun |workshop| has been removed.
 syntax			Compiled with syntax highlighting support |syntax|.
 syntax_items		There are active syntax highlighting items for the
@@ -10282,27 +10340,29 @@ user_commands		User-defined commands.
 vcon			Win32: Virtual console support is working, can use
 			'termguicolors'. Also see |+vtp|.
 vertsplit		Compiled with vertically split windows |:vsplit|.
+			(always true)
 vim_starting		True while initial source'ing takes place. |startup|
 			*vim_starting*
 viminfo			Compiled with viminfo support.
-virtualedit		Compiled with 'virtualedit' option.
+virtualedit		Compiled with 'virtualedit' option. (always true)
 visual			Compiled with Visual mode. (always true)
 visualextra		Compiled with extra Visual mode commands. (always
 			true) |blockwise-operators|.
 vms			VMS version of Vim.
-vreplace		Compiled with |gR| and |gr| commands.
+vreplace		Compiled with |gR| and |gr| commands. (always true)
 vtp			Compiled for vcon support |+vtp| (check vcon to find
 			out if it works in the current console).
 wildignore		Compiled with 'wildignore' option.
 wildmenu		Compiled with 'wildmenu' option.
-win16			old version for MS-Windows 3.1 (always False)
+win16			old version for MS-Windows 3.1 (always false)
 win32			Win32 version of Vim (MS-Windows 95 and later, 32 or
 			64 bits)
 win32unix		Win32 version of Vim, using Unix files (Cygwin)
 win64			Win64 version of Vim (MS-Windows 64 bit).
-win95			Win32 version for MS-Windows 95/98/ME (always False)
+win95			Win32 version for MS-Windows 95/98/ME (always false)
 winaltkeys		Compiled with 'winaltkeys' option.
 windows			Compiled with support for more than one window.
+			(always true)
 writebackup		Compiled with 'writebackup' default on.
 xfontset		Compiled with X fontset support |xfontset|.
 xim			Compiled with X input method support |xim|.
@@ -10774,9 +10834,13 @@ This does NOT work: >
 			When the selected range of items is partly past the
 			end of the list, items will be added.
 
-					*:let+=* *:let-=* *:let.=* *E734*
+                                            *:let+=* *:let-=* *:letstar=*
+                                            *:let/=* *:let%=* *:let.=* *E734*
 :let {var} += {expr1}	Like ":let {var} = {var} + {expr1}".
 :let {var} -= {expr1}	Like ":let {var} = {var} - {expr1}".
+:let {var} *= {expr1}	Like ":let {var} = {var} * {expr1}".
+:let {var} /= {expr1}	Like ":let {var} = {var} / {expr1}".
+:let {var} %= {expr1}	Like ":let {var} = {var} % {expr1}".
 :let {var} .= {expr1}	Like ":let {var} = {var} . {expr1}".
 			These fail if {var} was not set yet and when the type
 			of {var} and {expr1} don't fit the operator.
@@ -11034,27 +11098,33 @@ This does NOT work: >
 			NOTE: The ":append" and ":insert" commands don't work
 			properly inside a ":while" and ":for" loop.
 
-:for {var} in {list}					*:for* *E690* *E732*
+:for {var} in {object}					*:for* *E690* *E732*
 :endfo[r]						*:endfo* *:endfor*
 			Repeat the commands between ":for" and ":endfor" for
-			each item in {list}.  Variable {var} is set to the
-			value of each item.
-			When an error is detected for a command inside the
-			loop, execution continues after the "endfor".
-			Changing {list} inside the loop affects what items are
-			used.  Make a copy if this is unwanted: >
+			each item in {object}.  {object} can be a |List| or
+			a |Blob|.  Variable {var} is set to the value of each
+			item.  When an error is detected for a command inside
+			the loop, execution continues after the "endfor".
+			Changing {object} inside the loop affects what items
+			are used.  Make a copy if this is unwanted: >
 				:for item in copy(mylist)
-<			When not making a copy, Vim stores a reference to the
-			next item in the list, before executing the commands
-			with the current item.  Thus the current item can be
-			removed without effect.  Removing any later item means
-			it will not be found.  Thus the following example
-			works (an inefficient way to make a list empty): >
+<
+			When {object} is a |List| and not making a copy, Vim
+			stores a reference to the next item in the |List|
+			before executing the commands with the current item.
+			Thus the current item can be removed without effect.
+			Removing any later item means it will not be found.
+			Thus the following example works (an inefficient way
+			to make a |List| empty): >
 				for item in mylist
 				   call remove(mylist, 0)
 				endfor
-<			Note that reordering the list (e.g., with sort() or
+<			Note that reordering the |List| (e.g., with sort() or
 			reverse()) may have unexpected effects.
+
+			When {object} is a |Blob|, Vim always makes a copy to
+			iterate over.  Unlike with |List|, modifying the
+			|Blob| does not affect the iteration.
 
 :for [{var1}, {var2}, ...] in {listlist}
 :endfo[r]

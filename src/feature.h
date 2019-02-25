@@ -61,7 +61,7 @@
  */
 #if !defined(FEAT_TINY) && !defined(FEAT_SMALL) && !defined(FEAT_NORMAL) \
 	&& !defined(FEAT_BIG) && !defined(FEAT_HUGE)
-# if defined(UNIX) || defined(WIN3264) || defined(MACOS_X)
+# if defined(UNIX) || defined(MSWIN) || defined(MACOS_X)
 #  define FEAT_HUGE
 # else
 #  if defined(MSWIN) || defined(VMS) || defined(AMIGA)
@@ -199,10 +199,8 @@
 
 /*
  * +virtualedit		'virtualedit' option and its implementation
+ *			Now always included.
  */
-#ifdef FEAT_NORMAL
-# define FEAT_VIRTUALEDIT
-#endif
 
 /*
  * +cmdline_info	'showcmd' and 'ruler' options.
@@ -268,18 +266,8 @@
 /*
  *			Persian language: 波斯语
  * +farsi		Farsi (Persian language) Keymap support.
- *			Requires FEAT_RIGHTLEFT.
- *
- * Disabled for EBCDIC as it requires multibyte.
+ *			Removed in patch 8.1.0932
  */
-#if defined(FEAT_BIG) && !defined(DISABLE_FARSI) && !defined(EBCDIC)
-# define FEAT_FKMAP
-#endif
-#ifdef FEAT_FKMAP
-# ifndef FEAT_RIGHTLEFT
-#   define FEAT_RIGHTLEFT
-# endif
-#endif
 
 /*
  *			阿拉伯语
@@ -288,7 +276,7 @@
  *
  * Disabled for EBCDIC as it requires multibyte.
  */
-#if defined(FEAT_BIG) && !defined(DISABLE_ARABIC) && VIM_SIZEOF_INT >= 4 && !defined(EBCDIC)
+#if defined(FEAT_BIG) && !defined(DISABLE_ARABIC) && !defined(EBCDIC)
 # define FEAT_ARABIC
 #endif
 #ifdef FEAT_ARABIC
@@ -347,10 +335,10 @@
  */
 #ifdef FEAT_NORMAL
 # define FEAT_EVAL
-# if defined(HAVE_FLOAT_FUNCS) || defined(WIN3264) || defined(MACOS_X)
+# if defined(HAVE_FLOAT_FUNCS) || defined(MSWIN) || defined(MACOS_X)
 #  define FEAT_FLOAT
 # endif
-# if defined(HAVE_STDINT_H) || defined(WIN3264) || (VIM_SIZEOF_LONG >= 8)
+# if defined(HAVE_STDINT_H) || defined(MSWIN) || (VIM_SIZEOF_LONG >= 8)
 #  define FEAT_NUM64
 # endif
 #endif
@@ -365,7 +353,7 @@
 #if defined(FEAT_HUGE) \
 	&& defined(FEAT_EVAL) \
 	&& ((defined(HAVE_GETTIMEOFDAY) && defined(HAVE_SYS_TIME_H)) \
-		|| defined(WIN3264))
+		|| defined(MSWIN))
 # define FEAT_PROFILE
 #endif
 
@@ -375,14 +363,14 @@
 #if defined(FEAT_NORMAL) \
 	&& defined(FEAT_EVAL) \
 	&& ((defined(HAVE_GETTIMEOFDAY) && defined(HAVE_SYS_TIME_H)) \
-		|| defined(WIN3264))
+		|| defined(MSWIN))
 # define FEAT_RELTIME
 #endif
 
 /*
  * +timers		timer_start()
  */
-#if defined(FEAT_RELTIME) && (defined(UNIX) || defined(WIN32) || defined(VMS) )
+#if defined(FEAT_RELTIME) && (defined(UNIX) || defined(MSWIN) || defined(VMS) )
 # define FEAT_TIMERS
 #endif
 
@@ -603,23 +591,12 @@
  * +multi_byte		Generic multi-byte character handling.
  *			Now always enabled.
  */
-#if !defined(FEAT_MBYTE)
-# define FEAT_MBYTE
-#endif
-#if VIM_SIZEOF_INT < 4 && !defined(PROTO)
-	Error: Vim only works with 32 bit int or larger
-#endif
-
-/* Define this if you want to use 16 bit Unicode only, reduces memory used for
- * the screen structures. */
-/* #define UNICODE16 */
 
 /*
- * +multi_byte_ime	Win32 IME input method.  Requires +multi_byte.
- *			Only for far-east Windows, so IME can be used to input
- *			chars.  Not tested much!
+ * +multi_byte_ime	Win32 IME input method.  Only for far-east Windows, so
+ *			IME can be used to input chars.  Not tested much!
  */
-#if defined(FEAT_GUI_W32) && !defined(FEAT_MBYTE_IME)
+#if defined(FEAT_GUI_MSWIN) && !defined(FEAT_MBYTE_IME)
 /* #define FEAT_MBYTE_IME */
 # endif
 
@@ -675,7 +652,7 @@
 #if defined(HAVE_DLOPEN) && defined(HAVE_DLSYM)
 # define USE_DLOPEN
 #endif
-#if defined(FEAT_EVAL) && (defined(WIN3264) || ((defined(UNIX) || defined(VMS)) \
+#if defined(FEAT_EVAL) && (defined(MSWIN) || ((defined(UNIX) || defined(VMS)) \
 	&& (defined(USE_DLOPEN) || defined(HAVE_SHL_LOAD))))
 # define FEAT_LIBCALL
 #endif
@@ -685,7 +662,7 @@
  */
 #ifdef FEAT_NORMAL
 # define FEAT_MENU
-# ifdef FEAT_GUI_W32
+# ifdef FEAT_GUI_MSWIN
 #  define FEAT_TEAROFF
 # endif
 #endif
@@ -773,7 +750,7 @@
 #endif
 #if !defined(FEAT_GUI_DIALOG) && (defined(FEAT_GUI_MOTIF) \
 	|| defined(FEAT_GUI_ATHENA) || defined(FEAT_GUI_GTK) \
-	|| defined(FEAT_GUI_W32))
+	|| defined(FEAT_GUI_MSWIN))
 /* need a dialog to show error messages when starting from the desktop */
 # define FEAT_GUI_DIALOG
 #endif
@@ -844,7 +821,7 @@
  */
 #if defined(FEAT_NORMAL) \
 	&& ((defined(HAVE_GETTIMEOFDAY) && defined(HAVE_SYS_TIME_H)) \
-		|| defined(WIN3264))
+		|| defined(MSWIN))
 # define STARTUPTIME 1
 #endif
 
@@ -1055,7 +1032,7 @@
 # ifdef FEAT_BIG
 #  define FEAT_MOUSE_SGR
 # endif
-# if defined(FEAT_NORMAL) && defined(WIN3264)
+# if defined(FEAT_NORMAL) && defined(MSWIN)
 #  define DOS_MOUSE
 # endif
 # if defined(FEAT_NORMAL) && defined(__QNX__)
@@ -1152,7 +1129,7 @@
  * +clientserver	Remote control via the remote_send() function
  *			and the --remote argument
  */
-#if (defined(WIN32) || defined(FEAT_XCLIPBOARD)) && defined(FEAT_EVAL)
+#if (defined(MSWIN) || defined(FEAT_XCLIPBOARD)) && defined(FEAT_EVAL)
 # define FEAT_CLIENTSERVER
 #endif
 
@@ -1161,7 +1138,7 @@
  *			when --servername is not passed on the command line.
  */
 #if defined(FEAT_CLIENTSERVER) && !defined(FEAT_AUTOSERVERNAME)
-# ifdef WIN3264
+# ifdef MSWIN
     /* Always enabled on MS-Windows. */
 #  define FEAT_AUTOSERVERNAME
 # else
@@ -1185,10 +1162,10 @@
  */
 #ifdef FEAT_NORMAL
 /* MS-DOS console and Win32 console can change cursor shape */
-# if defined(WIN3264) && !defined(FEAT_GUI_W32)
+# if defined(MSWIN) && !defined(FEAT_GUI_MSWIN)
 #  define MCH_CURSOR_SHAPE
 # endif
-# if defined(FEAT_GUI_W32) || defined(FEAT_GUI_MOTIF) \
+# if defined(FEAT_GUI_MSWIN) || defined(FEAT_GUI_MOTIF) \
 	|| defined(FEAT_GUI_ATHENA) || defined(FEAT_GUI_GTK) \
 	|| defined(FEAT_GUI_PHOTON)
 #  define FEAT_MOUSESHAPE
@@ -1205,7 +1182,7 @@
 # define CURSOR_SHAPE
 #endif
 
-#if defined(FEAT_MZSCHEME) && (defined(FEAT_GUI_W32) || defined(FEAT_GUI_GTK)    \
+#if defined(FEAT_MZSCHEME) && (defined(FEAT_GUI_MSWIN) || defined(FEAT_GUI_GTK)    \
 	|| defined(FEAT_GUI_MOTIF) || defined(FEAT_GUI_ATHENA)	\
 	|| defined(FEAT_GUI_MAC))
 # define MZSCHEME_GUI_THREADS
@@ -1281,7 +1258,7 @@
 # if ((defined(FEAT_GUI_MOTIF) || defined(FEAT_GUI_ATHENA)) \
 		&& defined(HAVE_X11_XPM_H)) \
 	|| defined(FEAT_GUI_GTK) \
-	|| (defined(WIN32) && defined(FEAT_GUI))
+	|| (defined(MSWIN) && defined(FEAT_GUI))
 #  define FEAT_SIGN_ICONS
 # endif
 #endif
@@ -1292,13 +1269,13 @@
  *			Only for GUIs where it was implemented.
  */
 #if (defined(FEAT_GUI_MOTIF) || defined(FEAT_GUI_ATHENA) \
-	|| defined(FEAT_GUI_GTK) || defined(FEAT_GUI_W32)) \
+	|| defined(FEAT_GUI_GTK) || defined(FEAT_GUI_MSWIN)) \
 	&& (   ((defined(FEAT_TOOLBAR) || defined(FEAT_GUI_TABLINE)) \
-		&& !defined(FEAT_GUI_GTK) && !defined(FEAT_GUI_W32)) \
+		&& !defined(FEAT_GUI_GTK) && !defined(FEAT_GUI_MSWIN)) \
 	    || defined(FEAT_NETBEANS_INTG) || defined(FEAT_EVAL))
 # define FEAT_BEVAL_GUI
 # if !defined(FEAT_XFONTSET) && !defined(FEAT_GUI_GTK) \
-	&& !defined(FEAT_GUI_W32)
+	&& !defined(FEAT_GUI_MSWIN)
 #  define FEAT_XFONTSET
 # endif
 #endif
@@ -1311,7 +1288,7 @@
  * +balloon_eval_term	Allow balloon expression evaluation in the terminal.
  */
 #if defined(FEAT_HUGE) && defined(FEAT_TIMERS) && \
-	(defined(UNIX) || defined(VMS) || (defined(WIN32) && !defined(FEAT_GUI_W32)))
+	(defined(UNIX) || defined(VMS) || (defined(MSWIN) && !defined(FEAT_GUI_MSWIN)))
 # define FEAT_BEVAL_TERM
 #endif
 
@@ -1358,13 +1335,13 @@
  * +filterpipe
  */
 #if (defined(UNIX) && !defined(USE_SYSTEM)) \
-	    || (defined(WIN3264) && defined(FEAT_GUI_W32))
+	    || (defined(MSWIN) && defined(FEAT_GUI_MSWIN))
 # define FEAT_FILTERPIPE
 #endif
 
 /*
  * +vtp: Win32 virtual console.
  */
-#if !defined(FEAT_GUI) && defined(WIN3264)
+#if !defined(FEAT_GUI) && defined(MSWIN)
 # define FEAT_VTP
 #endif
