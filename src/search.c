@@ -1246,7 +1246,7 @@ do_search(
     }
     if (options & SEARCH_REV)
     {
-#ifdef WIN32
+#ifdef MSWIN
 	/* There is a bug in the Visual C++ 2.2 compiler which means that
 	 * dirc always ends up being '/' */
 	dirc = (dirc == '/')  ?  '?'  :  '/';
@@ -1477,12 +1477,8 @@ do_search(
 	    }
 	}
 
-#ifdef FEAT_FKMAP	/* when in Farsi mode, reverse the character flow */
-	if (p_altkeymap && curwin->w_p_rl)
-	     lrFswap(searchstr,0);
-#endif
-
-	c = searchit(curwin, curbuf, &pos, NULL, dirc == '/' ? FORWARD : BACKWARD,
+	c = searchit(curwin, curbuf, &pos, NULL,
+					      dirc == '/' ? FORWARD : BACKWARD,
 		searchstr, count, spats[0].off.end + (options &
 		       (SEARCH_KEEP + SEARCH_PEEK + SEARCH_HIS
 			+ SEARCH_MSG + SEARCH_START
@@ -2601,6 +2597,8 @@ showmatch(
 #endif
     colnr_T	save_dollar_vcol;
     char_u	*p;
+    long        *so = curwin->w_p_so >= 0 ? &curwin->w_p_so : &p_so;
+    long        *siso = curwin->w_p_siso >= 0 ? &curwin->w_p_siso : &p_siso;
 
     /*
      * Only show match for chars in the 'matchpairs' option.
@@ -2635,8 +2633,8 @@ showmatch(
 	{
 	    mpos = *lpos;    /* save the pos, update_screen() may change it */
 	    save_cursor = curwin->w_cursor;
-	    save_so = p_so;
-	    save_siso = p_siso;
+	    save_so = *so;
+	    save_siso = *siso;
 	    /* Handle "$" in 'cpo': If the ')' is typed on top of the "$",
 	     * stop displaying the "$". */
 	    if (dollar_vcol >= 0 && dollar_vcol == curwin->w_virtcol)
@@ -2651,8 +2649,8 @@ showmatch(
 	    ui_cursor_shape();		/* may show different cursor shape */
 #endif
 	    curwin->w_cursor = mpos;	/* move to matching char */
-	    p_so = 0;			/* don't use 'scrolloff' here */
-	    p_siso = 0;			/* don't use 'sidescrolloff' here */
+	    *so = 0;			/* don't use 'scrolloff' here */
+	    *siso = 0;			/* don't use 'sidescrolloff' here */
 	    showruler(FALSE);
 	    setcursor();
 	    cursor_on();		/* make sure that the cursor is shown */
@@ -2672,8 +2670,8 @@ showmatch(
 	    else if (!char_avail())
 		ui_delay(p_mat * 100L, FALSE);
 	    curwin->w_cursor = save_cursor;	/* restore cursor position */
-	    p_so = save_so;
-	    p_siso = save_siso;
+	    *so = save_so;
+	    *siso = save_siso;
 #ifdef CURSOR_SHAPE
 	    State = save_state;
 	    ui_cursor_shape();		/* may show different cursor shape */
@@ -2974,10 +2972,6 @@ cls(void)
     int	    c;
 
     c = gchar_cursor();
-#ifdef FEAT_FKMAP	/* when 'akm' (Farsi mode), take care of Farsi blank */
-    if (p_altkeymap && c == F_BLANK)
-	return 0;
-#endif
     if (c == ' ' || c == '\t' || c == NUL)
 	return 0;
     if (enc_dbcs != 0 && c > 0xFF)
@@ -4365,11 +4359,12 @@ current_quote(
     int		col_end;
     int		col_start = curwin->w_cursor.col;
     int		inclusive = FALSE;
-    int		vis_empty = TRUE;	/* Visual selection <= 1 char */
-    int		vis_bef_curs = FALSE;	/* Visual starts before cursor */
-    int		inside_quotes = FALSE;	/* Looks like "i'" done before */
-    int		selected_quote = FALSE;	/* Has quote inside selection */
+    int		vis_empty = TRUE;	// Visual selection <= 1 char
+    int		vis_bef_curs = FALSE;	// Visual starts before cursor
+    int		inside_quotes = FALSE;	// Looks like "i'" done before
+    int		selected_quote = FALSE;	// Has quote inside selection
     int		i;
+    int		restore_vis_bef = FALSE; // restore VIsual on abort
 
     /* Correct cursor when 'selection' is "exclusive". */
     if (VIsual_active)
@@ -4383,12 +4378,13 @@ current_quote(
 	{
 	    if (!vis_bef_curs)
 	    {
-		/* VIsual needs to be start of Visual selection. */
+		// VIsual needs to be the start of Visual selection.
 		pos_T t = curwin->w_cursor;
 
 		curwin->w_cursor = VIsual;
 		VIsual = t;
 		vis_bef_curs = TRUE;
+		restore_vis_bef = TRUE;
 	    }
 	    dec_cursor();
 	}
@@ -4437,7 +4433,7 @@ current_quote(
 	     * opening quote. */
 	    col_start = find_next_quote(line, col_start + 1, quotechar, NULL);
 	    if (col_start < 0)
-		return FALSE;
+		goto abort_search;
 	    col_end = find_next_quote(line, col_start + 1, quotechar,
 							      curbuf->b_p_qe);
 	    if (col_end < 0)
@@ -4451,7 +4447,7 @@ current_quote(
 	{
 	    col_end = find_prev_quote(line, col_start, quotechar, NULL);
 	    if (line[col_end] != quotechar)
-		return FALSE;
+		goto abort_search;
 	    col_start = find_prev_quote(line, col_end, quotechar,
 							      curbuf->b_p_qe);
 	    if (line[col_start] != quotechar)
@@ -4486,12 +4482,12 @@ current_quote(
 	    /* Find open quote character. */
 	    col_start = find_next_quote(line, col_start, quotechar, NULL);
 	    if (col_start < 0 || col_start > first_col)
-		return FALSE;
+		goto abort_search;
 	    /* Find close quote character. */
 	    col_end = find_next_quote(line, col_start + 1, quotechar,
 							      curbuf->b_p_qe);
 	    if (col_end < 0)
-		return FALSE;
+		goto abort_search;
 	    /* If is cursor between start and end quote character, it is
 	     * target text object. */
 	    if (col_start <= first_col && first_col <= col_end)
@@ -4508,14 +4504,14 @@ current_quote(
 	    /* No quote before the cursor, look after the cursor. */
 	    col_start = find_next_quote(line, col_start, quotechar, NULL);
 	    if (col_start < 0)
-		return FALSE;
+		goto abort_search;
 	}
 
 	/* Find close quote character. */
 	col_end = find_next_quote(line, col_start + 1, quotechar,
 							      curbuf->b_p_qe);
 	if (col_end < 0)
-	    return FALSE;
+	    goto abort_search;
     }
 
     /* When "include" is TRUE, include spaces after closing quote or before
@@ -4602,6 +4598,20 @@ current_quote(
     }
 
     return OK;
+
+abort_search:
+    if (VIsual_active && *p_sel == 'e')
+    {
+	inc_cursor();
+	if (restore_vis_bef)
+	{
+	    pos_T t = curwin->w_cursor;
+
+	    curwin->w_cursor = VIsual;
+	    VIsual = t;
+	}
+    }
+    return FALSE;
 }
 
 #endif /* FEAT_TEXTOBJ */
@@ -4730,18 +4740,14 @@ current_search(
     VIsual_active = TRUE;
     VIsual_mode = 'v';
 
-    if (VIsual_active)
+    redraw_curbuf_later(INVERTED);	/* update the inversion */
+    if (*p_sel == 'e')
     {
-	redraw_curbuf_later(INVERTED);	/* update the inversion */
-	if (*p_sel == 'e')
-	{
-	    /* Correction for exclusive selection depends on the direction. */
-	    if (forward && LTOREQ_POS(VIsual, curwin->w_cursor))
-		inc_cursor();
-	    else if (!forward && LTOREQ_POS(curwin->w_cursor, VIsual))
-		inc(&VIsual);
-	}
-
+	/* Correction for exclusive selection depends on the direction. */
+	if (forward && LTOREQ_POS(VIsual, curwin->w_cursor))
+	    inc_cursor();
+	else if (!forward && LTOREQ_POS(curwin->w_cursor, VIsual))
+	    inc(&VIsual);
     }
 
 #ifdef FEAT_FOLDING

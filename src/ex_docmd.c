@@ -177,7 +177,7 @@ static void	ex_edit(exarg_T *eap);
 # define ex_gui			ex_nogui
 static void	ex_nogui(exarg_T *eap);
 #endif
-#if defined(FEAT_GUI_W32) && defined(FEAT_MENU) && defined(FEAT_TEAROFF)
+#if defined(FEAT_GUI_MSWIN) && defined(FEAT_MENU) && defined(FEAT_TEAROFF)
 static void	ex_tearoff(exarg_T *eap);
 #else
 # define ex_tearoff		ex_ni
@@ -2007,11 +2007,16 @@ do_one_cmd(
 #ifdef HAVE_SANDBOX
 	if (sandbox != 0 && !(ea.argt & SBOXOK))
 	{
-	    /* Command not allowed in sandbox. */
+	    // Command not allowed in sandbox.
 	    errormsg = _(e_sandbox);
 	    goto doend;
 	}
 #endif
+	if (restricted != 0 && (ea.argt & RESTRICT))
+	{
+	    errormsg = _("E981: Command not allowed in rvim");
+	    goto doend;
+	}
 	if (!curbuf->b_p_ma && (ea.argt & MODIFY))
 	{
 	    /* Command not allowed in non-'modifiable' buffer */
@@ -7211,6 +7216,15 @@ ex_colorscheme(exarg_T *eap)
     }
     else if (load_colors(eap->arg) == FAIL)
 	semsg(_("E185: Cannot find color scheme '%s'"), eap->arg);
+
+#ifdef FEAT_VTP
+    else if (has_vtp_working())
+    {
+	// background color change requires clear + redraw
+	update_screen(CLEAR);
+	redrawcmd();
+    }
+#endif
 }
 
     static void
@@ -8852,7 +8866,7 @@ ex_nogui(exarg_T *eap)
 }
 #endif
 
-#if defined(FEAT_GUI_W32) && defined(FEAT_MENU) && defined(FEAT_TEAROFF)
+#if defined(FEAT_GUI_MSWIN) && defined(FEAT_MENU) && defined(FEAT_TEAROFF)
     static void
 ex_tearoff(exarg_T *eap)
 {
@@ -8914,7 +8928,7 @@ ex_syncbind(exarg_T *eap UNUSED)
 	{
 	    if (wp->w_p_scb && wp->w_buffer)
 	    {
-		y = wp->w_buffer->b_ml.ml_line_count - p_so;
+		y = wp->w_buffer->b_ml.ml_line_count - get_scrolloff_value();
 		if (topline > y)
 		    topline = y;
 	    }
@@ -9838,6 +9852,9 @@ ex_redraw(exarg_T *eap)
 #ifdef FEAT_TITLE
     if (need_maketitle)
 	maketitle();
+#endif
+#if defined(MSWIN) && !defined(FEAT_GUI_MSWIN)
+    resize_console_buf();
 #endif
     RedrawingDisabled = r;
     p_lz = p;

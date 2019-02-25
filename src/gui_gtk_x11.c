@@ -86,7 +86,7 @@ extern void bonobo_dock_item_set_behavior(BonoboDockItem *dock_item, BonoboDockI
 #  include <gdk/gdkkeysyms.h>
 # endif
 # include <gdk/gdk.h>
-# ifdef WIN3264
+# ifdef MSWIN
 #  include <gdk/gdkwin32.h>
 # else
 #  include <gdk/gdkx.h>
@@ -6317,10 +6317,11 @@ gui_mch_wait_for_chars(long wtime)
 
     timed_out = FALSE;
 
-    /* this timeout makes sure that we will return if no characters arrived in
-     * time */
-    if (wtime > 0)
-	timer = timeout_add(wtime, input_timer_cb, &timed_out);
+    // This timeout makes sure that we will return if no characters arrived in
+    // time. If "wtime" is zero just use one.
+    if (wtime >= 0)
+	timer = timeout_add(wtime == 0 ? 1L : wtime,
+						   input_timer_cb, &timed_out);
     else
 	timer = 0;
 

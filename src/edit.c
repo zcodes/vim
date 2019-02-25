@@ -216,9 +216,6 @@ static void mb_replace_pop_ins(int cc);
 static void replace_flush(void);
 static void replace_do_bs(int limit_col);
 static int del_char_after_col(int limit_col);
-#ifdef FEAT_CINDENT
-static int cindent_on(void);
-#endif
 static void ins_reg(void);
 static void ins_ctrl_g(void);
 static void ins_ctrl_hat(void);
@@ -470,15 +467,6 @@ edit(
 
     if (cmdchar == 'R')
     {
-#ifdef FEAT_FKMAP
-	if (p_fkmap && p_ri)
-	{
-	    beep_flush();
-	    emsg(farsi_text_3);	    /* encoded in Farsi */
-	    State = INSERT;
-	}
-	else
-#endif
 	State = REPLACE;
     }
     else if (cmdchar == 'V' || cmdchar == 'v')
@@ -731,7 +719,7 @@ edit(
 		(int)curwin->w_wcol < mincol - curbuf->b_p_ts
 #endif
 		    && curwin->w_wrow == W_WINROW(curwin)
-						 + curwin->w_height - 1 - p_so
+				 + curwin->w_height - 1 - get_scrolloff_value()
 		    && (curwin->w_cursor.lnum != curwin->w_topline
 #ifdef FEAT_DIFF
 			|| curwin->w_topfill > 0
@@ -814,10 +802,6 @@ edit(
 #ifdef FEAT_RIGHTLEFT
 	if (p_hkmap && KeyTyped)
 	    c = hkmap(c);		/* Hebrew mode mapping */
-#endif
-#ifdef FEAT_FKMAP
-	if (p_fkmap && KeyTyped)
-	    c = fkmap(c);		/* Farsi mode mapping */
 #endif
 
 #ifdef FEAT_INS_EXPAND
@@ -1263,9 +1247,9 @@ doESCkey:
 	    did_cursorhold = TRUE;
 	    break;
 
-#ifdef FEAT_GUI_W32
-	    /* On Win32 ignore <M-F4>, we get it when closing the window was
-	     * cancelled. */
+#ifdef FEAT_GUI_MSWIN
+	    /* On MS-Windows ignore <M-F4>, we get it when closing the window
+	     * was cancelled. */
 	case K_F4:
 	    if (mod_mask != MOD_MASK_ALT)
 		goto normalchar;
@@ -5024,9 +5008,13 @@ ins_compl_next(
 	/* may undisplay the popup menu first */
 	ins_compl_upd_pum();
 
-	// Redraw before showing the popup menu to show the user what was
-	// inserted.
-	pum_call_update_screen();
+	if (pum_enough_matches())
+	    // Will display the popup menu, don't redraw yet to avoid flicker.
+	    pum_call_update_screen();
+	else
+	    // Not showing the popup menu yet, redraw to show the user what was
+	    // inserted.
+	    update_screen(0);
 
 	/* display the updated popup menu */
 	ins_compl_show_pum();
@@ -6280,9 +6268,6 @@ insertchar(
 		&& !ISSPECIAL(c)
 		&& (!has_mbyte || MB_BYTE2LEN_CHECK(c) == 1)
 		&& i < INPUT_BUFLEN
-# ifdef FEAT_FKMAP
-		&& !(p_fkmap && KeyTyped) /* Farsi mode mapping moves cursor */
-# endif
 		&& (textwidth == 0
 		    || (virtcol += byte2cells(buf[i - 1])) < (colnr_T)textwidth)
 		&& !(!no_abbr && !vim_iswordc(c) && vim_iswordc(buf[i - 1])))
@@ -7923,332 +7908,6 @@ replace_do_bs(int limit_col)
 	(void)del_char_after_col(limit_col);
 }
 
-#ifdef FEAT_CINDENT
-/*
- * Return TRUE if C-indenting is on.
- */
-    static int
-cindent_on(void)
-{
-    return (!p_paste && (curbuf->b_p_cin
-# ifdef FEAT_EVAL
-		    || *curbuf->b_p_inde != NUL
-# endif
-		    ));
-}
-#endif
-
-#if defined(FEAT_LISP) || defined(FEAT_CINDENT) || defined(PROTO)
-/*
- * Re-indent the current line, based on the current contents of it and the
- * surrounding lines. Fixing the cursor position seems really easy -- I'm very
- * confused what all the part that handles Control-T is doing that I'm not.
- * "get_the_indent" should be get_c_indent, get_expr_indent or get_lisp_indent.
- */
-
-    void
-fixthisline(int (*get_the_indent)(void))
-{
-    int amount = get_the_indent();
-
-    if (amount >= 0)
-    {
-	change_indent(INDENT_SET, amount, FALSE, 0, TRUE);
-	if (linewhite(curwin->w_cursor.lnum))
-	    did_ai = TRUE;	/* delete the indent if the line stays empty */
-    }
-}
-
-    void
-fix_indent(void)
-{
-    if (p_paste)
-	return;
-# ifdef FEAT_LISP
-    if (curbuf->b_p_lisp && curbuf->b_p_ai)
-	fixthisline(get_lisp_indent);
-# endif
-# if defined(FEAT_LISP) && defined(FEAT_CINDENT)
-    else
-# endif
-# ifdef FEAT_CINDENT
-	if (cindent_on())
-	    do_c_expr_indent();
-# endif
-}
-
-#endif
-
-#ifdef FEAT_CINDENT
-/*
- * return TRUE if 'cinkeys' contains the key "keytyped",
- * when == '*':	    Only if key is preceded with '*'	(indent before insert)
- * when == '!':	    Only if key is preceded with '!'	(don't insert)
- * when == ' ':	    Only if key is not preceded with '*'(indent afterwards)
- *
- * "keytyped" can have a few special values:
- * KEY_OPEN_FORW
- * KEY_OPEN_BACK
- * KEY_COMPLETE	    just finished completion.
- *
- * If line_is_empty is TRUE accept keys with '0' before them.
- */
-    int
-in_cinkeys(
-    int		keytyped,
-    int		when,
-    int		line_is_empty)
-{
-    char_u	*look;
-    int		try_match;
-    int		try_match_word;
-    char_u	*p;
-    char_u	*line;
-    int		icase;
-    int		i;
-
-    if (keytyped == NUL)
-	/* Can happen with CTRL-Y and CTRL-E on a short line. */
-	return FALSE;
-
-#ifdef FEAT_EVAL
-    if (*curbuf->b_p_inde != NUL)
-	look = curbuf->b_p_indk;	/* 'indentexpr' set: use 'indentkeys' */
-    else
-#endif
-	look = curbuf->b_p_cink;	/* 'indentexpr' empty: use 'cinkeys' */
-    while (*look)
-    {
-	/*
-	 * Find out if we want to try a match with this key, depending on
-	 * 'when' and a '*' or '!' before the key.
-	 */
-	switch (when)
-	{
-	    case '*': try_match = (*look == '*'); break;
-	    case '!': try_match = (*look == '!'); break;
-	     default: try_match = (*look != '*'); break;
-	}
-	if (*look == '*' || *look == '!')
-	    ++look;
-
-	/*
-	 * If there is a '0', only accept a match if the line is empty.
-	 * But may still match when typing last char of a word.
-	 */
-	if (*look == '0')
-	{
-	    try_match_word = try_match;
-	    if (!line_is_empty)
-		try_match = FALSE;
-	    ++look;
-	}
-	else
-	    try_match_word = FALSE;
-
-	/*
-	 * does it look like a control character?
-	 */
-	if (*look == '^'
-#ifdef EBCDIC
-		&& (Ctrl_chr(look[1]) != 0)
-#else
-		&& look[1] >= '?' && look[1] <= '_'
-#endif
-		)
-	{
-	    if (try_match && keytyped == Ctrl_chr(look[1]))
-		return TRUE;
-	    look += 2;
-	}
-	/*
-	 * 'o' means "o" command, open forward.
-	 * 'O' means "O" command, open backward.
-	 */
-	else if (*look == 'o')
-	{
-	    if (try_match && keytyped == KEY_OPEN_FORW)
-		return TRUE;
-	    ++look;
-	}
-	else if (*look == 'O')
-	{
-	    if (try_match && keytyped == KEY_OPEN_BACK)
-		return TRUE;
-	    ++look;
-	}
-
-	/*
-	 * 'e' means to check for "else" at start of line and just before the
-	 * cursor.
-	 */
-	else if (*look == 'e')
-	{
-	    if (try_match && keytyped == 'e' && curwin->w_cursor.col >= 4)
-	    {
-		p = ml_get_curline();
-		if (skipwhite(p) == p + curwin->w_cursor.col - 4 &&
-			STRNCMP(p + curwin->w_cursor.col - 4, "else", 4) == 0)
-		    return TRUE;
-	    }
-	    ++look;
-	}
-
-	/*
-	 * ':' only causes an indent if it is at the end of a label or case
-	 * statement, or when it was before typing the ':' (to fix
-	 * class::method for C++).
-	 */
-	else if (*look == ':')
-	{
-	    if (try_match && keytyped == ':')
-	    {
-		p = ml_get_curline();
-		if (cin_iscase(p, FALSE) || cin_isscopedecl(p) || cin_islabel())
-		    return TRUE;
-		/* Need to get the line again after cin_islabel(). */
-		p = ml_get_curline();
-		if (curwin->w_cursor.col > 2
-			&& p[curwin->w_cursor.col - 1] == ':'
-			&& p[curwin->w_cursor.col - 2] == ':')
-		{
-		    p[curwin->w_cursor.col - 1] = ' ';
-		    i = (cin_iscase(p, FALSE) || cin_isscopedecl(p)
-							    || cin_islabel());
-		    p = ml_get_curline();
-		    p[curwin->w_cursor.col - 1] = ':';
-		    if (i)
-			return TRUE;
-		}
-	    }
-	    ++look;
-	}
-
-
-	/*
-	 * Is it a key in <>, maybe?
-	 */
-	else if (*look == '<')
-	{
-	    if (try_match)
-	    {
-		/*
-		 * make up some named keys <o>, <O>, <e>, <0>, <>>, <<>, <*>,
-		 * <:> and <!> so that people can re-indent on o, O, e, 0, <,
-		 * >, *, : and ! keys if they really really want to.
-		 */
-		if (vim_strchr((char_u *)"<>!*oOe0:", look[1]) != NULL
-						       && keytyped == look[1])
-		    return TRUE;
-
-		if (keytyped == get_special_key_code(look + 1))
-		    return TRUE;
-	    }
-	    while (*look && *look != '>')
-		look++;
-	    while (*look == '>')
-		look++;
-	}
-
-	/*
-	 * Is it a word: "=word"?
-	 */
-	else if (*look == '=' && look[1] != ',' && look[1] != NUL)
-	{
-	    ++look;
-	    if (*look == '~')
-	    {
-		icase = TRUE;
-		++look;
-	    }
-	    else
-		icase = FALSE;
-	    p = vim_strchr(look, ',');
-	    if (p == NULL)
-		p = look + STRLEN(look);
-	    if ((try_match || try_match_word)
-		    && curwin->w_cursor.col >= (colnr_T)(p - look))
-	    {
-		int		match = FALSE;
-
-#ifdef FEAT_INS_EXPAND
-		if (keytyped == KEY_COMPLETE)
-		{
-		    char_u	*s;
-
-		    /* Just completed a word, check if it starts with "look".
-		     * search back for the start of a word. */
-		    line = ml_get_curline();
-		    if (has_mbyte)
-		    {
-			char_u	*n;
-
-			for (s = line + curwin->w_cursor.col; s > line; s = n)
-			{
-			    n = mb_prevptr(line, s);
-			    if (!vim_iswordp(n))
-				break;
-			}
-		    }
-		    else
-			for (s = line + curwin->w_cursor.col; s > line; --s)
-			    if (!vim_iswordc(s[-1]))
-				break;
-		    if (s + (p - look) <= line + curwin->w_cursor.col
-			    && (icase
-				? MB_STRNICMP(s, look, p - look)
-				: STRNCMP(s, look, p - look)) == 0)
-			match = TRUE;
-		}
-		else
-#endif
-		    /* TODO: multi-byte */
-		    if (keytyped == (int)p[-1] || (icase && keytyped < 256
-			 && TOLOWER_LOC(keytyped) == TOLOWER_LOC((int)p[-1])))
-		{
-		    line = ml_get_cursor();
-		    if ((curwin->w_cursor.col == (colnr_T)(p - look)
-				|| !vim_iswordc(line[-(p - look) - 1]))
-			    && (icase
-				? MB_STRNICMP(line - (p - look), look, p - look)
-				: STRNCMP(line - (p - look), look, p - look))
-									 == 0)
-			match = TRUE;
-		}
-		if (match && try_match_word && !try_match)
-		{
-		    /* "0=word": Check if there are only blanks before the
-		     * word. */
-		    if (getwhitecols_curline() !=
-				     (int)(curwin->w_cursor.col - (p - look)))
-			match = FALSE;
-		}
-		if (match)
-		    return TRUE;
-	    }
-	    look = p;
-	}
-
-	/*
-	 * ok, it's a boring generic character.
-	 */
-	else
-	{
-	    if (try_match && *look == keytyped)
-		return TRUE;
-	    if (*look != NUL)
-		++look;
-	}
-
-	/*
-	 * Skip over ", ".
-	 */
-	look = skip_to_option_part(look);
-    }
-    return FALSE;
-}
-#endif /* FEAT_CINDENT */
-
 #if defined(FEAT_RIGHTLEFT) || defined(PROTO)
 /*
  * Map Hebrew keyboard when in hkmap mode.
@@ -8731,23 +8390,7 @@ ins_ctrl_(void)
     }
     else
 	revins_scol = -1;
-#ifdef FEAT_FKMAP
-    if (p_altkeymap)
-    {
-	/*
-	 * to be consistent also for redo command, using '.'
-	 * set arrow_used to true and stop it - causing to redo
-	 * characters entered in one mode (normal/reverse insert).
-	 */
-	arrow_used = TRUE;
-	(void)stop_arrow();
-	p_fkmap = curwin->w_p_rl ^ p_ri;
-	if (p_fkmap && p_ri)
-	    State = INSERT;
-    }
-    else
-#endif
-	p_hkmap = curwin->w_p_rl ^ p_ri;    /* be consistent! */
+    p_hkmap = curwin->w_p_rl ^ p_ri;    // be consistent!
     showmode();
 }
 #endif
@@ -8813,21 +8456,12 @@ ins_start_select(int c)
     static void
 ins_insert(int replaceState)
 {
-#ifdef FEAT_FKMAP
-    if (p_fkmap && p_ri)
-    {
-	beep_flush();
-	emsg(farsi_text_3);	/* encoded in Farsi */
-	return;
-    }
-#endif
-
-# ifdef FEAT_EVAL
+#ifdef FEAT_EVAL
     set_vim_var_string(VV_INSERTMODE,
 		   (char_u *)((State & REPLACE_FLAG) ? "i"
 		          : replaceState == VREPLACE ? "v"
 						     : "r"), 1);
-# endif
+#endif
     ins_apply_autocmds(EVENT_INSERTCHANGE);
     if (State & REPLACE_FLAG)
 	State = INSERT | (State & LANGMAP);
@@ -10241,10 +9875,6 @@ ins_eol(int c)
 	coladvance(getviscol());
 
 #ifdef FEAT_RIGHTLEFT
-# ifdef FEAT_FKMAP
-    if (p_altkeymap && p_fkmap)
-	fkmap(NL);
-# endif
     /* NL in reverse insert will always start in the end of
      * current line. */
     if (revins_on)

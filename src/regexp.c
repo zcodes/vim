@@ -484,6 +484,12 @@ get_char_class(char_u **pp)
 #define CLASS_BACKSPACE 14
 	"escape:]",
 #define CLASS_ESCAPE 15
+	"ident:]",
+#define CLASS_IDENT 16
+	"keyword:]",
+#define CLASS_KEYWORD 17
+	"fname:]",
+#define CLASS_FNAME 18
     };
 #define CLASS_NONE 99
     int i;
@@ -698,6 +704,7 @@ static char_u	*re_put_long(char_u *pr, long_u val);
 static int	read_limits(long *, long *);
 static void	regtail(char_u *, char_u *);
 static void	regoptail(char_u *, char_u *);
+static int	reg_iswordc(int);
 
 static regengine_T bt_regengine;
 static regengine_T nfa_regengine;
@@ -723,7 +730,7 @@ get_equi_class(char_u **pp)
     int		l = 1;
     char_u	*p = *pp;
 
-    if (p[1] == '=')
+    if (p[1] == '=' && p[2] != NUL)
     {
 	if (has_mbyte)
 	    l = (*mb_ptr2len)(p + 2);
@@ -1104,7 +1111,7 @@ get_coll_element(char_u **pp)
     int		l = 1;
     char_u	*p = *pp;
 
-    if (p[0] != NUL && p[1] == '.')
+    if (p[0] != NUL && p[1] == '.' && p[2] != NUL)
     {
 	if (has_mbyte)
 	    l = (*mb_ptr2len)(p + 2);
@@ -2545,6 +2552,21 @@ collection:
 			    case CLASS_ESCAPE:
 				regc('\033');
 				break;
+			    case CLASS_IDENT:
+				for (cu = 1; cu <= 255; cu++)
+				    if (vim_isIDc(cu))
+					regmbc(cu);
+				break;
+			    case CLASS_KEYWORD:
+				for (cu = 1; cu <= 255; cu++)
+				    if (reg_iswordc(cu))
+					regmbc(cu);
+				break;
+			    case CLASS_FNAME:
+				for (cu = 1; cu <= 255; cu++)
+				    if (vim_isfilec(cu))
+					regmbc(cu);
+				break;
 			}
 		    }
 		    else
@@ -3523,14 +3545,14 @@ typedef enum regstate_E
  */
 typedef struct regitem_S
 {
-    regstate_T	rs_state;	/* what we are doing, one of RS_ above */
-    char_u	*rs_scan;	/* current node in program */
+    regstate_T	rs_state;	// what we are doing, one of RS_ above
+    short	rs_no;		// submatch nr or BEHIND/NOBEHIND
+    char_u	*rs_scan;	// current node in program
     union
     {
 	save_se_T  sesave;
 	regsave_T  regsave;
-    } rs_un;			/* room for saving rex.input */
-    short	rs_no;		/* submatch nr or BEHIND/NOBEHIND */
+    } rs_un;			// room for saving rex.input
 } regitem_T;
 
 static regitem_T *regstack_push(regstate_T state, char_u *scan);
@@ -3588,6 +3610,16 @@ free_regexp_stuff(void)
     vim_free(reg_prev_sub);
 }
 #endif
+
+/*
+ * Return TRUE if character 'c' is included in 'iskeyword' option for
+ * "reg_buf" buffer.
+ */
+    static int
+reg_iswordc(int c)
+{
+    return vim_iswordc_buf(c, rex.reg_buf);
+}
 
 /*
  * Get pointer to the line "lnum", which is relative to "reg_firstlnum".
@@ -7937,6 +7969,7 @@ vim_regcomp(char_u *expr_arg, int re_flags)
 {
     regprog_T   *prog = NULL;
     char_u	*expr = expr_arg;
+    int		save_called_emsg;
 
     regexp_engine = p_re;
 
@@ -7966,10 +7999,14 @@ vim_regcomp(char_u *expr_arg, int re_flags)
     bt_regengine.expr = expr;
     nfa_regengine.expr = expr;
 #endif
+    // reg_iswordc() uses rex.reg_buf
+    rex.reg_buf = curbuf;
 
     /*
      * First try the NFA engine, unless backtracking was requested.
      */
+    save_called_emsg = called_emsg;
+    called_emsg = FALSE;
     if (regexp_engine != BACKTRACKING_ENGINE)
 	prog = nfa_regengine.regcomp(expr,
 		re_flags + (regexp_engine == AUTOMATIC_ENGINE ? RE_AUTO : 0));
@@ -7998,13 +8035,15 @@ vim_regcomp(char_u *expr_arg, int re_flags)
 	 * If the NFA engine failed, try the backtracking engine.
 	 * The NFA engine also fails for patterns that it can't handle well
 	 * but are still valid patterns, thus a retry should work.
+	 * But don't try if an error message was given.
 	 */
-	if (regexp_engine == AUTOMATIC_ENGINE)
+	if (regexp_engine == AUTOMATIC_ENGINE && !called_emsg)
 	{
 	    regexp_engine = BACKTRACKING_ENGINE;
 	    prog = bt_regengine.regcomp(expr, re_flags);
 	}
     }
+    called_emsg |= save_called_emsg;
 
     if (prog != NULL)
     {

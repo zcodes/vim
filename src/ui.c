@@ -40,7 +40,7 @@ ui_write(char_u *s, int len)
     /* Don't output anything in silent mode ("ex -s") unless 'verbose' set */
     if (!(silent_mode && p_verbose == 0))
     {
-#if !defined(WIN3264)
+#if !defined(MSWIN)
 	char_u	*tofree = NULL;
 
 	if (output_conv.vc_type != CONV_NONE)
@@ -54,7 +54,7 @@ ui_write(char_u *s, int len)
 
 	mch_write(s, len);
 
-# if !defined(WIN3264)
+# if !defined(MSWIN)
 	if (output_conv.vc_type != CONV_NONE)
 	    vim_free(tofree);
 # endif
@@ -62,7 +62,7 @@ ui_write(char_u *s, int len)
 #endif
 }
 
-#if defined(UNIX) || defined(VMS) || defined(PROTO) || defined(WIN3264)
+#if defined(UNIX) || defined(VMS) || defined(PROTO) || defined(MSWIN)
 /*
  * When executing an external program, there may be some typed characters that
  * are not consumed by it.  Give them back to ui_inchar() and they are stored
@@ -272,6 +272,7 @@ inchar_loop(
 {
     int		len;
     int		interrupted = FALSE;
+    int		did_call_wait_func = FALSE;
     int		did_start_blocking = FALSE;
     long	wait_time;
     long	elapsed_time = 0;
@@ -313,7 +314,11 @@ inchar_loop(
 	    elapsed_time = ELAPSED_FUNC(start_tv);
 #endif
 	    wait_time -= elapsed_time;
-	    if (wait_time <= 0)
+
+	    // If the waiting time is now zero or less, we timed out.  However,
+	    // loop at least once to check for characters and events.  Matters
+	    // when "wtime" is zero.
+	    if (wait_time <= 0 && did_call_wait_func)
 	    {
 		if (wtime >= 0)
 		    // no character available within "wtime"
@@ -374,6 +379,7 @@ inchar_loop(
 
 	// Wait for a character to be typed or another event, such as the winch
 	// signal or an event on the monitored file descriptors.
+	did_call_wait_func = TRUE;
 	if (wait_func(wait_time, &interrupted, FALSE))
 	{
 	    // If input was put directly in typeahead buffer bail out here.
@@ -3429,7 +3435,7 @@ vcol2col(win_T *wp, linenr_T lnum, int vcol)
 
 #endif /* FEAT_MOUSE */
 
-#if defined(FEAT_GUI) || defined(WIN3264) || defined(PROTO)
+#if defined(FEAT_GUI) || defined(MSWIN) || defined(PROTO)
 /*
  * Called when focus changed.  Used for the GUI or for systems where this can
  * be done in the console (Win32).

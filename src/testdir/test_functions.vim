@@ -188,7 +188,7 @@ func Test_strftime()
   call assert_fails('call strftime("%Y", [])', 'E745:')
 endfunc
 
-func Test_resolve()
+func Test_resolve_unix()
   if !has('unix')
     return
   endif
@@ -232,6 +232,103 @@ func Test_resolve()
   call assert_equal('Xlink2', resolve('Xlink1'))
   call assert_equal('./Xlink2', resolve('./Xlink1'))
   call delete('Xlink1')
+endfunc
+
+func s:normalize_fname(fname)
+  let ret = substitute(a:fname, '\', '/', 'g')
+  let ret = substitute(ret, '//', '/', 'g')
+  let ret = tolower(ret)
+endfunc
+
+func Test_resolve_win32()
+  if !has('win32')
+    return
+  endif
+
+  " test for shortcut file
+  if executable('cscript')
+    new Xfile
+    wq
+    call writefile([
+    \ 'Set fs = CreateObject("Scripting.FileSystemObject")',
+    \ 'Set ws = WScript.CreateObject("WScript.Shell")',
+    \ 'Set shortcut = ws.CreateShortcut("Xlink.lnk")',
+    \ 'shortcut.TargetPath = fs.BuildPath(ws.CurrentDirectory, "Xfile")', 
+    \ 'shortcut.Save'
+    \], 'link.vbs')
+    silent !cscript link.vbs
+    call delete('link.vbs')
+    call assert_equal(s:normalize_fname(getcwd() . '\Xfile'), s:normalize_fname(resolve('./Xlink.lnk')))
+    call delete('Xfile')
+
+    call assert_equal(s:normalize_fname(getcwd() . '\Xfile'), s:normalize_fname(resolve('./Xlink.lnk')))
+    call delete('Xlink.lnk')
+  else
+    echomsg 'skipped test for shortcut file'
+  endif
+
+  " remove files
+  call delete('Xlink')
+  call delete('Xdir', 'd')
+  call delete('Xfile')
+
+  " test for symbolic link to a file
+  new Xfile
+  wq
+  silent !mklink Xlink Xfile
+  if !v:shell_error
+    call assert_equal(s:normalize_fname(getcwd() . '\Xfile'), s:normalize_fname(resolve('./Xlink')))
+    call delete('Xlink')
+  else
+    echomsg 'skipped test for symbolic link to a file'
+  endif
+  call delete('Xfile')
+
+  " test for junction to a directory
+  call mkdir('Xdir')
+  silent !mklink /J Xlink Xdir
+  if !v:shell_error
+    call assert_equal(s:normalize_fname(getcwd() . '\Xdir'), s:normalize_fname(resolve(getcwd() . '/Xlink')))
+
+    call delete('Xdir', 'd')
+
+    " test for junction already removed
+    call assert_equal(s:normalize_fname(getcwd() . '\Xlink'), s:normalize_fname(resolve(getcwd() . '/Xlink')))
+    call delete('Xlink')
+  else
+    echomsg 'skipped test for junction to a directory'
+    call delete('Xdir', 'd')
+  endif
+
+  " test for symbolic link to a directory
+  call mkdir('Xdir')
+  silent !mklink /D Xlink Xdir
+  if !v:shell_error
+    call assert_equal(s:normalize_fname(getcwd() . '\Xdir'), s:normalize_fname(resolve(getcwd() . '/Xlink')))
+
+    call delete('Xdir', 'd')
+
+    " test for symbolic link already removed
+    call assert_equal(s:normalize_fname(getcwd() . '\Xlink'), s:normalize_fname(resolve(getcwd() . '/Xlink')))
+    call delete('Xlink')
+  else
+    echomsg 'skipped test for symbolic link to a directory'
+    call delete('Xdir', 'd')
+  endif
+
+  " test for buffer name
+  new Xfile
+  wq
+  silent !mklink Xlink Xfile
+  if !v:shell_error
+    edit Xlink
+    call assert_equal('Xlink', bufname('%'))
+    call delete('Xlink')
+    bw!
+  else
+    echomsg 'skipped test for buffer name'
+  endif
+  call delete('Xfile')
 endfunc
 
 func Test_simplify()
@@ -1054,22 +1151,31 @@ func Test_libcall_libcallnr()
     let libc = 'msvcrt.dll'
   elseif has('mac')
     let libc = 'libSystem.B.dylib'
-  elseif system('uname -s') =~ 'SunOS'
-    " Set the path to libc.so according to the architecture.
-    let test_bits = system('file ' . GetVimProg())
-    let test_arch = system('uname -p')
-    if test_bits =~ '64-bit' && test_arch =~ 'sparc'
-      let libc = '/usr/lib/sparcv9/libc.so'
-    elseif test_bits =~ '64-bit' && test_arch =~ 'i386'
-      let libc = '/usr/lib/amd64/libc.so'
-    else
-      let libc = '/usr/lib/libc.so'
-    endif
-  else
+  elseif executable('ldd')
+    let libc = matchstr(split(system('ldd ' . GetVimProg())), '/libc\.so\>')
+  endif
+  if get(l:, 'libc', '') ==# ''
     " On Unix, libc.so can be in various places.
-    " Interestingly, using an empty string for the 1st argument of libcall
-    " allows to call functions from libc which is not documented.
-    let libc = ''
+    if has('linux')
+      " There is not documented but regarding the 1st argument of glibc's
+      " dlopen an empty string and nullptr are equivalent, so using an empty
+      " string for the 1st argument of libcall allows to call functions.
+      let libc = ''
+    elseif has('sun')
+      " Set the path to libc.so according to the architecture.
+      let test_bits = system('file ' . GetVimProg())
+      let test_arch = system('uname -p')
+      if test_bits =~ '64-bit' && test_arch =~ 'sparc'
+        let libc = '/usr/lib/sparcv9/libc.so'
+      elseif test_bits =~ '64-bit' && test_arch =~ 'i386'
+        let libc = '/usr/lib/amd64/libc.so'
+      else
+        let libc = '/usr/lib/libc.so'
+      endif
+    else
+      " Unfortunately skip this test until a good way is found.
+      return
+    endif
   endif
 
   if has('win32')
@@ -1207,4 +1313,34 @@ func Test_confirm()
   call assert_fails('call confirm("Are you sure?", [])', 'E730:')
   call assert_fails('call confirm("Are you sure?", "&Yes\n&No\n", [])', 'E745:')
   call assert_fails('call confirm("Are you sure?", "&Yes\n&No\n", 0, [])', 'E730:')
+endfunc
+
+func Test_platform_name()
+  " The system matches at most only one name.
+  let names = ['amiga', 'beos', 'bsd', 'hpux', 'linux', 'mac', 'qnx', 'sun', 'vms', 'win32', 'win32unix']
+  call assert_inrange(0, 1, len(filter(copy(names), 'has(v:val)')))
+
+  " Is Unix?
+  call assert_equal(has('beos'), has('beos') && has('unix'))
+  call assert_equal(has('bsd'), has('bsd') && has('unix'))
+  call assert_equal(has('hpux'), has('hpux') && has('unix'))
+  call assert_equal(has('linux'), has('linux') && has('unix'))
+  call assert_equal(has('mac'), has('mac') && has('unix'))
+  call assert_equal(has('qnx'), has('qnx') && has('unix'))
+  call assert_equal(has('sun'), has('sun') && has('unix'))
+  call assert_equal(has('win32'), has('win32') && !has('unix'))
+  call assert_equal(has('win32unix'), has('win32unix') && has('unix'))
+
+  if has('unix') && executable('uname')
+    let uname = system('uname')
+    call assert_equal(uname =~? 'BeOS', has('beos'))
+    " GNU userland on BSD kernels (e.g., GNU/kFreeBSD) don't have BSD defined
+    call assert_equal(uname =~? '\%(GNU/k\w\+\)\@<!BSD\|DragonFly', has('bsd'))
+    call assert_equal(uname =~? 'HP-UX', has('hpux'))
+    call assert_equal(uname =~? 'Linux', has('linux'))
+    call assert_equal(uname =~? 'Darwin', has('mac'))
+    call assert_equal(uname =~? 'QNX', has('qnx'))
+    call assert_equal(uname =~? 'SunOS', has('sun'))
+    call assert_equal(uname =~? 'CYGWIN\|MSYS', has('win32unix'))
+  endif
 endfunc
