@@ -745,39 +745,35 @@ may_add_char_to_search(int firstc, int *c, incsearch_state_T *is_state)
     if (is_state->did_incsearch)
     {
 	curwin->w_cursor = is_state->match_end;
-	if (!EQUAL_POS(curwin->w_cursor, is_state->search_start))
+	*c = gchar_cursor();
+	if (*c != NUL)
 	{
-	    *c = gchar_cursor();
-
 	    // If 'ignorecase' and 'smartcase' are set and the
 	    // command line has no uppercase characters, convert
 	    // the character to lowercase.
 	    if (p_ic && p_scs && !pat_has_uppercase(ccline.cmdbuff + skiplen))
 		*c = MB_TOLOWER(*c);
-	    if (*c != NUL)
+	    if (*c == firstc || vim_strchr((char_u *)(
+			       p_magic ? "\\~^$.*[" : "\\^$"), *c) != NULL)
 	    {
-		if (*c == firstc || vim_strchr((char_u *)(
-				   p_magic ? "\\~^$.*[" : "\\^$"), *c) != NULL)
-		{
-		    // put a backslash before special characters
-		    stuffcharReadbuff(*c);
-		    *c = '\\';
-		}
-		// add any composing characters
-		if (mb_char2len(*c) != mb_ptr2len(ml_get_cursor()))
-		{
-		    int save_c = *c;
-
-		    while (mb_char2len(*c) != mb_ptr2len(ml_get_cursor()))
-		    {
-			curwin->w_cursor.col += mb_char2len(*c);
-			*c = gchar_cursor();
-			stuffcharReadbuff(*c);
-		    }
-		    *c = save_c;
-		}
-		return FAIL;
+		// put a backslash before special characters
+		stuffcharReadbuff(*c);
+		*c = '\\';
 	    }
+	    // add any composing characters
+	    if (mb_char2len(*c) != mb_ptr2len(ml_get_cursor()))
+	    {
+		int save_c = *c;
+
+		while (mb_char2len(*c) != mb_ptr2len(ml_get_cursor()))
+		{
+		    curwin->w_cursor.col += mb_char2len(*c);
+		    *c = gchar_cursor();
+		    stuffcharReadbuff(*c);
+		}
+		*c = save_c;
+	    }
+	    return FAIL;
 	}
     }
     return OK;
@@ -1029,9 +1025,8 @@ getcmdline_int(
 	/* Get a character.  Ignore K_IGNORE and K_NOP, they should not do
 	 * anything, such as stop completion. */
 	do
-	{
 	    c = safe_vgetc();
-	} while (c == K_IGNORE || c == K_NOP);
+	while (c == K_IGNORE || c == K_NOP);
 
 	if (KeyTyped)
 	{
@@ -2833,9 +2828,8 @@ redraw:
 		    if (*p == TAB)
 		    {
 			do
-			{
 			    msg_putchar(' ');
-			} while (++vcol % 8);
+			while (++vcol % 8);
 			++p;
 		    }
 		    else
@@ -2908,9 +2902,8 @@ redraw:
 	{
 	    /* Don't use chartabsize(), 'ts' can be different */
 	    do
-	    {
 		msg_putchar(' ');
-	    } while (++vcol % 8);
+	    while (++vcol % 8);
 	}
 	else
 	{

@@ -445,9 +445,8 @@ spell_check(
     if (spell_iswordp(mi.mi_fend, wp))
     {
 	do
-	{
 	    MB_PTR_ADV(mi.mi_fend);
-	} while (*mi.mi_fend != NUL && spell_iswordp(mi.mi_fend, wp));
+	while (*mi.mi_fend != NUL && spell_iswordp(mi.mi_fend, wp));
 
 	if (capcol != NULL && *capcol == 0 && wp->w_s->b_cap_prog != NULL)
 	{
@@ -1463,9 +1462,8 @@ fold_more(matchinf_T *mip)
 
     p = mip->mi_fend;
     do
-    {
 	MB_PTR_ADV(mip->mi_fend);
-    } while (*mip->mi_fend != NUL && spell_iswordp(mip->mi_fend, mip->mi_win));
+    while (*mip->mi_fend != NUL && spell_iswordp(mip->mi_fend, mip->mi_win));
 
     /* Include the non-word character so that we can check for the word end. */
     if (*mip->mi_fend != NUL)
@@ -2310,10 +2308,13 @@ did_set_spelllang(win_T *wp)
     /* Loop over comma separated language names. */
     for (splp = spl_copy; *splp != NUL; )
     {
-	/* Get one language name. */
+	// Get one language name.
 	copy_option_part(&splp, lang, MAXWLEN, ",");
 	region = NULL;
 	len = (int)STRLEN(lang);
+
+	if (!valid_spellang(lang))
+	    continue;
 
 	if (STRCMP(lang, "cjk") == 0)
 	{
@@ -8473,7 +8474,7 @@ spell_dump_compl(
 	    arridx[0] = 0;
 	    curi[0] = 1;
 	    while (depth >= 0 && !got_int
-				       && (pat == NULL || !compl_interrupted))
+				  && (pat == NULL || !ins_compl_interrupted()))
 	    {
 		if (curi[depth] > byts[arridx[depth]])
 		{
@@ -8629,7 +8630,7 @@ dump_word(
 		    ? MB_STRNICMP(p, pat, STRLEN(pat)) == 0
 		    : STRNCMP(p, pat, STRLEN(pat)) == 0)
 		&& ins_compl_add_infercase(p, (int)STRLEN(p),
-					  p_ic, NULL, *dir, 0) == OK)
+					  p_ic, NULL, *dir, FALSE) == OK)
 	/* if dir was BACKWARD then honor it just once */
 	*dir = FORWARD;
 }

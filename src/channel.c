@@ -1720,7 +1720,7 @@ channel_get(channel_T *channel, ch_part_T part, int *outlen)
 channel_get_all(channel_T *channel, ch_part_T part, int *outlen)
 {
     readq_T *head = &channel->ch_part[part].ch_head;
-    readq_T *node = head->rq_next;
+    readq_T *node;
     long_u  len = 0;
     char_u  *res;
     char_u  *p;
@@ -5877,6 +5877,7 @@ job_start(
 		ga_concat(&ga, (char_u *)"  ");
 	    ga_concat(&ga, (char_u *)argv[i]);
 	}
+	ga_append(&ga, NUL);
 	ch_log(NULL, "Starting job: %s", (char *)ga.ga_data);
 	ga_clear(&ga);
     }

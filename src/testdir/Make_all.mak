@@ -224,6 +224,8 @@ NEW_TESTS = \
 	test_searchpos \
 	test_set \
 	test_sha256 \
+	test_shortpathname \
+	test_signals \
 	test_signs \
 	test_smartindent \
 	test_sort \
@@ -248,6 +250,7 @@ NEW_TESTS = \
 	test_taglist \
 	test_tcl \
 	test_termencoding \
+	test_termcodes \
 	test_terminal \
 	test_terminal_fail \
 	test_textformat \
@@ -257,6 +260,7 @@ NEW_TESTS = \
 	test_true_false \
 	test_undo \
 	test_unlet \
+	test_user_func \
 	test_usercommands \
 	test_utf8 \
 	test_utf8_comparisons \
@@ -385,6 +389,7 @@ NEW_TESTS_RES = \
 	test_scrollbind.res \
 	test_search.res \
 	test_shortpathname.res \
+	test_signals.res \
 	test_signs.res \
 	test_smartindent.res \
 	test_source.res \
@@ -398,6 +403,7 @@ NEW_TESTS_RES = \
 	test_tab.res \
 	test_tcl.res \
 	test_termencoding.res \
+	test_termcodes.res \
 	test_terminal.res \
 	test_terminal_fail.res \
 	test_textformat.res \
