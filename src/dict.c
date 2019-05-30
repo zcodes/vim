@@ -28,7 +28,7 @@ dict_alloc(void)
 {
     dict_T *d;
 
-    d = (dict_T *)alloc(sizeof(dict_T));
+    d = ALLOC_ONE(dict_T);
     if (d != NULL)
     {
 	/* Add the dict to the list of dicts for garbage collection. */
@@ -54,7 +54,7 @@ dict_alloc(void)
 dict_alloc_id(alloc_id_T id UNUSED)
 {
 #ifdef FEAT_EVAL
-    if (alloc_fail_id == id && alloc_does_fail((long_u)sizeof(list_T)))
+    if (alloc_fail_id == id && alloc_does_fail(sizeof(list_T)))
 	return NULL;
 #endif
     return (dict_alloc());
@@ -210,7 +210,7 @@ dictitem_alloc(char_u *key)
 {
     dictitem_T *di;
 
-    di = (dictitem_T *)alloc((unsigned)(sizeof(dictitem_T) + STRLEN(key)));
+    di = alloc(sizeof(dictitem_T) + STRLEN(key));
     if (di != NULL)
     {
 	STRCPY(di->di_key, key);
@@ -228,8 +228,7 @@ dictitem_copy(dictitem_T *org)
 {
     dictitem_T *di;
 
-    di = (dictitem_T *)alloc((unsigned)(sizeof(dictitem_T)
-						      + STRLEN(org->di_key)));
+    di = alloc(sizeof(dictitem_T) + STRLEN(org->di_key));
     if (di != NULL)
     {
 	STRCPY(di->di_key, org->di_key);
@@ -446,6 +445,55 @@ dict_add_list(dict_T *d, char *key, list_T *list)
 	return FAIL;
     }
     return OK;
+}
+
+/*
+ * Initializes "iter" for iterating over dictionary items with
+ * dict_iterate_next().
+ * If "var" is not a Dict or an empty Dict then there will be nothing to
+ * iterate over, no error is given.
+ * NOTE: The dictionary must not change until iterating is finished!
+ */
+    void
+dict_iterate_start(typval_T *var, dict_iterator_T *iter)
+{
+    if (var->v_type != VAR_DICT || var->vval.v_dict == NULL)
+	iter->dit_todo = 0;
+    else
+    {
+	dict_T	*d = var->vval.v_dict;
+
+	iter->dit_todo = d->dv_hashtab.ht_used;
+	iter->dit_hi = d->dv_hashtab.ht_array;
+    }
+}
+
+/*
+ * Iterate over the items referred to by "iter".  It should be initialized with
+ * dict_iterate_start().
+ * Returns a pointer to the key.
+ * "*tv_result" is set to point to the value for that key.
+ * If there are no more items, NULL is returned.
+ */
+    char_u *
+dict_iterate_next(dict_iterator_T *iter, typval_T **tv_result)
+{
+    dictitem_T	*di;
+    char_u      *result;
+
+    if (iter->dit_todo == 0)
+	return NULL;
+
+    while (HASHITEM_EMPTY(iter->dit_hi))
+	++iter->dit_hi;
+
+    di = HI2DI(iter->dit_hi);
+    result = di->di_key;
+    *tv_result = &di->di_tv;
+
+    --iter->dit_todo;
+    ++iter->dit_hi;
+    return result;
 }
 
 /*

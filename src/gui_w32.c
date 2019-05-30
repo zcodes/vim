@@ -320,7 +320,6 @@ static int		s_findrep_is_find;	// TRUE for find dialog, FALSE
 						// for find/replace dialog
 #endif
 
-static HINSTANCE	s_hinst = NULL;
 #if !defined(FEAT_GUI)
 static
 #endif
@@ -1304,9 +1303,6 @@ gui_mch_def_colors(void)
     int
 gui_mch_open(void)
 {
-#ifndef SW_SHOWDEFAULT
-# define SW_SHOWDEFAULT 10	/* Borland 5.0 doesn't have it */
-#endif
     /* Actually open the window, if not already visible
      * (may be done already in gui_mch_set_shellsize) */
     if (!IsWindowVisible(s_hwnd))
@@ -1424,7 +1420,7 @@ gui_mch_create_scrollbar(
 	10,				/* Any value will do for now */
 	10,				/* Any value will do for now */
 	s_hwnd, NULL,
-	s_hinst, NULL);
+	g_hinst, NULL);
 }
 
 /*
@@ -1456,10 +1452,16 @@ GetFontSize(GuiFont font)
     HWND    hwnd = GetDesktopWindow();
     HDC	    hdc = GetWindowDC(hwnd);
     HFONT   hfntOld = SelectFont(hdc, (HFONT)font);
+    SIZE    size;
     TEXTMETRIC tm;
 
     GetTextMetrics(hdc, &tm);
-    gui.char_width = tm.tmAveCharWidth + tm.tmOverhang;
+    // GetTextMetrics() may not return the right value in tmAveCharWidth
+    // for some fonts.  Do our own average computation.
+    GetTextExtentPoint(hdc,
+	    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
+	    52, &size);
+    gui.char_width = (size.cx / 26 + 1) / 2 + tm.tmOverhang;
 
     gui.char_height = tm.tmHeight + p_linespace;
 
@@ -2236,15 +2238,6 @@ gui_mch_draw_menubar(void)
     DrawMenuBar(s_hwnd);
 }
 #endif /*FEAT_MENU*/
-
-#ifndef PROTO
-void
-_cdecl
-SaveInst(HINSTANCE hInst)
-{
-    s_hinst = hInst;
-}
-#endif
 
 /*
  * Return the RGB value of a pixel as a long.
@@ -3119,6 +3112,7 @@ logfont2name(LOGFONTW lf)
     char	*charset_name;
     char	*quality_name;
     char	*font_name;
+    int		points;
 
     font_name = (char *)utf16_to_enc(lf.lfFaceName, NULL);
     if (font_name == NULL)
@@ -3126,14 +3120,19 @@ logfont2name(LOGFONTW lf)
     charset_name = charset_id2name((int)lf.lfCharSet);
     quality_name = quality_id2name((int)lf.lfQuality);
 
-    res = (char *)alloc((unsigned)(strlen(font_name) + 20
-		    + (charset_name == NULL ? 0 : strlen(charset_name) + 2)));
+    res = alloc(strlen(font_name) + 30
+		    + (charset_name == NULL ? 0 : strlen(charset_name) + 2)
+		    + (quality_name == NULL ? 0 : strlen(quality_name) + 2));
     if (res != NULL)
     {
 	p = res;
-	/* make a normal font string out of the lf thing:*/
-	sprintf((char *)p, "%s:h%d", font_name, pixels_to_points(
-			 lf.lfHeight < 0 ? -lf.lfHeight : lf.lfHeight, TRUE));
+	// make a normal font string out of the lf thing:
+	points = pixels_to_points(
+			 lf.lfHeight < 0 ? -lf.lfHeight : lf.lfHeight, TRUE);
+	if (lf.lfWeight == FW_NORMAL || lf.lfWeight == FW_BOLD)
+	    sprintf((char *)p, "%s:h%d", font_name, points);
+	else
+	    sprintf((char *)p, "%s:h%d:W%ld", font_name, points, lf.lfWeight);
 	while (*p)
 	{
 	    if (*p == ' ')
@@ -3142,7 +3141,7 @@ logfont2name(LOGFONTW lf)
 	}
 	if (lf.lfItalic)
 	    STRCAT(p, ":i");
-	if (lf.lfWeight >= FW_BOLD)
+	if (lf.lfWeight == FW_BOLD)
 	    STRCAT(p, ":b");
 	if (lf.lfUnderline)
 	    STRCAT(p, ":u");
@@ -3640,7 +3639,7 @@ _OnDropFiles(
 
     reset_VIsual();
 
-    fnames = (char_u **)alloc(cFiles * sizeof(char_u *));
+    fnames = ALLOC_MULT(char_u *, cFiles);
 
     if (fnames != NULL)
 	for (i = 0; i < cFiles; ++i)
@@ -3797,9 +3796,6 @@ _OnScroll(
  * Add a lot of missing defines.
  * They are not always missing, we need the #ifndef's.
  */
-# ifndef _cdecl
-#  define _cdecl
-# endif
 # ifndef IsMinimized
 #  define     IsMinimized(hwnd)		IsIconic(hwnd)
 # endif
@@ -4825,11 +4821,150 @@ ole_error(char *arg)
 {
     char buf[IOSIZE];
 
+# ifdef VIMDLL
+    gui.in_use = mch_is_gui_executable();
+# endif
+
     /* Can't use emsg() here, we have not finished initialisation yet. */
     vim_snprintf(buf, IOSIZE,
 	    _("E243: Argument not supported: \"-%s\"; Use the OLE version."),
 	    arg);
     mch_errmsg(buf);
+}
+#endif
+
+#if defined(GUI_MAY_SPAWN) || defined(PROTO)
+    static char *
+gvim_error(void)
+{
+    char *msg = _("E988: GUI cannot be used. Cannot execute gvim.exe.");
+
+    if (starting)
+    {
+	mch_errmsg(msg);
+	mch_errmsg("\n");
+	mch_exit(2);
+    }
+    return msg;
+}
+
+    char *
+gui_mch_do_spawn(char_u *arg)
+{
+    int			len;
+# if defined(FEAT_SESSION) && defined(EXPERIMENTAL_GUI_CMD)
+    char_u		*session = NULL;
+    LPWSTR		tofree1 = NULL;
+# endif
+    WCHAR		name[MAX_PATH];
+    LPWSTR		cmd, newcmd = NULL, p, warg, tofree2 = NULL;
+    STARTUPINFOW	si = {sizeof(si)};
+    PROCESS_INFORMATION pi;
+
+    if (!GetModuleFileNameW(g_hinst, name, MAX_PATH))
+	goto error;
+    p = wcsrchr(name, L'\\');
+    if (p == NULL)
+	goto error;
+    // Replace the executable name from vim(d).exe to gvim(d).exe.
+# ifdef DEBUG
+    wcscpy(p + 1, L"gvimd.exe");
+# else
+    wcscpy(p + 1, L"gvim.exe");
+# endif
+
+# if defined(FEAT_SESSION) && defined(EXPERIMENTAL_GUI_CMD)
+    if (starting)
+# endif
+    {
+	// Pass the command line to the new process.
+	p = GetCommandLineW();
+	// Skip 1st argument.
+	while (*p && *p != L' ' && *p != L'\t')
+	{
+	    if (*p == L'"')
+	    {
+		while (*p && *p != L'"')
+		    ++p;
+		if (*p)
+		    ++p;
+	    }
+	    else
+		++p;
+	}
+	cmd = p;
+    }
+# if defined(FEAT_SESSION) && defined(EXPERIMENTAL_GUI_CMD)
+    else
+    {
+	// Create a session file and pass it to the new process.
+	LPWSTR	wsession;
+	char_u	*savebg;
+	int	ret;
+
+	session = vim_tempname('s', FALSE);
+	if (session == NULL)
+	    goto error;
+	savebg = p_bg;
+	p_bg = vim_strsave((char_u *)"light");	// Set 'bg' to "light".
+	ret = write_session_file(session);
+	vim_free(p_bg);
+	p_bg = savebg;
+	if (!ret)
+	    goto error;
+	wsession = enc_to_utf16(session, NULL);
+	if (wsession == NULL)
+	    goto error;
+	len = (int)wcslen(wsession) * 2 + 27 + 1;
+	cmd = ALLOC_MULT(WCHAR, len);
+	if (cmd == NULL)
+	{
+	    vim_free(wsession);
+	    goto error;
+	}
+	tofree1 = cmd;
+	_snwprintf(cmd, len, L" -S \"%s\" -c \"call delete('%s')\"",
+		wsession, wsession);
+	vim_free(wsession);
+    }
+# endif
+
+    // Check additional arguments to the `:gui` command.
+    if (arg != NULL)
+    {
+	warg = enc_to_utf16(arg, NULL);
+	if (warg == NULL)
+	    goto error;
+	tofree2 = warg;
+    }
+    else
+	warg = L"";
+
+    // Set up the new command line.
+    len = (int)wcslen(name) + (int)wcslen(cmd) + (int)wcslen(warg) + 4;
+    newcmd = ALLOC_MULT(WCHAR, len);
+    if (newcmd == NULL)
+	goto error;
+    _snwprintf(newcmd, len, L"\"%s\"%s %s", name, cmd, warg);
+
+    // Spawn a new GUI process.
+    if (!CreateProcessW(NULL, newcmd, NULL, NULL, TRUE, 0,
+		NULL, NULL, &si, &pi))
+	goto error;
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    mch_exit(0);
+
+error:
+# if defined(FEAT_SESSION) && defined(EXPERIMENTAL_GUI_CMD)
+    if (session)
+	mch_remove(session);
+    vim_free(session);
+    vim_free(tofree1);
+# endif
+    vim_free(newcmd);
+    vim_free(tofree2);
+    return gvim_error();
 }
 #endif
 
@@ -4951,7 +5086,7 @@ gui_mch_init(void)
      * Load the tearoff bitmap
      */
 #ifdef FEAT_TEAROFF
-    s_htearbitmap = LoadBitmap(s_hinst, "IDB_TEAROFF");
+    s_htearbitmap = LoadBitmap(g_hinst, "IDB_TEAROFF");
 #endif
 
     gui.scrollbar_width = GetSystemMetrics(SM_CXVSCROLL);
@@ -4965,13 +5100,13 @@ gui_mch_init(void)
 
     /* First try using the wide version, so that we can use any title.
      * Otherwise only characters in the active codepage will work. */
-    if (GetClassInfoW(s_hinst, szVimWndClassW, &wndclassw) == 0)
+    if (GetClassInfoW(g_hinst, szVimWndClassW, &wndclassw) == 0)
     {
 	wndclassw.style = CS_DBLCLKS;
 	wndclassw.lpfnWndProc = _WndProc;
 	wndclassw.cbClsExtra = 0;
 	wndclassw.cbWndExtra = 0;
-	wndclassw.hInstance = s_hinst;
+	wndclassw.hInstance = g_hinst;
 	wndclassw.hIcon = LoadIcon(wndclassw.hInstance, "IDR_VIM");
 	wndclassw.hCursor = LoadCursor(NULL, IDC_ARROW);
 	wndclassw.hbrBackground = s_brush;
@@ -5005,7 +5140,7 @@ gui_mch_init(void)
 		100,				// Any value will do
 		100,				// Any value will do
 		vim_parent_hwnd, NULL,
-		s_hinst, NULL);
+		g_hinst, NULL);
 #ifdef HAVE_TRY_EXCEPT
 	}
 	__except(EXCEPTION_EXECUTE_HANDLER)
@@ -5037,7 +5172,7 @@ gui_mch_init(void)
 		100,				/* Any value will do */
 		100,				/* Any value will do */
 		NULL, NULL,
-		s_hinst, NULL);
+		g_hinst, NULL);
 	if (s_hwnd != NULL && win_socket_id != 0)
 	{
 	    SetParent(s_hwnd, (HWND)win_socket_id);
@@ -5056,13 +5191,13 @@ gui_mch_init(void)
 #endif
 
     /* Create the text area window */
-    if (GetClassInfoW(s_hinst, szTextAreaClassW, &wndclassw) == 0)
+    if (GetClassInfoW(g_hinst, szTextAreaClassW, &wndclassw) == 0)
     {
 	wndclassw.style = CS_OWNDC;
 	wndclassw.lpfnWndProc = _TextAreaWndProc;
 	wndclassw.cbClsExtra = 0;
 	wndclassw.cbWndExtra = 0;
-	wndclassw.hInstance = s_hinst;
+	wndclassw.hInstance = g_hinst;
 	wndclassw.hIcon = NULL;
 	wndclassw.hCursor = LoadCursor(NULL, IDC_ARROW);
 	wndclassw.hbrBackground = NULL;
@@ -5080,7 +5215,7 @@ gui_mch_init(void)
 	100,				// Any value will do for now
 	100,				// Any value will do for now
 	s_hwnd, NULL,
-	s_hinst, NULL);
+	g_hinst, NULL);
 
     if (s_textArea == NULL)
 	return FAIL;
@@ -5158,11 +5293,9 @@ gui_mch_init(void)
 
     /* Initialise the struct */
     s_findrep_struct.lStructSize = sizeof(s_findrep_struct);
-    s_findrep_struct.lpstrFindWhat =
-			      (LPWSTR)alloc(MSWIN_FR_BUFSIZE * sizeof(WCHAR));
+    s_findrep_struct.lpstrFindWhat = ALLOC_MULT(WCHAR, MSWIN_FR_BUFSIZE);
     s_findrep_struct.lpstrFindWhat[0] = NUL;
-    s_findrep_struct.lpstrReplaceWith =
-			      (LPWSTR)alloc(MSWIN_FR_BUFSIZE * sizeof(WCHAR));
+    s_findrep_struct.lpstrReplaceWith = ALLOC_MULT(WCHAR, MSWIN_FR_BUFSIZE);
     s_findrep_struct.lpstrReplaceWith[0] = NUL;
     s_findrep_struct.wFindWhatLen = MSWIN_FR_BUFSIZE;
     s_findrep_struct.wReplaceWithLen = MSWIN_FR_BUFSIZE;
@@ -5380,7 +5513,7 @@ gui_mch_set_sp_color(guicolor_T color)
  * First static functions (no prototypes generated).
  */
 # ifdef _MSC_VER
-#  include <ime.h>   /* Apparently not needed for Cygwin, MingW or Borland. */
+#  include <ime.h>   /* Apparently not needed for Cygwin or MinGW. */
 # endif
 # include <imm.h>
 
@@ -5478,7 +5611,7 @@ GetCompositionString_inUCS2(HIMC hIMC, DWORD GCS, int *lenp)
     if (ret > 0)
     {
 	/* Allocate the requested buffer plus space for the NUL character. */
-	wbuf = (LPWSTR)alloc(ret + sizeof(WCHAR));
+	wbuf = alloc(ret + sizeof(WCHAR));
 	if (wbuf != NULL)
 	{
 	    pImmGetCompositionStringW(hIMC, GCS, wbuf, ret);
@@ -5923,7 +6056,7 @@ gui_mch_draw_string(
 
 	/* Don't give an out-of-memory message here, it would call us
 	 * recursively. */
-	padding = (int *)lalloc(pad_size * sizeof(int), FALSE);
+	padding = LALLOC_MULT(int, pad_size);
 	if (padding != NULL)
 	    for (i = 0; i < pad_size; i++)
 		padding[i] = gui.char_width;
@@ -5960,10 +6093,10 @@ gui_mch_draw_string(
 	    && (unicodebuf == NULL || len > unibuflen))
     {
 	vim_free(unicodebuf);
-	unicodebuf = (WCHAR *)lalloc(len * sizeof(WCHAR), FALSE);
+	unicodebuf = LALLOC_MULT(WCHAR, len);
 
 	vim_free(unicodepdy);
-	unicodepdy = (int *)lalloc(len * sizeof(int), FALSE);
+	unicodepdy = LALLOC_MULT(int, len);
 
 	unibuflen = len;
     }
@@ -6131,15 +6264,6 @@ gui_mch_draw_string(
     void
 gui_mch_flush(void)
 {
-#   if defined(__BORLANDC__)
-    /*
-     * The GdiFlush declaration (in Borland C 5.01 <wingdi.h>) is not a
-     * prototype declaration.
-     * The compiler complains if __stdcall is not used in both declarations.
-     */
-    BOOL  __stdcall GdiFlush(void);
-#   endif
-
 #if defined(FEAT_DIRECTX)
     if (IS_ENABLE_DIRECTX())
 	DWriteContext_Flush(s_dwc);
@@ -6528,7 +6652,7 @@ dialog_callback(
 	/* If the edit box exists, copy the string. */
 	if (s_textfield != NULL)
 	{
-	    WCHAR  *wp = (WCHAR *)alloc(IOSIZE * sizeof(WCHAR));
+	    WCHAR  *wp = ALLOC_MULT(WCHAR, IOSIZE);
 	    char_u *p;
 
 	    GetDlgItemTextW(hwnd, DLG_NONBUTTON_CONTROL + 2, wp, IOSIZE);
@@ -6634,8 +6758,11 @@ gui_mch_dialog(
 
 #ifndef NO_CONSOLE
     /* Don't output anything in silent mode ("ex -s") */
-    if (silent_mode)
-	return dfltbutton;   /* return default option */
+# ifdef VIMDLL
+    if (!(gui.in_use || gui.starting))
+# endif
+	if (silent_mode)
+	    return dfltbutton;   /* return default option */
 #endif
 
     if (s_hwnd == NULL)
@@ -6674,12 +6801,12 @@ gui_mch_dialog(
 	dfltbutton = -1;
 
     /* Allocate array to hold the width of each button */
-    buttonWidths = (int *)lalloc(numButtons * sizeof(int), TRUE);
+    buttonWidths = ALLOC_MULT(int, numButtons);
     if (buttonWidths == NULL)
 	return -1;
 
     /* Allocate array to hold the X position of each button */
-    buttonPositions = (int *)lalloc(numButtons * sizeof(int), TRUE);
+    buttonPositions = ALLOC_MULT(int, numButtons);
     if (buttonPositions == NULL)
 	return -1;
 
@@ -7044,7 +7171,7 @@ gui_mch_dialog(
 
     /* show the dialog box modally and get a return value */
     nchar = (int)DialogBoxIndirect(
-	    s_hinst,
+	    g_hinst,
 	    (LPDLGTEMPLATE)pdlgtemplate,
 	    s_hwnd,
 	    (DLGPROC)dialog_callback);
@@ -7589,7 +7716,7 @@ gui_mch_tearoff(
 	}
 
 	/* Allocate menu label and fill it in */
-	text = label = alloc((unsigned)len + 1);
+	text = label = alloc(len + 1);
 	if (label == NULL)
 	    break;
 
@@ -7638,7 +7765,7 @@ gui_mch_tearoff(
 
     /* show modelessly */
     the_menu->tearoff_handle = CreateDialogIndirectParam(
-	    s_hinst,
+	    g_hinst,
 	    (LPDLGTEMPLATE)pdlgtemplate,
 	    s_hwnd,
 	    (DLGPROC)tearoff_callback,
@@ -7683,7 +7810,7 @@ initialise_toolbar(void)
 		    WS_CHILD | TBSTYLE_TOOLTIPS | TBSTYLE_FLAT,
 		    4000,		//any old big number
 		    31,			//number of images in initial bitmap
-		    s_hinst,
+		    g_hinst,
 		    IDR_TOOLBAR1,	// id of initial bitmap
 		    NULL,
 		    0,			// initial number of buttons
@@ -7784,7 +7911,7 @@ initialise_tabline(void)
     s_tabhwnd = CreateWindow(WC_TABCONTROL, "Vim tabline",
 	    WS_CHILD|TCS_FOCUSNEVER|TCS_TOOLTIPS,
 	    CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
-	    CW_USEDEFAULT, s_hwnd, NULL, s_hinst, NULL);
+	    CW_USEDEFAULT, s_hwnd, NULL, g_hinst, NULL);
     s_tabline_wndproc = SubclassWindow(s_tabhwnd, tabline_wndproc);
 
     gui.tabline_height = TABLINE_HEIGHT;
@@ -8103,8 +8230,7 @@ gui_mch_register_sign(char_u *signfile)
     }
 
     psign = NULL;
-    if (sign.hImage && (psign = (signicon_t *)alloc(sizeof(signicon_t)))
-								      != NULL)
+    if (sign.hImage && (psign = ALLOC_ONE(signicon_t)) != NULL)
 	*psign = sign;
 
     if (!psign)
@@ -8232,14 +8358,14 @@ make_tooltip(BalloonEval *beval, char *text, POINT pt)
     else
 	ToolInfoSize = sizeof(TOOLINFOW);
 
-    pti = (TOOLINFOW *)alloc(ToolInfoSize);
+    pti = alloc(ToolInfoSize);
     if (pti == NULL)
 	return;
 
     beval->balloon = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW,
 	    NULL, WS_POPUP | TTS_NOPREFIX | TTS_ALWAYSTIP,
 	    CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
-	    beval->target, NULL, s_hinst, NULL);
+	    beval->target, NULL, g_hinst, NULL);
 
     SetWindowPos(beval->balloon, HWND_TOPMOST, 0, 0, 0, 0,
 	    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
@@ -8362,6 +8488,15 @@ gui_mch_post_balloon(BalloonEval *beval, char_u *mesg)
 {
     POINT   pt;
 
+    vim_free(beval->msg);
+    beval->msg = mesg == NULL ? NULL : vim_strsave(mesg);
+    if (beval->msg == NULL)
+    {
+	delete_tooltip(beval);
+	beval->showState = ShS_NEUTRAL;
+	return;
+    }
+
     // TRACE0("gui_mch_post_balloon {{{");
     if (beval->showState == ShS_SHOWING)
 	return;
@@ -8394,7 +8529,7 @@ gui_mch_create_beval_area(
 	return NULL;
     }
 
-    beval = (BalloonEval *)alloc_clear(sizeof(BalloonEval));
+    beval = ALLOC_CLEAR_ONE(BalloonEval);
     if (beval != NULL)
     {
 	beval->target = s_textArea;

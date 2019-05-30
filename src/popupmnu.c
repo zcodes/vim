@@ -1071,7 +1071,7 @@ split_message(char_u *mesg, pumitem_T **array)
      * position. */
     if (height > max_height)
 	height = max_height;
-    *array = (pumitem_T *)alloc_clear((unsigned)sizeof(pumitem_T) * height);
+    *array = ALLOC_CLEAR_MULT(pumitem_T, height);
     if (*array == NULL)
 	goto failed;
 
@@ -1102,12 +1102,19 @@ split_message(char_u *mesg, pumitem_T **array)
 	    else
 		thislen = item->bytelen;
 
-	    /* put indent at the start */
+	    // put indent at the start
 	    p = alloc(thislen + item->indent * 2 + 1);
+	    if (p == NULL)
+	    {
+		for (line = 0; line <= height - 1; ++line)
+		    vim_free((*array)[line].pum_text);
+		vim_free(*array);
+		goto failed;
+	    }
 	    for (ind = 0; ind < item->indent * 2; ++ind)
 		p[ind] = ' ';
 
-	    /* exclude spaces at the end of the string */
+	    // exclude spaces at the end of the string
 	    for (copylen = thislen; copylen > 0; --copylen)
 		if (item->start[skip + copylen - 1] != ' ')
 		    break;
@@ -1147,15 +1154,17 @@ ui_post_balloon(char_u *mesg, list_T *list)
     ui_remove_balloon();
 
     if (mesg == NULL && list == NULL)
+    {
+	pum_undisplay();
 	return;
+    }
     if (list != NULL)
     {
 	listitem_T  *li;
 	int	    idx;
 
 	balloon_arraysize = list->lv_len;
-	balloon_array = (pumitem_T *)alloc_clear(
-				   (unsigned)sizeof(pumitem_T) * list->lv_len);
+	balloon_array = ALLOC_CLEAR_MULT(pumitem_T, list->lv_len);
 	if (balloon_array == NULL)
 	    return;
 	for (idx = 0, li = list->lv_first; li != NULL; li = li->li_next, ++idx)
@@ -1261,7 +1270,7 @@ pum_show_popupmenu(vimmenu_T *menu)
 	return;
     }
 
-    array = (pumitem_T *)alloc_clear((unsigned)sizeof(pumitem_T) * pum_size);
+    array = ALLOC_CLEAR_MULT(pumitem_T, pum_size);
     if (array == NULL)
 	return;
 

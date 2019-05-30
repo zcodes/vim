@@ -111,7 +111,7 @@ static int	ExpandPackAddDir(char_u *pat, int *num_file, char_u ***file);
 # ifdef FEAT_CMDHIST
 static char_u	*get_history_arg(expand_T *xp, int idx);
 # endif
-# if defined(FEAT_USR_CMDS) && defined(FEAT_EVAL)
+# if defined(FEAT_EVAL)
 static int	ExpandUserDefined(expand_T *xp, regmatch_T *regmatch, int *num_file, char_u ***file);
 static int	ExpandUserList(expand_T *xp, int *num_file, char_u ***file);
 # endif
@@ -125,11 +125,7 @@ static int	open_cmdwin(void);
 #endif
 
 #if defined(FEAT_CMDL_COMPL) || defined(PROTO)
-static int
-#ifdef __BORLANDC__
-_RTLENTRYF
-#endif
-sort_func_compare(const void *s1, const void *s2);
+static int	sort_func_compare(const void *s1, const void *s2);
 #endif
 
 
@@ -939,7 +935,7 @@ getcmdline_int(
     {
 	xpc.xp_context = ccline.xp_context;
 	xpc.xp_pattern = ccline.cmdbuff;
-# if defined(FEAT_USR_CMDS) && defined(FEAT_CMDL_COMPL)
+# if defined(FEAT_CMDL_COMPL)
 	xpc.xp_arg = ccline.xp_arg;
 # endif
     }
@@ -3803,9 +3799,6 @@ ccheck_abbr(int c)
 
 #if defined(FEAT_CMDL_COMPL) || defined(PROTO)
     static int
-#ifdef __BORLANDC__
-_RTLENTRYF
-#endif
 sort_func_compare(const void *s1, const void *s2)
 {
     char_u *p1 = *(char_u **)s1;
@@ -4161,7 +4154,7 @@ ExpandOne(
 	    }
 	}
 
-	ss = alloc((unsigned)len + 1);
+	ss = alloc(len + 1);
 	if (ss)
 	    vim_strncpy(ss, xp->xp_files[0], (size_t)len);
 	findex = -1;			    /* next p_wc gets first one */
@@ -4173,7 +4166,7 @@ ExpandOne(
 	len = 0;
 	for (i = 0; i < xp->xp_numfiles; ++i)
 	    len += (long_u)STRLEN(xp->xp_files[i]) + 1;
-	ss = lalloc(len, TRUE);
+	ss = alloc(len);
 	if (ss != NULL)
 	{
 	    *ss = NUL;
@@ -4210,7 +4203,7 @@ ExpandInit(expand_T *xp)
 #endif
     xp->xp_numfiles = -1;
     xp->xp_files = NULL;
-#if defined(FEAT_USR_CMDS) && defined(FEAT_EVAL) && defined(FEAT_CMDL_COMPL)
+#if defined(FEAT_EVAL) && defined(FEAT_CMDL_COMPL)
     xp->xp_arg = NULL;
 #endif
     xp->xp_line = NULL;
@@ -4369,7 +4362,7 @@ escape_fname(char_u **pp)
 {
     char_u	*p;
 
-    p = alloc((unsigned)(STRLEN(*pp) + 2));
+    p = alloc(STRLEN(*pp) + 2);
     if (p != NULL)
     {
 	p[0] = '\\';
@@ -4879,7 +4872,7 @@ set_cmd_context(
     {
 	xp->xp_context = ccline.xp_context;
 	xp->xp_pattern = ccline.cmdbuff;
-# if defined(FEAT_USR_CMDS) && defined(FEAT_CMDL_COMPL)
+# if defined(FEAT_CMDL_COMPL)
 	xp->xp_arg = ccline.xp_arg;
 # endif
     }
@@ -5130,7 +5123,7 @@ ExpandFromContext(
 	char *directories[] = {"syntax", "indent", "ftplugin", NULL};
 	return ExpandRTDir(pat, 0, num_file, file, directories);
     }
-# if defined(FEAT_USR_CMDS) && defined(FEAT_EVAL)
+# if defined(FEAT_EVAL)
     if (xp->xp_context == EXPAND_USER_LIST)
 	return ExpandUserList(xp, num_file, file);
 # endif
@@ -5149,7 +5142,7 @@ ExpandFromContext(
 	ret = ExpandSettings(xp, &regmatch, num_file, file);
     else if (xp->xp_context == EXPAND_MAPPINGS)
 	ret = ExpandMappings(&regmatch, num_file, file);
-# if defined(FEAT_USR_CMDS) && defined(FEAT_EVAL)
+# if defined(FEAT_EVAL)
     else if (xp->xp_context == EXPAND_USER_DEFINED)
 	ret = ExpandUserDefined(xp, &regmatch, num_file, file);
 # endif
@@ -5170,13 +5163,11 @@ ExpandFromContext(
 #ifdef FEAT_CMDHIST
 	    {EXPAND_HISTORY, get_history_arg, TRUE, TRUE},
 #endif
-#ifdef FEAT_USR_CMDS
 	    {EXPAND_USER_COMMANDS, get_user_commands, FALSE, TRUE},
 	    {EXPAND_USER_ADDR_TYPE, get_user_cmd_addr_type, FALSE, TRUE},
 	    {EXPAND_USER_CMD_FLAGS, get_user_cmd_flags, FALSE, TRUE},
 	    {EXPAND_USER_NARGS, get_user_cmd_nargs, FALSE, TRUE},
 	    {EXPAND_USER_COMPLETE, get_user_cmd_complete, FALSE, TRUE},
-#endif
 #ifdef FEAT_EVAL
 	    {EXPAND_USER_VARS, get_user_var_name, FALSE, TRUE},
 	    {EXPAND_FUNCTIONS, get_function_name, FALSE, TRUE},
@@ -5303,7 +5294,7 @@ ExpandGeneric(
 	    if (count == 0)
 		return OK;
 	    *num_file = count;
-	    *file = (char_u **)alloc((unsigned)(count * sizeof(char_u *)));
+	    *file = ALLOC_MULT(char_u *, count);
 	    if (*file == NULL)
 	    {
 		*file = (char_u **)"";
@@ -5473,7 +5464,7 @@ expand_shellcmd(
 }
 
 
-# if defined(FEAT_USR_CMDS) && defined(FEAT_EVAL)
+# if defined(FEAT_EVAL)
 /*
  * Call "user_expand_func()" to invoke a user defined Vim script function and
  * return the result (either a string or a List).
@@ -5645,7 +5636,7 @@ ExpandRTDir(
 
     for (i = 0; dirnames[i] != NULL; ++i)
     {
-	s = alloc((unsigned)(STRLEN(dirnames[i]) + pat_len + 7));
+	s = alloc(STRLEN(dirnames[i]) + pat_len + 7);
 	if (s == NULL)
 	{
 	    ga_clear_strings(&ga);
@@ -5659,7 +5650,7 @@ ExpandRTDir(
     if (flags & DIP_START) {
 	for (i = 0; dirnames[i] != NULL; ++i)
 	{
-	    s = alloc((unsigned)(STRLEN(dirnames[i]) + pat_len + 22));
+	    s = alloc(STRLEN(dirnames[i]) + pat_len + 22);
 	    if (s == NULL)
 	    {
 		ga_clear_strings(&ga);
@@ -5674,7 +5665,7 @@ ExpandRTDir(
     if (flags & DIP_OPT) {
 	for (i = 0; dirnames[i] != NULL; ++i)
 	{
-	    s = alloc((unsigned)(STRLEN(dirnames[i]) + pat_len + 20));
+	    s = alloc(STRLEN(dirnames[i]) + pat_len + 20);
 	    if (s == NULL)
 	    {
 		ga_clear_strings(&ga);
@@ -5737,7 +5728,7 @@ ExpandPackAddDir(
     pat_len = (int)STRLEN(pat);
     ga_init2(&ga, (int)sizeof(char *), 10);
 
-    s = alloc((unsigned)(pat_len + 26));
+    s = alloc(pat_len + 26);
     if (s == NULL)
     {
 	ga_clear_strings(&ga);
@@ -5923,8 +5914,7 @@ init_history(void)
 	{
 	    if (newlen)
 	    {
-		temp = (histentry_T *)lalloc(
-				(long_u)(newlen * sizeof(histentry_T)), TRUE);
+		temp = ALLOC_MULT(histentry_T, newlen);
 		if (temp == NULL)   /* out of memory! */
 		{
 		    if (type == 0)  /* first one: just keep the old length */
@@ -6479,7 +6469,7 @@ get_list_range(char_u **str, int *num1, int *num2)
     *str = skipwhite(*str);
     if (**str == '-' || vim_isdigit(**str))  /* parse "from" part of range */
     {
-	vim_str2nr(*str, NULL, &len, 0, &num, NULL, 0);
+	vim_str2nr(*str, NULL, &len, 0, &num, NULL, 0, FALSE);
 	*str += len;
 	*num1 = (int)num;
 	first = TRUE;
@@ -6488,7 +6478,7 @@ get_list_range(char_u **str, int *num1, int *num2)
     if (**str == ',')			/* parse "to" part of range */
     {
 	*str = skipwhite(*str + 1);
-	vim_str2nr(*str, NULL, &len, 0, &num, NULL, 0);
+	vim_str2nr(*str, NULL, &len, 0, &num, NULL, 0, FALSE);
 	if (len > 0)
 	{
 	    *num2 = (int)num;
@@ -6663,8 +6653,7 @@ prepare_viminfo_history(int asklen, int writing)
 	if (len <= 0)
 	    viminfo_history[type] = NULL;
 	else
-	    viminfo_history[type] = (histentry_T *)lalloc(
-				  (long_u)(len * sizeof(histentry_T)), FALSE);
+	    viminfo_history[type] = LALLOC_MULT(histentry_T, len);
 	if (viminfo_history[type] == NULL)
 	    len = 0;
 	viminfo_hislen[type] = len;
@@ -6697,7 +6686,7 @@ read_viminfo_history(vir_T *virp, int writing)
 	    {
 		/* Need to re-allocate to append the separator byte. */
 		len = STRLEN(val);
-		p = lalloc(len + 2, TRUE);
+		p = alloc(len + 2);
 		if (p != NULL)
 		{
 		    if (type == HIST_SEARCH)
@@ -6783,7 +6772,7 @@ handle_viminfo_history(
 		{
 		    /* Need to re-allocate to append the separator byte. */
 		    len = vp[3].bv_len;
-		    p = lalloc(len + 2, TRUE);
+		    p = alloc(len + 2);
 		}
 		else
 		    len = 0; /* for picky compilers */
@@ -6857,9 +6846,6 @@ concat_history(int type)
 
 #if defined(FEAT_CMDL_COMPL) || defined(PROTO)
     static int
-#ifdef __BORLANDC__
-_RTLENTRYF
-#endif
 sort_hist(const void *s1, const void *s2)
 {
     histentry_T *p1 = *(histentry_T **)s1;
@@ -6886,8 +6872,8 @@ merge_history(int type)
 
     /* Make one long list with all entries. */
     max_len = hislen + viminfo_hisidx[type];
-    tot_hist = (histentry_T **)alloc(max_len * (int)sizeof(histentry_T *));
-    new_hist = (histentry_T *)alloc(hislen * (int)sizeof(histentry_T));
+    tot_hist = ALLOC_MULT(histentry_T *, max_len);
+    new_hist = ALLOC_MULT(histentry_T, hislen );
     if (tot_hist == NULL || new_hist == NULL)
     {
 	vim_free(tot_hist);

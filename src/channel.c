@@ -294,7 +294,7 @@ static int next_ch_id = 0;
 add_channel(void)
 {
     ch_part_T	part;
-    channel_T	*channel = (channel_T *)alloc_clear((int)sizeof(channel_T));
+    channel_T	*channel = ALLOC_CLEAR_ONE(channel_T);
 
     if (channel == NULL)
 	return NULL;
@@ -1354,7 +1354,7 @@ channel_set_req_callback(
 	int	    id)
 {
     cbq_T *head = &channel->ch_part[part].ch_cb_head;
-    cbq_T *item = (cbq_T *)alloc((int)sizeof(cbq_T));
+    cbq_T *item = ALLOC_ONE(cbq_T);
 
     if (item != NULL)
     {
@@ -1650,7 +1650,7 @@ invoke_callback(channel_T *channel, char_u *callback, partial_T *partial,
     argv[0].v_type = VAR_CHANNEL;
     argv[0].vval.v_channel = channel;
 
-    call_func(callback, (int)STRLEN(callback), &rettv, 2, argv, NULL,
+    call_func(callback, -1, &rettv, 2, argv, NULL,
 					  0L, 0L, &dummy, TRUE, partial, NULL);
     clear_tv(&rettv);
     channel_need_redraw = TRUE;
@@ -1728,7 +1728,7 @@ channel_get_all(channel_T *channel, ch_part_T part, int *outlen)
     // Concatenate everything into one buffer.
     for (node = head->rq_next; node != NULL; node = node->rq_next)
 	len += node->rq_buflen;
-    res = lalloc(len + 1, TRUE);
+    res = alloc(len + 1);
     if (res == NULL)
 	return NULL;
     p = res;
@@ -1875,7 +1875,7 @@ channel_save(channel_T *channel, ch_part_T part, char_u *buf, int len,
     char_u  *p;
     int	    i;
 
-    node = (readq_T *)alloc(sizeof(readq_T));
+    node = ALLOC_ONE(readq_T);
     if (node == NULL)
 	return FAIL;	    /* out of memory */
     /* A NUL is added at the end, because netbeans code expects that.
@@ -1906,7 +1906,7 @@ channel_save(channel_T *channel, ch_part_T part, char_u *buf, int len,
 
     if (prepend)
     {
-	/* preend node to the head of the queue */
+	// prepend node to the head of the queue
 	node->rq_next = head->rq_next;
 	node->rq_prev = NULL;
 	if (head->rq_next == NULL)
@@ -1917,7 +1917,7 @@ channel_save(channel_T *channel, ch_part_T part, char_u *buf, int len,
     }
     else
     {
-	/* append node to the tail of the queue */
+	// append node to the tail of the queue
 	node->rq_next = NULL;
 	node->rq_prev = head->rq_prev;
 	if (head->rq_prev == NULL)
@@ -2024,7 +2024,7 @@ channel_parse_json(channel_T *channel, ch_part_T part)
 	}
 	else
 	{
-	    item = (jsonq_T *)alloc((unsigned)sizeof(jsonq_T));
+	    item = ALLOC_ONE(jsonq_T);
 	    if (item == NULL)
 		clear_tv(&listtv);
 	    else
@@ -2223,7 +2223,7 @@ channel_push_json(channel_T *channel, ch_part_T part, typval_T *rettv)
 	/* append after the last item that was pushed back */
 	item = item->jq_next;
 
-    newitem = (jsonq_T *)alloc((unsigned)sizeof(jsonq_T));
+    newitem = ALLOC_ONE(jsonq_T);
     if (newitem == NULL)
 	clear_tv(rettv);
     else
@@ -2308,6 +2308,7 @@ channel_exe_cmd(channel_T *channel, ch_part_T part, typval_T *argv)
 	exarg_T ea;
 
 	ch_log(channel, "Executing normal command '%s'", (char *)arg);
+	vim_memset(&ea, 0, sizeof(ea));
 	ea.arg = arg;
 	ea.addr_count = 0;
 	ea.forceit = TRUE; /* no mapping */
@@ -2318,6 +2319,7 @@ channel_exe_cmd(channel_T *channel, ch_part_T part, typval_T *argv)
 	exarg_T ea;
 
 	ch_log(channel, "redraw");
+	vim_memset(&ea, 0, sizeof(ea));
 	ea.forceit = *arg != NUL;
 	ex_redraw(&ea);
 	showruler(FALSE);
@@ -2987,7 +2989,7 @@ channel_close(channel_T *channel, int invoke_close_cb)
 						(char *)channel->ch_close_cb);
 	      argv[0].v_type = VAR_CHANNEL;
 	      argv[0].vval.v_channel = channel;
-	      call_func(channel->ch_close_cb, (int)STRLEN(channel->ch_close_cb),
+	      call_func(channel->ch_close_cb, -1,
 			   &rettv, 1, argv, NULL, 0L, 0L, &dummy, TRUE,
 			   channel->ch_close_partial, NULL);
 	      clear_tv(&rettv);
@@ -3919,7 +3921,7 @@ channel_send(
 		}
 		else
 		{
-		    writeq_T *last = (writeq_T *)alloc((int)sizeof(writeq_T));
+		    writeq_T *last = ALLOC_ONE(writeq_T);
 
 		    if (last != NULL)
 		    {
@@ -5319,7 +5321,7 @@ job_still_useful(job_T *job)
     return job_need_end_check(job) || job_channel_still_useful(job);
 }
 
-#if defined(GUI_MAY_FORK) || defined(PROTO)
+#if defined(GUI_MAY_FORK) || defined(GUI_MAY_SPAWN) || defined(PROTO)
 /*
  * Return TRUE when there is any running job that we care about.
  */
@@ -5476,7 +5478,7 @@ job_cleanup(job_T *job)
 	argv[0].vval.v_job = job;
 	argv[1].v_type = VAR_NUMBER;
 	argv[1].vval.v_number = job->jv_exitval;
-	call_func(job->jv_exit_cb, (int)STRLEN(job->jv_exit_cb),
+	call_func(job->jv_exit_cb, -1,
 	    &rettv, 2, argv, NULL, 0L, 0L, &dummy, TRUE,
 	    job->jv_exit_partial, NULL);
 	clear_tv(&rettv);
@@ -5591,7 +5593,7 @@ job_alloc(void)
 {
     job_T *job;
 
-    job = (job_T *)alloc_clear(sizeof(job_T));
+    job = ALLOC_CLEAR_ONE(job_T);
     if (job != NULL)
     {
 	job->jv_refcount = 1;
@@ -5820,7 +5822,7 @@ job_start(
 	/* Make a copy of argv_arg for job->jv_argv. */
 	for (i = 0; argv_arg[i] != NULL; i++)
 	    argc++;
-	argv = (char **)alloc(sizeof(char *) * (argc + 1));
+	argv = ALLOC_MULT(char *, argc + 1);
 	if (argv == NULL)
 	    goto theend;
 	for (i = 0; i < argc; i++)
@@ -6067,8 +6069,7 @@ invoke_prompt_callback(void)
     argv[0].vval.v_string = vim_strsave(text);
     argv[1].v_type = VAR_UNKNOWN;
 
-    call_func(curbuf->b_prompt_callback,
-	      (int)STRLEN(curbuf->b_prompt_callback),
+    call_func(curbuf->b_prompt_callback, -1,
 	      &rettv, 1, argv, NULL, 0L, 0L, &dummy, TRUE,
 	      curbuf->b_prompt_partial, NULL);
     clear_tv(&argv[0]);
@@ -6091,8 +6092,7 @@ invoke_prompt_interrupt(void)
     argv[0].v_type = VAR_UNKNOWN;
 
     got_int = FALSE; // don't skip executing commands
-    call_func(curbuf->b_prompt_interrupt,
-	      (int)STRLEN(curbuf->b_prompt_interrupt),
+    call_func(curbuf->b_prompt_interrupt, -1,
 	      &rettv, 0, argv, NULL, 0L, 0L, &dummy, TRUE,
 	      curbuf->b_prompt_int_partial, NULL);
     clear_tv(&rettv);

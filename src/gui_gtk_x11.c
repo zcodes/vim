@@ -429,7 +429,7 @@ gui_mch_prepare(int *argc, char **argv)
      * into gui_argv.  Freed later in gui_mch_init().
      */
     gui_argc = 0;
-    gui_argv = (char **)alloc((unsigned)((*argc + 1) * sizeof(char *)));
+    gui_argv = ALLOC_MULT(char *, *argc + 1);
 
     g_return_if_fail(gui_argv != NULL);
 
@@ -1544,7 +1544,7 @@ selection_get_cb(GtkWidget	    *widget UNUSED,
 
     if (info == (guint)TARGET_VIM)
     {
-	tmpbuf = alloc((unsigned)length + 1);
+	tmpbuf = alloc(length + 1);
 	if (tmpbuf != NULL)
 	{
 	    tmpbuf[0] = motion_type;
@@ -1576,12 +1576,15 @@ selection_get_cb(GtkWidget	    *widget UNUSED,
 	if (string != NULL)
 	{
 	    tmpbuf = alloc(length + 2);
-	    tmpbuf[0] = 0xff;
-	    tmpbuf[1] = 0xfe;
-	    mch_memmove(tmpbuf + 2, string, (size_t)length);
-	    vim_free(string);
-	    string = tmpbuf;
-	    length += 2;
+	    if (tmpbuf != NULL)
+	    {
+		tmpbuf[0] = 0xff;
+		tmpbuf[1] = 0xfe;
+		mch_memmove(tmpbuf + 2, string, (size_t)length);
+		vim_free(string);
+		string = tmpbuf;
+		length += 2;
+	    }
 
 #if !GTK_CHECK_VERSION(3,0,0)
 	    /* Looks redundant even for GTK2 because these values are
@@ -1600,16 +1603,16 @@ selection_get_cb(GtkWidget	    *widget UNUSED,
 	int l = STRLEN(p_enc);
 
 	/* contents: motion_type 'encoding' NUL text */
-	tmpbuf = alloc((unsigned)length + l + 2);
+	tmpbuf = alloc(length + l + 2);
 	if (tmpbuf != NULL)
 	{
 	    tmpbuf[0] = motion_type;
 	    STRCPY(tmpbuf + 1, p_enc);
 	    mch_memmove(tmpbuf + l + 2, string, (size_t)length);
+	    length += l + 2;
+	    vim_free(string);
+	    string = tmpbuf;
 	}
-	length += l + 2;
-	vim_free(string);
-	string = tmpbuf;
 	type = vimenc_atom;
     }
 
@@ -2154,10 +2157,10 @@ parse_uri_list(int *count, char_u *data, int len)
     char_u  *tmp    = NULL;
     char_u  **array = NULL;
 
-    if (data != NULL && len > 0 && (tmp = (char_u *)alloc(len + 1)) != NULL)
+    if (data != NULL && len > 0 && (tmp = alloc(len + 1)) != NULL)
     {
 	n = count_and_decode_uri_list(tmp, data, len);
-	if (n > 0 && (array = (char_u **)alloc(n * sizeof(char_u *))) != NULL)
+	if (n > 0 && (array = ALLOC_MULT(char_u *, n)) != NULL)
 	    n = filter_uri_list(array, n, tmp);
     }
     vim_free(tmp);
@@ -2309,75 +2312,6 @@ sm_client_check_changed_any(GnomeClient	    *client UNUSED,
      * will be cancelled.  Wow, quite powerful feature (:
      */
     gnome_interaction_key_return(key, shutdown_cancelled);
-}
-
-/*
- * Generate a script that can be used to restore the current editing session.
- * Save the value of v:this_session before running :mksession in order to make
- * automagic session save fully transparent.  Return TRUE on success.
- */
-    static int
-write_session_file(char_u *filename)
-{
-    char_u	    *escaped_filename;
-    char	    *mksession_cmdline;
-    unsigned int    save_ssop_flags;
-    int		    failed;
-
-    /*
-     * Build an ex command line to create a script that restores the current
-     * session if executed.  Escape the filename to avoid nasty surprises.
-     */
-    escaped_filename = vim_strsave_escaped(filename, escape_chars);
-    if (escaped_filename == NULL)
-	return FALSE;
-    mksession_cmdline = g_strconcat("mksession ", (char *)escaped_filename,
-									NULL);
-    vim_free(escaped_filename);
-
-    /*
-     * Use a reasonable hardcoded set of 'sessionoptions' flags to avoid
-     * unpredictable effects when the session is saved automatically.  Also,
-     * we definitely need SSOP_GLOBALS to be able to restore v:this_session.
-     * Don't use SSOP_BUFFERS to prevent the buffer list from becoming
-     * enormously large if the GNOME session feature is used regularly.
-     */
-    save_ssop_flags = ssop_flags;
-    ssop_flags = (SSOP_BLANK|SSOP_CURDIR|SSOP_FOLDS|SSOP_GLOBALS
-		  |SSOP_HELP|SSOP_OPTIONS|SSOP_WINSIZE|SSOP_TABPAGES);
-
-    do_cmdline_cmd((char_u *)"let Save_VV_this_session = v:this_session");
-    failed = (do_cmdline_cmd((char_u *)mksession_cmdline) == FAIL);
-    do_cmdline_cmd((char_u *)"let v:this_session = Save_VV_this_session");
-    do_unlet((char_u *)"Save_VV_this_session", TRUE);
-
-    ssop_flags = save_ssop_flags;
-    g_free(mksession_cmdline);
-
-    /*
-     * Reopen the file and append a command to restore v:this_session,
-     * as if this save never happened.	This is to avoid conflicts with
-     * the user's own sessions.  FIXME: It's probably less hackish to add
-     * a "stealth" flag to 'sessionoptions' -- gotta ask Bram.
-     */
-    if (!failed)
-    {
-	FILE *fd;
-
-	fd = open_exfile(filename, TRUE, APPENDBIN);
-
-	failed = (fd == NULL
-	       || put_line(fd, "let v:this_session = Save_VV_this_session") == FAIL
-	       || put_line(fd, "unlet Save_VV_this_session") == FAIL);
-
-	if (fd != NULL && fclose(fd) != 0)
-	    failed = TRUE;
-
-	if (failed)
-	    mch_remove(filename);
-    }
-
-    return !failed;
 }
 
 /*
@@ -2578,8 +2512,7 @@ setup_save_yourself(void)
 	    if (i == count)
 	    {
 		/* allocate an Atoms array which is one item longer */
-		new_atoms = (Atom *)alloc((unsigned)((count + 1)
-							     * sizeof(Atom)));
+		new_atoms = ALLOC_MULT(Atom, count + 1);
 		if (new_atoms != NULL)
 		{
 		    memcpy(new_atoms, existing_atoms, count * sizeof(Atom));

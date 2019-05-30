@@ -17,24 +17,6 @@
 # define MSWIN
 #endif
 
-// use fastcall for Borland, when compiling for MS-Windows
-#if defined(__BORLANDC__) && defined(MSWIN) && !defined(DEBUG)
-#if defined(FEAT_PERL) || \
-    defined(FEAT_PYTHON) || \
-    defined(FEAT_PYTHON3) || \
-    defined(FEAT_RUBY) || \
-    defined(FEAT_TCL) || \
-    defined(FEAT_MZSCHEME) || \
-    defined(DYNAMIC_GETTEXT) || \
-    defined(DYNAMIC_ICONV) || \
-    defined(DYNAMIC_IME) || \
-    defined(XPM)
-  #pragma option -pc
-# else
-  #pragma option -pr
-# endif
-#endif
-
 #ifdef MSWIN
 # include "vimio.h"
 #endif
@@ -622,14 +604,18 @@ extern int (*dyn_libintl_wputenv)(const wchar_t *envstring);
  *     off		off		w_botline not valid
  *     on		off		not possible
  */
-#define VALID_WROW	0x01	/* w_wrow (window row) is valid */
-#define VALID_WCOL	0x02	/* w_wcol (window col) is valid */
-#define VALID_VIRTCOL	0x04	/* w_virtcol (file col) is valid */
-#define VALID_CHEIGHT	0x08	/* w_cline_height and w_cline_folded valid */
-#define VALID_CROW	0x10	/* w_cline_row is valid */
-#define VALID_BOTLINE	0x20	/* w_botine and w_empty_rows are valid */
-#define VALID_BOTLINE_AP 0x40	/* w_botine is approximated */
-#define VALID_TOPLINE	0x80	/* w_topline is valid (for cursor position) */
+#define VALID_WROW	0x01	// w_wrow (window row) is valid
+#define VALID_WCOL	0x02	// w_wcol (window col) is valid
+#define VALID_VIRTCOL	0x04	// w_virtcol (file col) is valid
+#define VALID_CHEIGHT	0x08	// w_cline_height and w_cline_folded valid
+#define VALID_CROW	0x10	// w_cline_row is valid
+#define VALID_BOTLINE	0x20	// w_botine and w_empty_rows are valid
+#define VALID_BOTLINE_AP 0x40	// w_botine is approximated
+#define VALID_TOPLINE	0x80	// w_topline is valid (for cursor position)
+
+// Values for w_popup_flags.
+#define POPF_HIDDEN	1	// popup is not displayed
+#define POPF_REDRAWN	2	// popup was just redrawn
 
 /*
  * Terminal highlighting attribute bits.
@@ -799,26 +785,27 @@ extern int (*dyn_libintl_wputenv)(const wchar_t *envstring);
 #define WILD_ICASE		0x100
 #define WILD_ALLLINKS		0x200
 
-/* Flags for expand_wildcards() */
-#define EW_DIR		0x01	/* include directory names */
-#define EW_FILE		0x02	/* include file names */
-#define EW_NOTFOUND	0x04	/* include not found names */
-#define EW_ADDSLASH	0x08	/* append slash to directory name */
-#define EW_KEEPALL	0x10	/* keep all matches */
-#define EW_SILENT	0x20	/* don't print "1 returned" from shell */
-#define EW_EXEC		0x40	/* executable files */
-#define EW_PATH		0x80	/* search in 'path' too */
-#define EW_ICASE	0x100	/* ignore case */
-#define EW_NOERROR	0x200	/* no error for bad regexp */
-#define EW_NOTWILD	0x400	/* add match with literal name if exists */
-#define EW_KEEPDOLLAR	0x800	/* do not escape $, $var is expanded */
-/* Note: mostly EW_NOTFOUND and EW_SILENT are mutually exclusive: EW_NOTFOUND
- * is used when executing commands and EW_SILENT for interactive expanding. */
-#define EW_ALLLINKS	0x1000	/* also links not pointing to existing file */
-#define EW_SHELLCMD	0x2000	/* called from expand_shellcmd(), don't check
-				 * if executable is in $PATH */
-#define EW_DODOT	0x4000	/* also files starting with a dot */
-#define EW_EMPTYOK	0x8000	/* no matches is not an error */
+// Flags for expand_wildcards()
+#define EW_DIR		0x01	// include directory names
+#define EW_FILE		0x02	// include file names
+#define EW_NOTFOUND	0x04	// include not found names
+#define EW_ADDSLASH	0x08	// append slash to directory name
+#define EW_KEEPALL	0x10	// keep all matches
+#define EW_SILENT	0x20	// don't print "1 returned" from shell
+#define EW_EXEC		0x40	// executable files
+#define EW_PATH		0x80	// search in 'path' too
+#define EW_ICASE	0x100	// ignore case
+#define EW_NOERROR	0x200	// no error for bad regexp
+#define EW_NOTWILD	0x400	// add match with literal name if exists
+#define EW_KEEPDOLLAR	0x800	// do not escape $, $var is expanded
+// Note: mostly EW_NOTFOUND and EW_SILENT are mutually exclusive: EW_NOTFOUND
+// is used when executing commands and EW_SILENT for interactive expanding.
+#define EW_ALLLINKS	0x1000	// also links not pointing to existing file
+#define EW_SHELLCMD	0x2000	// called from expand_shellcmd(), don't check
+				// if executable is in $PATH
+#define EW_DODOT	0x4000	// also files starting with a dot
+#define EW_EMPTYOK	0x8000	// no matches is not an error
+#define EW_NOTENV	0x10000	// do not expand environment variables
 
 /* Flags for find_file_*() functions. */
 #define FINDFILE_FILE	0	/* only files */
@@ -1133,19 +1120,20 @@ typedef struct {
 /*
  * flags for find_tags().
  */
-#define TAG_HELP	1	/* only search for help tags */
-#define TAG_NAMES	2	/* only return name of tag */
-#define	TAG_REGEXP	4	/* use tag pattern as regexp */
-#define	TAG_NOIC	8	/* don't always ignore case */
+#define TAG_HELP	1	// only search for help tags
+#define TAG_NAMES	2	// only return name of tag
+#define	TAG_REGEXP	4	// use tag pattern as regexp
+#define	TAG_NOIC	8	// don't always ignore case
 #ifdef FEAT_CSCOPE
-# define TAG_CSCOPE	16	/* cscope tag */
+# define TAG_CSCOPE	16	// cscope tag
 #endif
-#define TAG_VERBOSE	32	/* message verbosity */
-#define TAG_INS_COMP	64	/* Currently doing insert completion */
-#define TAG_KEEP_LANG	128	/* keep current language */
+#define TAG_VERBOSE	32	// message verbosity
+#define TAG_INS_COMP	64	// Currently doing insert completion
+#define TAG_KEEP_LANG	128	// keep current language
+#define TAG_NO_TAGFUNC	256	// do not use 'tagfunc'
 
-#define TAG_MANY	300	/* When finding many tags (for completion),
-				   find up to this many tags */
+#define TAG_MANY	300	// When finding many tags (for completion),
+				// find up to this many tags
 
 /*
  * Types of dialogs passed to do_vim_dialog().
@@ -1557,6 +1545,16 @@ typedef UINT32_TYPEDEF UINT32_T;
 #ifndef R_OK
 # define R_OK 4		/* for systems that don't have R_OK in unistd.h */
 #endif
+
+// Allocate memory for one type and cast the returned pointer to have the
+// compiler check the types.
+#define ALLOC_ONE(type)  (type *)alloc(sizeof(type))
+#define ALLOC_MULT(type, count)  (type *)alloc(sizeof(type) * (count))
+#define ALLOC_CLEAR_ONE(type)  (type *)alloc_clear(sizeof(type))
+#define ALLOC_CLEAR_MULT(type, count)  (type *)alloc_clear(sizeof(type) * (count))
+#define LALLOC_CLEAR_ONE(type)  (type *)lalloc_clear(sizeof(type), FALSE)
+#define LALLOC_CLEAR_MULT(type, count)  (type *)lalloc_clear(sizeof(type) * (count), FALSE)
+#define LALLOC_MULT(type, count)  (type *)lalloc(sizeof(type) * (count), FALSE)
 
 /*
  * defines to avoid typecasts from (char_u *) to (char *) and back
@@ -2162,11 +2160,6 @@ typedef enum {
 # define BROWSE_DIR 2	    /* flag for do_browse() */
 #endif
 
-/* stop using fastcall for Borland */
-#if defined(__BORLANDC__) && defined(MSWIN) && !defined(DEBUG)
- #pragma option -p.
-#endif
-
 #ifdef _MSC_VER
 /* Avoid useless warning "conversion from X to Y of greater size". */
  #pragma warning(disable : 4312)
@@ -2343,9 +2336,6 @@ typedef enum {
 # undef FF
 # undef OP_DELETE
 # undef OP_JOIN
-# ifdef __BORLANDC__
-#  define NOPROTO 1
-# endif
   /* remove MAX and MIN, included by glib.h, redefined by sys/param.h */
 # ifdef MAX
 #  undef MAX
@@ -2373,10 +2363,6 @@ typedef enum {
 #  undef bool
 # endif
 
-# ifdef __BORLANDC__
-  /* Borland has the structure stati64 but not _stati64 */
-#  define _stati64 stati64
-# endif
 #endif
 
 /* values for vim_handle_signal() that are not a signal */
@@ -2599,5 +2585,9 @@ long elapsed(DWORD start_tick);
 #define SAVE_RESTORE_TITLE	1
 #define SAVE_RESTORE_ICON	2
 #define SAVE_RESTORE_BOTH	(SAVE_RESTORE_TITLE | SAVE_RESTORE_ICON)
+
+// Flags for adjust_prop_columns()
+#define APC_SAVE_FOR_UNDO	1   // call u_savesub() before making changes
+#define APC_SUBSTITUTE		2   // text is replaced, not inserted
 
 #endif /* VIM__H */

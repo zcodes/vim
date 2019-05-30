@@ -1659,6 +1659,25 @@ may_restore_clipboard(void)
 	get_x11_title(FALSE);
     }
 }
+
+    void
+ex_xrestore(exarg_T *eap)
+{
+    if (eap->arg != NULL && STRLEN(eap->arg) > 0)
+    {
+        if (xterm_display_allocated)
+            vim_free(xterm_display);
+        xterm_display = (char *)vim_strsave(eap->arg);
+        xterm_display_allocated = TRUE;
+    }
+    smsg(_("restoring display %s"), xterm_display == NULL
+			      ? (char *)mch_getenv("DISPLAY") : xterm_display);
+
+    clear_xterm_clip();
+    x11_window = 0;
+    xterm_dpy_retry_count = 5;  // Try reconnecting five times
+    may_restore_clipboard();
+}
 #endif
 
 /*
@@ -1761,6 +1780,10 @@ get_x11_windis(void)
 	x11_window = (Window)atol(winid);
 
 #ifdef FEAT_XCLIPBOARD
+    if (xterm_dpy == x11_display)
+	// x11_display may have been set to xterm_dpy elsewhere
+	x11_display_from = XD_XTERM;
+
     if (xterm_dpy != NULL && x11_window != 0)
     {
 	/* We may have checked it already, but Gnome terminal can move us to
@@ -2205,14 +2228,19 @@ mch_settitle(char_u *title, char_u *icon)
     void
 mch_restore_title(int which)
 {
+    int	do_push_pop = did_set_title || did_set_icon;
+
     /* only restore the title or icon when it has been set */
     mch_settitle(((which & SAVE_RESTORE_TITLE) && did_set_title) ?
 			(oldtitle ? oldtitle : p_titleold) : NULL,
 	       ((which & SAVE_RESTORE_ICON) && did_set_icon) ? oldicon : NULL);
 
-    // pop and push from/to the stack
-    term_pop_title(which);
-    term_push_title(which);
+    if (do_push_pop)
+    {
+	// pop and push from/to the stack
+	term_pop_title(which);
+	term_push_title(which);
+    }
 }
 
 #endif /* FEAT_TITLE */
@@ -2393,6 +2421,16 @@ mch_get_pid(void)
     return (long)getpid();
 }
 
+/*
+ * return TRUE if process "pid" is still running
+ */
+    int
+mch_process_running(long pid)
+{
+    // EMX kill() not working correctly, it seems
+    return kill(pid, 0) == 0;
+}
+
 #if !defined(HAVE_STRERROR) && defined(USE_GETCWD)
     static char *
 strerror(int err)
@@ -2409,7 +2447,8 @@ strerror(int err)
 #endif
 
 /*
- * Get name of current directory into buffer 'buf' of length 'len' bytes.
+ * Get name of current directory into buffer "buf" of length "len" bytes.
+ * "len" must be at least PATH_MAX.
  * Return OK for success, FAIL for failure.
  */
     int
@@ -2478,7 +2517,7 @@ mch_FullName(
     {
 	/*
 	 * If the file name has a path, change to that directory for a moment,
-	 * and then do the getwd() (and get back to where we were).
+	 * and then get the directory (and get back to where we were).
 	 * This will get the correct path name with "../" things.
 	 */
 	if (p != NULL)
@@ -3086,7 +3125,7 @@ mch_can_exe(char_u *name, char_u **path, int use_path)
     p = (char_u *)getenv("PATH");
     if (p == NULL || *p == NUL)
 	return -1;
-    buf = alloc((unsigned)(STRLEN(name) + STRLEN(p) + 2));
+    buf = alloc(STRLEN(name) + STRLEN(p) + 2);
     if (buf == NULL)
 	return -1;
 
@@ -3171,7 +3210,7 @@ mch_early_init(void)
      * Ignore any errors.
      */
 #if defined(HAVE_SIGALTSTACK) || defined(HAVE_SIGSTACK)
-    signal_stack = (char *)alloc(SIGSTKSZ);
+    signal_stack = alloc(SIGSTKSZ);
     init_signal_stack();
 #endif
 }
@@ -3779,7 +3818,10 @@ check_mouse_termcode(void)
 	    && !gui.in_use
 #  endif
 	    )
-	set_mouse_termcode(KS_MOUSE, (char_u *)IF_EB("\033MG", ESC_STR "MG"));
+	set_mouse_termcode(KS_GPM_MOUSE,
+				      (char_u *)IF_EB("\033MG", ESC_STR "MG"));
+    else
+	del_mouse_termcode(KS_GPM_MOUSE);
 # endif
 
 # ifdef FEAT_SYSMOUSE
@@ -4282,7 +4324,7 @@ build_argv(
 
 	/* Break 'shellcmdflag' into white separated parts.  This doesn't
 	 * handle quoted strings, they are very unlikely to appear. */
-	*shcf_tofree = alloc((unsigned)STRLEN(p_shcf) + 1);
+	*shcf_tofree = alloc(STRLEN(p_shcf) + 1);
 	if (*shcf_tofree == NULL)    /* out of memory */
 	    return FAIL;
 	s = *shcf_tofree;
@@ -4417,9 +4459,9 @@ mch_call_shell_system(
 	else
 	    x = system((char *)cmd);
 # else
-	newcmd = lalloc(STRLEN(p_sh)
+	newcmd = alloc(STRLEN(p_sh)
 		+ (extra_shell_arg == NULL ? 0 : STRLEN(extra_shell_arg))
-		+ STRLEN(p_shcf) + STRLEN(cmd) + 4, TRUE);
+		+ STRLEN(p_shcf) + STRLEN(cmd) + 4);
 	if (newcmd == NULL)
 	    x = 0;
 	else
@@ -5930,7 +5972,8 @@ WaitForCharOrMouse(long msec, int *interrupted, int ignore_input)
     if (WantQueryMouse)
     {
 	WantQueryMouse = FALSE;
-	mch_write((char_u *)IF_EB("\033[1'|", ESC_STR "[1'|"), 5);
+	if (!no_query_mouse_for_testing)
+	    mch_write((char_u *)IF_EB("\033[1'|", ESC_STR "[1'|"), 5);
     }
 #endif
 
@@ -6800,7 +6843,7 @@ mch_expand_wildcards(
 	goto notfound;
     }
     *num_file = i;
-    *file = (char_u **)alloc(sizeof(char_u *) * i);
+    *file = ALLOC_MULT(char_u *, i);
     if (*file == NULL)
     {
 	/* out of memory */
@@ -6857,7 +6900,7 @@ mch_expand_wildcards(
 		    && !mch_can_exe((*file)[i], NULL, !(flags & EW_SHELLCMD)))
 	    continue;
 
-	p = alloc((unsigned)(STRLEN((*file)[i]) + 1 + dir));
+	p = alloc(STRLEN((*file)[i]) + 1 + dir);
 	if (p)
 	{
 	    STRCPY(p, (*file)[i]);
@@ -6895,7 +6938,7 @@ save_patterns(
     int		i;
     char_u	*s;
 
-    *file = (char_u **)alloc(num_pat * sizeof(char_u *));
+    *file = ALLOC_MULT(char_u *, num_pat);
     if (*file == NULL)
 	return FAIL;
     for (i = 0; i < num_pat; i++)
@@ -7003,7 +7046,7 @@ mch_rename(const char *src, const char *dest)
 }
 #endif /* !HAVE_RENAME */
 
-#ifdef FEAT_MOUSE_GPM
+#if defined(FEAT_MOUSE_GPM) || defined(PROTO)
 /*
  * Initializes connection with gpm (if it isn't already opened)
  * Return 1 if succeeded (or connection already opened), 0 if failed
@@ -7040,16 +7083,26 @@ gpm_open(void)
 }
 
 /*
+ * Returns TRUE if the GPM mouse is enabled.
+ */
+    int
+gpm_enabled(void)
+{
+    return gpm_flag && gpm_fd >= 0;
+}
+
+/*
  * Closes connection to gpm
  */
     static void
 gpm_close(void)
 {
-    if (gpm_flag && gpm_fd >= 0) /* if Open */
+    if (gpm_enabled())
 	Gpm_Close();
 }
 
-/* Reads gpm event and adds special keys to input buf. Returns length of
+/*
+ * Reads gpm event and adds special keys to input buf. Returns length of
  * generated key sequence.
  * This function is styled after gui_send_mouse_event().
  */
@@ -7632,7 +7685,7 @@ do_xterm_trace(void)
     return TRUE;
 }
 
-# if defined(FEAT_GUI) || defined(PROTO)
+# if defined(FEAT_GUI) || defined(FEAT_XCLIPBOARD) || defined(PROTO)
 /*
  * Destroy the display, window and app_context.  Required for GTK.
  */

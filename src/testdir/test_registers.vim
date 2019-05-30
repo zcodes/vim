@@ -162,6 +162,8 @@ func Test_recording_esc_sequence()
   call assert_equal(['Quirk', 'Test', 'Quirk', 'Test'], getline(1, 4))
   bwipe!
   if exists('save_F2')
-    let t_F2 = save_F2
+    let &t_F2 = save_F2
+  else
+    set t_F2=
   endif
 endfunc

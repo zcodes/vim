@@ -473,7 +473,7 @@ ins_compl_add_infercase(
 					   ? actual_len : actual_compl_length;
 
 	// Allocate wide character array for the completion and fill it.
-	wca = (int *)alloc((unsigned)(actual_len * sizeof(int)));
+	wca = ALLOC_MULT(int, actual_len);
 	if (wca != NULL)
 	{
 	    p = str;
@@ -611,7 +611,7 @@ ins_compl_add(
 
     // Allocate a new match structure.
     // Copy the values to the new match structure.
-    match = (compl_T *)alloc_clear((unsigned)sizeof(compl_T));
+    match = ALLOC_CLEAR_ONE(compl_T);
     if (match == NULL)
 	return FAIL;
     match->cp_number = -1;
@@ -1070,9 +1070,7 @@ ins_compl_show_pum(void)
 	} while (compl != NULL && compl != compl_first_match);
 	if (compl_match_arraysize == 0)
 	    return;
-	compl_match_array = (pumitem_T *)alloc_clear(
-				    (unsigned)(sizeof(pumitem_T)
-						    * compl_match_arraysize));
+	compl_match_array = ALLOC_CLEAR_MULT(pumitem_T, compl_match_arraysize);
 	if (compl_match_array != NULL)
 	{
 	    // If the current match is the original text don't find the first
@@ -1230,7 +1228,7 @@ ins_compl_dictionaries(
 	if (pat_esc == NULL)
 	    goto theend;
 	len = STRLEN(pat_esc) + 10;
-	ptr = alloc((unsigned)len);
+	ptr = alloc(len);
 	if (ptr == NULL)
 	{
 	    vim_free(pat_esc);
@@ -2654,11 +2652,13 @@ ins_compl_get_exp(pos_T *ini)
 
 	    // Find up to TAG_MANY matches.  Avoids that an enormous number
 	    // of matches is found when compl_pattern is empty
+	    g_tag_at_cursor = TRUE;
 	    if (find_tags(compl_pattern, &num_matches, &matches,
 		    TAG_REGEXP | TAG_NAMES | TAG_NOIC | TAG_INS_COMP
 		    | (ctrl_x_mode != CTRL_X_NORMAL ? TAG_VERBOSE : 0),
 		    TAG_MANY, curbuf->b_ffname) == OK && num_matches > 0)
 		ins_compl_add_matches(num_matches, matches, p_ic);
+	    g_tag_at_cursor = FALSE;
 	    p_ic = save_p_ic;
 	    break;
 

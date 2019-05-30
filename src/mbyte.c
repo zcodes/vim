@@ -4318,7 +4318,7 @@ enc_canonize(char_u *enc)
     }
 
     /* copy "enc" to allocated memory, with room for two '-' */
-    r = alloc((unsigned)(STRLEN(enc) + 3));
+    r = alloc(STRLEN(enc) + 3);
     if (r != NULL)
     {
 	/* Make it all lower case and replace '_' with '-'. */
@@ -4393,7 +4393,7 @@ enc_alias_search(char_u *name)
 # include <langinfo.h>
 #endif
 
-#ifndef FEAT_GUI_MSWIN
+#if !defined(FEAT_GUI_MSWIN) || defined(VIMDLL)
 /*
  * Get the canonicalized encoding from the specified locale string "locale"
  * or from the environment variables LC_ALL, LC_CTYPE and LANG.
@@ -4604,7 +4604,7 @@ iconv_string(
 	    /* Allocate enough room for most conversions.  When re-allocating
 	     * increase the buffer size. */
 	    len = len + fromlen * 2 + 40;
-	    p = alloc((unsigned)len);
+	    p = alloc(len);
 	    if (p != NULL && done > 0)
 		mch_memmove(p, result, done);
 	    vim_free(result);
@@ -6898,7 +6898,7 @@ string_convert_ext(
 		    return retval;
 		}
 	    }
-	    tmp = (short_u *)alloc(sizeof(short_u) * tmp_len);
+	    tmp = ALLOC_MULT(short_u, tmp_len);
 	    if (tmp == NULL)
 		break;
 	    if (vcp->vc_cpfrom == 0)

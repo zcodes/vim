@@ -156,7 +156,7 @@ get_buffcont(
     for (bp = buffer->bh_first.b_next; bp != NULL; bp = bp->b_next)
 	count += (long_u)STRLEN(bp->b_str);
 
-    if ((count || dozero) && (p = lalloc(count + 1, TRUE)) != NULL)
+    if ((count || dozero) && (p = alloc(count + 1)) != NULL)
     {
 	p2 = p;
 	for (bp = buffer->bh_first.b_next; bp != NULL; bp = bp->b_next)
@@ -258,8 +258,7 @@ add_buff(
 	    len = MINIMAL_SIZE;
 	else
 	    len = slen;
-	p = (buffblock_T *)lalloc((long_u)(sizeof(buffblock_T) + len),
-									TRUE);
+	p = alloc(sizeof(buffblock_T) + len);
 	if (p == NULL)
 	    return; /* no space, just forget it */
 	buf->bh_space = (int)(len - slen);
@@ -1407,6 +1406,12 @@ openscript(
 	emsg(_(e_nesting));
 	return;
     }
+
+    // Disallow sourcing a file in the sandbox, the commands would be executed
+    // later, possibly outside of the sandbox.
+    if (check_secure())
+	return;
+
 #ifdef FEAT_EVAL
     if (ignore_script)
 	/* Not reading from script, also don't open one.  Warning message? */
@@ -1453,9 +1458,9 @@ openscript(
 	oldcurscript = curscript;
 	do
 	{
-	    update_topline_cursor();	/* update cursor position and topline */
-	    normal_cmd(&oa, FALSE);	/* execute one command */
-	    vpeekc();			/* check for end of file */
+	    update_topline_cursor();	// update cursor position and topline
+	    normal_cmd(&oa, FALSE);	// execute one command
+	    vpeekc();			// check for end of file
 	}
 	while (scriptin[oldcurscript] != NULL);
 
@@ -1604,7 +1609,7 @@ vgetc(void)
 	    // Get two extra bytes for special keys
 	    if (c == K_SPECIAL
 #ifdef FEAT_GUI
-		    || c == CSI
+		    || (gui.in_use && c == CSI)
 #endif
 	       )
 	    {
@@ -1626,7 +1631,11 @@ vgetc(void)
 #if defined(FEAT_GUI_MSWIN) && defined(FEAT_MENU) && defined(FEAT_TEAROFF)
 		// Handle K_TEAROFF here, the caller of vgetc() doesn't need to
 		// know that a menu was torn off
-		if (c == K_TEAROFF)
+		if (
+# ifdef VIMDLL
+		    gui.in_use &&
+# endif
+		    c == K_TEAROFF)
 		{
 		    char_u	name[200];
 		    int		i;
@@ -1655,19 +1664,23 @@ vgetc(void)
 		}
 #endif
 #ifdef FEAT_GUI
-		// Handle focus event here, so that the caller doesn't need to
-		// know about it.  Return K_IGNORE so that we loop once (needed
-		// if 'lazyredraw' is set).
-		if (c == K_FOCUSGAINED || c == K_FOCUSLOST)
+		if (gui.in_use)
 		{
-		    ui_focus_change(c == K_FOCUSGAINED);
-		    c = K_IGNORE;
-		}
+		    // Handle focus event here, so that the caller doesn't
+		    // need to know about it.  Return K_IGNORE so that we loop
+		    // once (needed if 'lazyredraw' is set).
+		    if (c == K_FOCUSGAINED || c == K_FOCUSLOST)
+		    {
+			ui_focus_change(c == K_FOCUSGAINED);
+			c = K_IGNORE;
+		    }
 
-		// Translate K_CSI to CSI.  The special key is only used to
-		// avoid it being recognized as the start of a special key.
-		if (c == K_CSI)
-		    c = CSI;
+		    // Translate K_CSI to CSI.  The special key is only used
+		    // to avoid it being recognized as the start of a special
+		    // key.
+		    if (c == K_CSI)
+			c = CSI;
+		}
 #endif
 	    }
 	    // a keypad or special function key was not mapped, use it like
@@ -1745,7 +1758,11 @@ vgetc(void)
 		    buf[i] = vgetorpeek(TRUE);
 		    if (buf[i] == K_SPECIAL
 #ifdef FEAT_GUI
-			    || buf[i] == CSI
+			    || (
+# ifdef VIMDLL
+				gui.in_use &&
+# endif
+				buf[i] == CSI)
 #endif
 			    )
 		    {
@@ -3087,7 +3104,7 @@ inchar(
 
 /*
  * Fix typed characters for use by vgetc() and check_termcode().
- * buf[] must have room to triple the number of bytes!
+ * "buf[]" must have room to triple the number of bytes!
  * Returns the new length.
  */
     int
@@ -3113,6 +3130,7 @@ fix_input_buffer(char_u *buf, int len)
 	    p += 2;
 	    i -= 2;
 	}
+# ifndef MSWIN
 	/* When the GUI is not used CSI needs to be escaped. */
 	else if (!gui.in_use && p[0] == CSI)
 	{
@@ -3122,14 +3140,19 @@ fix_input_buffer(char_u *buf, int len)
 	    *p = (int)KE_CSI;
 	    len += 2;
 	}
+# endif
 	else
 #endif
 	if (p[0] == NUL || (p[0] == K_SPECIAL
-		    /* timeout may generate K_CURSORHOLD */
+		    // timeout may generate K_CURSORHOLD
 		    && (i < 2 || p[1] != KS_EXTRA || p[2] != (int)KE_CURSORHOLD)
-#if defined(MSWIN) && !defined(FEAT_GUI)
-		    /* Win32 console passes modifiers */
-		    && (i < 2 || p[1] != KS_MODIFIER)
+#if defined(MSWIN) && (!defined(FEAT_GUI) || defined(VIMDLL))
+		    // Win32 console passes modifiers
+		    && (
+# ifdef VIMDLL
+			gui.in_use ||
+# endif
+			(i < 2 || p[1] != KS_MODIFIER))
 #endif
 		    ))
 	{
@@ -3141,7 +3164,7 @@ fix_input_buffer(char_u *buf, int len)
 	    len += 2;
 	}
     }
-    *p = NUL;		/* add trailing NUL */
+    *p = NUL;		// add trailing NUL
     return len;
 }
 
@@ -3707,7 +3730,7 @@ do_map(
     /*
      * Get here when adding a new entry to the maphash[] list or abbrlist.
      */
-    mp = (mapblock_T *)alloc((unsigned)sizeof(mapblock_T));
+    mp = ALLOC_ONE(mapblock_T);
     if (mp == NULL)
     {
 	retval = 4;	    /* no mem */
@@ -4022,7 +4045,7 @@ showmap(
 	msg_putchar(' ');
 
     /* Display the LHS.  Get length of what we write. */
-    len = msg_outtrans_special(mp->m_keys, TRUE);
+    len = msg_outtrans_special(mp->m_keys, TRUE, 0);
     do
     {
 	msg_putchar(' ');		/* padd with blanks */
@@ -4053,7 +4076,7 @@ showmap(
 	if (s != NULL)
 	{
 	    vim_unescape_csi(s);
-	    msg_outtrans_special(s, FALSE);
+	    msg_outtrans_special(s, FALSE, 0);
 	    vim_free(s);
 	}
     }
@@ -4250,7 +4273,7 @@ set_context_in_map_cmd(
 }
 
 /*
- * Find all mapping/abbreviation names that match regexp 'prog'.
+ * Find all mapping/abbreviation names that match regexp "regmatch"'.
  * For command line expansion of ":[un]map" and ":[un]abbrev" in all modes.
  * Return OK if matches found, FAIL otherwise.
  */
@@ -4330,7 +4353,7 @@ ExpandMappings(
 	    {
 		if (mp->m_mode & expand_mapmodes)
 		{
-		    p = translate_mapping(mp->m_keys, TRUE);
+		    p = translate_mapping(mp->m_keys);
 		    if (p != NULL && vim_regexec(regmatch, p, (colnr_T)0))
 		    {
 			if (round == 1)
@@ -4351,7 +4374,7 @@ ExpandMappings(
 
 	if (round == 1)
 	{
-	    *file = (char_u **)alloc((unsigned)(count * sizeof(char_u *)));
+	    *file = ALLOC_MULT(char_u *, count);
 	    if (*file == NULL)
 		return FAIL;
 	}
@@ -4671,7 +4694,7 @@ vim_strsave_escape_csi(
     /* Need a buffer to hold up to three times as much.  Four in case of an
      * illegal utf-8 byte:
      * 0xc0 -> 0xc3 0x80 -> 0xc3 K_SPECIAL KS_SPECIAL KE_FILLER */
-    res = alloc((unsigned)(STRLEN(p) * 4) + 1);
+    res = alloc(STRLEN(p) * 4 + 1);
     if (res != NULL)
     {
 	d = res;
@@ -5232,20 +5255,21 @@ check_map(
 
 #if defined(MSWIN) || defined(MACOS_X)
 
-#define VIS_SEL	(VISUAL+SELECTMODE)	/* abbreviation */
+# define VIS_SEL	(VISUAL+SELECTMODE)	/* abbreviation */
 
 /*
  * Default mappings for some often used keys.
  */
-static struct initmap
+struct initmap
 {
     char_u	*arg;
     int		mode;
-} initmappings[] =
+};
+
+# ifdef FEAT_GUI_MSWIN
+/* Use the Windows (CUA) keybindings. (GUI) */
+static struct initmap initmappings[] =
 {
-#if defined(MSWIN)
-	/* Use the Windows (CUA) keybindings. */
-# ifdef FEAT_GUI
 	/* paste, copy and cut */
 	{(char_u *)"<S-Insert> \"*P", NORMAL},
 	{(char_u *)"<S-Insert> \"-d\"*P", VIS_SEL},
@@ -5255,7 +5279,13 @@ static struct initmap
 	{(char_u *)"<C-Del> \"*d", VIS_SEL},
 	{(char_u *)"<C-X> \"*d", VIS_SEL},
 	/* Missing: CTRL-C (cancel) and CTRL-V (block selection) */
-# else
+};
+# endif
+
+# if defined(MSWIN) && (!defined(FEAT_GUI) || defined(VIMDLL))
+/* Use the Windows (CUA) keybindings. (Console) */
+static struct initmap cinitmappings[] =
+{
 	{(char_u *)"\316w <C-Home>", NORMAL+VIS_SEL},
 	{(char_u *)"\316w <C-Home>", INSERT+CMDLINE},
 	{(char_u *)"\316u <C-End>", NORMAL+VIS_SEL},
@@ -5269,7 +5299,7 @@ static struct initmap
 	{(char_u *)"\316\325 \"*y", VIS_SEL},	    /* CTRL-Insert is "*y */
 	{(char_u *)"\316\327 \"*d", VIS_SEL},	    /* SHIFT-Del is "*d */
 	{(char_u *)"\316\330 \"*d", VIS_SEL},	    /* CTRL-Del is "*d */
-	{(char_u *)"\030 \"-d", VIS_SEL},	    /* CTRL-X is "-d */
+	{(char_u *)"\030 \"*d", VIS_SEL},	    /* CTRL-X is "*d */
 #  else
 	{(char_u *)"\316\324 P", NORMAL},	    /* SHIFT-Insert is P */
 	{(char_u *)"\316\324 \"-dP", VIS_SEL},	    /* SHIFT-Insert is "-dP */
@@ -5278,10 +5308,12 @@ static struct initmap
 	{(char_u *)"\316\327 d", VIS_SEL},	    /* SHIFT-Del is d */
 	{(char_u *)"\316\330 d", VIS_SEL},	    /* CTRL-Del is d */
 #  endif
+};
 # endif
-#endif
 
-#if defined(MACOS_X)
+# if defined(MACOS_X)
+static struct initmap initmappings[] =
+{
 	/* Use the Standard MacOS binding. */
 	/* paste, copy and cut */
 	{(char_u *)"<D-v> \"*P", NORMAL},
@@ -5290,8 +5322,8 @@ static struct initmap
 	{(char_u *)"<D-c> \"*y", VIS_SEL},
 	{(char_u *)"<D-x> \"*d", VIS_SEL},
 	{(char_u *)"<Backspace> \"-d", VIS_SEL},
-#endif
 };
+# endif
 
 # undef VIS_SEL
 #endif
@@ -5305,8 +5337,20 @@ init_mappings(void)
 #if defined(MSWIN) || defined(MACOS_X)
     int		i;
 
+# if defined(MSWIN) && (!defined(FEAT_GUI_MSWIN) || defined(VIMDLL))
+#  ifdef VIMDLL
+    if (!gui.starting)
+#  endif
+    {
+	for (i = 0;
+		i < (int)(sizeof(cinitmappings) / sizeof(struct initmap)); ++i)
+	    add_map(cinitmappings[i].arg, cinitmappings[i].mode);
+    }
+# endif
+# if defined(FEAT_GUI_MSWIN) || defined(MACOS_X)
     for (i = 0; i < (int)(sizeof(initmappings) / sizeof(struct initmap)); ++i)
 	add_map(initmappings[i].arg, initmappings[i].mode);
+# endif
 #endif
 }
 

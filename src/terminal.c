@@ -413,7 +413,7 @@ term_start(
 	return NULL;
     }
 
-    term = (term_T *)alloc_clear(sizeof(term_T));
+    term = ALLOC_CLEAR_ONE(term_T);
     if (term == NULL)
 	return NULL;
     term->tl_dirty_row_end = MAX_ROW;
@@ -534,7 +534,7 @@ term_start(
 	    cmd = (char_u*)"";
 
 	len = STRLEN(cmd) + 10;
-	p = alloc((int)len);
+	p = alloc(len);
 
 	for (i = 0; p != NULL; ++i)
 	{
@@ -1630,7 +1630,7 @@ update_snapshot(term_T *term)
 	    if (len == 0)
 		p = NULL;
 	    else
-		p = (cellattr_T *)alloc((int)sizeof(cellattr_T) * len);
+		p = ALLOC_MULT(cellattr_T, len);
 	    if ((p != NULL || len == 0)
 				     && ga_grow(&term->tl_scrollback, 1) == OK)
 	    {
@@ -2884,7 +2884,7 @@ handle_pushline(int cols, const VTermScreenCell *cells, void *user)
 
 	ga_init2(&ga, 1, 100);
 	if (len > 0)
-	    p = (cellattr_T *)alloc((int)sizeof(cellattr_T) * len);
+	    p = ALLOC_MULT(cellattr_T, len);
 	if (p != NULL)
 	{
 	    for (col = 0; col < len; col += cells[col].width)
@@ -3257,7 +3257,7 @@ update_system_term(term_T *term)
 	else
 	    pos.col = 0;
 
-	screen_line(term->tl_toprow + pos.row, 0, pos.col, Columns, FALSE);
+	screen_line(term->tl_toprow + pos.row, 0, pos.col, Columns, 0);
     }
 
     term->tl_dirty_row_start = MAX_ROW;
@@ -3368,7 +3368,7 @@ term_update_window(win_T *wp)
 #ifdef FEAT_MENU
 				+ winbar_height(wp)
 #endif
-				, wp->w_wincol, pos.col, wp->w_width, FALSE);
+				, wp->w_wincol, pos.col, wp->w_width, 0);
     }
     term->tl_dirty_row_start = MAX_ROW;
     term->tl_dirty_row_end = 0;
@@ -3553,7 +3553,7 @@ init_default_colors(term_T *term)
     }
     else
     {
-#if defined(MSWIN) && !defined(FEAT_GUI_MSWIN)
+#if defined(MSWIN) && (!defined(FEAT_GUI_MSWIN) || defined(VIMDLL))
 	int tmp;
 #endif
 
@@ -3561,10 +3561,15 @@ init_default_colors(term_T *term)
 	if (cterm_normal_fg_color > 0)
 	{
 	    cterm_color2vterm(cterm_normal_fg_color - 1, fg);
-# if defined(MSWIN) && !defined(FEAT_GUI_MSWIN)
-	    tmp = fg->red;
-	    fg->red = fg->blue;
-	    fg->blue = tmp;
+# if defined(MSWIN) && (!defined(FEAT_GUI_MSWIN) || defined(VIMDLL))
+#  ifdef VIMDLL
+	    if (!gui.in_use)
+#  endif
+	    {
+		tmp = fg->red;
+		fg->red = fg->blue;
+		fg->blue = tmp;
+	    }
 # endif
 	}
 # ifdef FEAT_TERMRESPONSE
@@ -3575,10 +3580,15 @@ init_default_colors(term_T *term)
 	if (cterm_normal_bg_color > 0)
 	{
 	    cterm_color2vterm(cterm_normal_bg_color - 1, bg);
-# if defined(MSWIN) && !defined(FEAT_GUI_MSWIN)
-	    tmp = bg->red;
-	    bg->red = bg->blue;
-	    bg->blue = tmp;
+# if defined(MSWIN) && (!defined(FEAT_GUI_MSWIN) || defined(VIMDLL))
+#  ifdef VIMDLL
+	    if (!gui.in_use)
+#  endif
+	    {
+		tmp = fg->red;
+		fg->red = fg->blue;
+		fg->blue = tmp;
+	    }
 # endif
 	}
 # ifdef FEAT_TERMRESPONSE
@@ -3708,7 +3718,7 @@ handle_drop_command(listitem_T *item)
 	    p = dict_get_string(dict, (char_u *)"encoding", FALSE);
 	if (p != NULL)
 	{
-	    ea.cmd = alloc((int)STRLEN(p) + 12);
+	    ea.cmd = alloc(STRLEN(p) + 12);
 	    if (ea.cmd != NULL)
 	    {
 		sprintf((char *)ea.cmd, "sbuf ++enc=%s", p);
@@ -3769,7 +3779,7 @@ handle_call_command(term_T *term, channel_T *channel, listitem_T *item)
     argvars[0].v_type = VAR_NUMBER;
     argvars[0].vval.v_number = term->tl_buffer->b_fnum;
     argvars[1] = item->li_next->li_tv;
-    if (call_func(func, (int)STRLEN(func), &rettv,
+    if (call_func(func, -1, &rettv,
 		2, argvars, /* argv_func */ NULL,
 		/* firstline */ 1, /* lastline */ 1,
 		&doesrange, /* evaluate */ TRUE,
@@ -3887,7 +3897,7 @@ parse_csi(
 #endif
 	{
 	    // We roughly estimate the position of the terminal window inside
-	    // the Vim window by assuing a 10 x 7 character cell.
+	    // the Vim window by assuming a 10 x 7 character cell.
 	    x += wp->w_wincol * 7;
 	    y += W_WINROW(wp) * 10;
 	}
@@ -3915,7 +3925,7 @@ static VTermParserCallbacks parser_fallbacks = {
     static void *
 vterm_malloc(size_t size, void *data UNUSED)
 {
-    return alloc_clear((unsigned) size);
+    return alloc_clear(size);
 }
 
     static void
@@ -3966,7 +3976,9 @@ create_vterm(term_T *term, int rows, int cols)
 	    &term->tl_default_color.fg,
 	    &term->tl_default_color.bg);
 
-    if (t_colors >= 16)
+    if (t_colors < 16)
+	// Less than 16 colors: assume that bold means using a bright color for
+	// the foreground color.
 	vterm_state_set_bold_highbright(vterm_obtain_state(vterm), 1);
 
     /* Required to initialize most things. */
@@ -4019,7 +4031,7 @@ term_get_status_text(term_T *term)
 	else
 	    txt = (char_u *)_("finished");
 	len = 9 + STRLEN(term->tl_buffer->b_fname) + STRLEN(txt);
-	term->tl_status_text = alloc((int)len);
+	term->tl_status_text = alloc(len);
 	if (term->tl_status_text != NULL)
 	    vim_snprintf((char *)term->tl_status_text, len, "%s [%s]",
 						term->tl_buffer->b_fname, txt);
@@ -4651,7 +4663,7 @@ term_load_dump(typval_T *argvars, typval_T *rettv, int do_diff)
     {
 	size_t len = STRLEN(fname1) + 12;
 
-	fname_tofree = alloc((int)len);
+	fname_tofree = alloc(len);
 	if (fname_tofree != NULL)
 	{
 	    vim_snprintf((char *)fname_tofree, len, "dump diff %s", fname1);
@@ -4923,7 +4935,7 @@ term_swap_diff()
     else
     {
 	size_t		size = sizeof(sb_line_T) * term->tl_scrollback.ga_len;
-	sb_line_T	*temp = (sb_line_T *)alloc((int)size);
+	sb_line_T	*temp = alloc(size);
 
 	/* need to copy cell properties into temp memory */
 	if (temp != NULL)
@@ -5663,6 +5675,19 @@ term_getjob(term_T *term)
 /**************************************
  * 2. MS-Windows implementation.
  */
+#ifdef PROTO
+typedef int COORD;
+typedef int DWORD;
+typedef int HANDLE;
+typedef int *DWORD_PTR;
+typedef int HPCON;
+typedef int HRESULT;
+typedef int LPPROC_THREAD_ATTRIBUTE_LIST;
+typedef int SIZE_T;
+typedef int PSIZE_T;
+typedef int PVOID;
+typedef int WINAPI;
+#endif
 
 HRESULT (WINAPI *pCreatePseudoConsole)(COORD, HANDLE, HANDLE, DWORD, HPCON*);
 HRESULT (WINAPI *pResizePseudoConsole)(HPCON, COORD);
@@ -5775,7 +5800,7 @@ conpty_term_and_job_init(
     {
 	/* Request by CreateProcessW */
 	breq = wcslen(cmd_wchar) + 1 + 1;	/* Addition of NUL by API */
-	cmd_wchar_copy = (PWSTR)alloc((int)(breq * sizeof(WCHAR)));
+	cmd_wchar_copy = ALLOC_MULT(WCHAR, breq);
 	wcsncpy(cmd_wchar_copy, cmd_wchar, breq - 1);
     }
 
@@ -5804,8 +5829,7 @@ conpty_term_and_job_init(
 
     /* Set up pipe inheritance safely: Vista or later. */
     pInitializeProcThreadAttributeList(NULL, 1, 0, &breq);
-    term->tl_siex.lpAttributeList =
-	    (PPROC_THREAD_ATTRIBUTE_LIST)alloc((int)breq);
+    term->tl_siex.lpAttributeList = alloc(breq);
     if (!term->tl_siex.lpAttributeList)
 	goto failed;
     if (!pInitializeProcThreadAttributeList(term->tl_siex.lpAttributeList, 1,

@@ -146,12 +146,7 @@ typedef int LPSECURITY_ATTRIBUTES;
 # define __stdcall /* empty */
 #endif
 
-#if defined(__BORLANDC__)
-/* Strangely Borland uses a non-standard name. */
-# define wcsicmp(a, b) wcscmpi((a), (b))
-#endif
-
-#ifndef FEAT_GUI_MSWIN
+#if !defined(FEAT_GUI_MSWIN) || defined(VIMDLL)
 /* Win32 Console handles for input and output */
 static HANDLE g_hConIn  = INVALID_HANDLE_VALUE;
 static HANDLE g_hConOut = INVALID_HANDLE_VALUE;
@@ -179,7 +174,8 @@ static void gotoxy(unsigned x, unsigned y);
 static void standout(void);
 static int s_cursor_visible = TRUE;
 static int did_create_conin = FALSE;
-#else
+#endif
+#ifdef FEAT_GUI_MSWIN
 static int s_dont_use_vimrun = TRUE;
 static int need_vimrun_warning = FALSE;
 static char *vimrun_path = "vimrun ";
@@ -193,7 +189,7 @@ static int conpty_working = 0;
 static int conpty_stable = 0;
 static void vtp_flag_init();
 
-#ifndef FEAT_GUI_MSWIN
+#if !defined(FEAT_GUI_MSWIN) || defined(VIMDLL)
 static int vtp_working = 0;
 static void vtp_init();
 static void vtp_exit();
@@ -227,7 +223,7 @@ static void reset_console_color_rgb(void);
 # define ENABLE_VIRTUAL_TERMINAL_PROCESSING 0x0004
 #endif
 
-#ifndef FEAT_GUI_MSWIN
+#if !defined(FEAT_GUI_MSWIN) || defined(VIMDLL)
 static int suppress_winsize = 1;	/* don't fiddle with console */
 #endif
 
@@ -235,7 +231,7 @@ static char_u *exe_path = NULL;
 
 static BOOL win8_or_later = FALSE;
 
-#ifndef FEAT_GUI_MSWIN
+#if !defined(FEAT_GUI_MSWIN) || defined(VIMDLL)
 /* Dynamic loading for portability */
 typedef struct _DYN_CONSOLE_SCREEN_BUFFER_INFOEX
 {
@@ -284,7 +280,7 @@ get_build_number(void)
     return ver;
 }
 
-#ifndef FEAT_GUI_MSWIN
+#if !defined(FEAT_GUI_MSWIN) || defined(VIMDLL)
 /*
  * Version of ReadConsoleInput() that works with IME.
  * Works around problems on Windows 8.
@@ -497,6 +493,28 @@ vimLoadLib(char *name)
     }
     return dll;
 }
+
+#if defined(VIMDLL) || defined(PROTO)
+/*
+ * Check if the current executable file is for the GUI subsystem.
+ */
+    int
+mch_is_gui_executable(void)
+{
+    PBYTE		pImage = (PBYTE)GetModuleHandle(NULL);
+    PIMAGE_DOS_HEADER	pDOS = (PIMAGE_DOS_HEADER)pImage;
+    PIMAGE_NT_HEADERS	pPE;
+
+    if (pDOS->e_magic != IMAGE_DOS_SIGNATURE)
+	return FALSE;
+    pPE = (PIMAGE_NT_HEADERS)(pImage + pDOS->e_lfanew);
+    if (pPE->Signature != IMAGE_NT_SIGNATURE)
+	return FALSE;
+    if (pPE->OptionalHeader.Subsystem == IMAGE_SUBSYSTEM_WINDOWS_GUI)
+	return TRUE;
+    return FALSE;
+}
+#endif
 
 #if defined(DYNAMIC_ICONV) || defined(DYNAMIC_GETTEXT) || defined(PROTO)
 /*
@@ -818,7 +836,7 @@ PlatformId(void)
     }
 }
 
-#ifndef FEAT_GUI_MSWIN
+#if !defined(FEAT_GUI_MSWIN) || defined(VIMDLL)
 
 #define SHIFT  (SHIFT_PRESSED)
 #define CTRL   (RIGHT_CTRL_PRESSED | LEFT_CTRL_PRESSED)
@@ -920,9 +938,6 @@ static const struct
 
 /* The return code indicates key code size. */
     static int
-#ifdef __BORLANDC__
-    __stdcall
-#endif
 win32_kbd_patch_key(
     KEY_EVENT_RECORD *pker)
 {
@@ -1118,7 +1133,7 @@ decode_key_event(
 /*
  * For the GUI the mouse handling is in gui_w32.c.
  */
-# ifdef FEAT_GUI_MSWIN
+# if defined(FEAT_GUI_MSWIN) && !defined(VIMDLL)
     void
 mch_setmouse(int on UNUSED)
 {
@@ -1138,6 +1153,10 @@ mch_setmouse(int on)
 {
     DWORD cmodein;
 
+#  ifdef VIMDLL
+    if (gui.in_use)
+	return;
+#  endif
     if (!g_fMouseAvail)
 	return;
 
@@ -1456,6 +1475,11 @@ mch_update_cursor(void)
     int		idx;
     int		thickness;
 
+# ifdef VIMDLL
+    if (gui.in_use)
+	return;
+# endif
+
     /*
      * How the cursor is drawn depends on the current mode.
      */
@@ -1469,7 +1493,7 @@ mch_update_cursor(void)
 }
 #endif
 
-#ifndef FEAT_GUI_MSWIN	    /* this isn't used for the GUI */
+#if !defined(FEAT_GUI_MSWIN) || defined(VIMDLL)
 /*
  * Handle FOCUS_EVENT.
  */
@@ -1679,13 +1703,16 @@ WaitForChar(long msec, int ignore_input)
     return FALSE;
 }
 
-#ifndef FEAT_GUI_MSWIN
 /*
  * return non-zero if a character is available
  */
     int
 mch_char_avail(void)
 {
+# ifdef VIMDLL
+    if (gui.in_use)
+	return TRUE;
+# endif
     return WaitForChar(0L, FALSE);
 }
 
@@ -1696,10 +1723,13 @@ mch_char_avail(void)
     int
 mch_check_messages(void)
 {
+#  ifdef VIMDLL
+    if (gui.in_use)
+	return TRUE;
+#  endif
     return WaitForChar(0L, TRUE);
 }
 # endif
-#endif
 
 /*
  * Create the console input.  Used when reading stdin doesn't work.
@@ -1781,13 +1811,18 @@ mch_inchar(
     long	time UNUSED,
     int		tb_change_cnt UNUSED)
 {
-#ifndef FEAT_GUI_MSWIN	    /* this isn't used for the GUI */
+#if !defined(FEAT_GUI_MSWIN) || defined(VIMDLL)
 
     int		len;
     int		c;
 #define TYPEAHEADLEN 20
     static char_u   typeahead[TYPEAHEADLEN];	/* previously typed bytes. */
     static int	    typeaheadlen = 0;
+
+# ifdef VIMDLL
+    if (gui.in_use)
+	return 0;
+# endif
 
     /* First use any typeahead that was kept because "buf" was too small. */
     if (typeaheadlen > 0)
@@ -2042,8 +2077,7 @@ executable_exists(char *name, char_u **path, int use_path)
 	return FALSE;
 
     wcurpath = _wgetenv(L"PATH");
-    wnewpath = (WCHAR*)alloc((unsigned)(wcslen(wcurpath) + 3)
-	    * sizeof(WCHAR));
+    wnewpath = ALLOC_MULT(WCHAR, wcslen(wcurpath) + 3);
     if (wnewpath == NULL)
 	return FALSE;
     wcscpy(wnewpath, L".;");
@@ -2094,8 +2128,8 @@ bad_param_handler(const wchar_t *expression,
 /*
  * GUI version of mch_init().
  */
-    void
-mch_init(void)
+    static void
+mch_init_g(void)
 {
 #ifndef __MINGW32__
     extern int _fmode;
@@ -2162,7 +2196,9 @@ mch_init(void)
 }
 
 
-#else /* FEAT_GUI_MSWIN */
+#endif /* FEAT_GUI_MSWIN */
+
+#if !defined(FEAT_GUI_MSWIN) || defined(VIMDLL)
 
 #define SRWIDTH(sr) ((sr).Right - (sr).Left + 1)
 #define SRHEIGHT(sr) ((sr).Bottom - (sr).Top + 1)
@@ -2304,7 +2340,7 @@ SaveConsoleBuffer(
 	cb->BufferSize.Y = cb->Info.dwSize.Y;
 	NumCells = cb->BufferSize.X * cb->BufferSize.Y;
 	vim_free(cb->Buffer);
-	cb->Buffer = (PCHAR_INFO)alloc(NumCells * sizeof(CHAR_INFO));
+	cb->Buffer = ALLOC_MULT(CHAR_INFO, NumCells);
 	if (cb->Buffer == NULL)
 	    return FALSE;
     }
@@ -2328,7 +2364,7 @@ SaveConsoleBuffer(
     {
 	cb->NumRegions = numregions;
 	vim_free(cb->Regions);
-	cb->Regions = (PSMALL_RECT)alloc(cb->NumRegions * sizeof(SMALL_RECT));
+	cb->Regions = ALLOC_MULT(SMALL_RECT, cb->NumRegions);
 	if (cb->Regions == NULL)
 	{
 	    VIM_CLEAR(cb->Buffer);
@@ -2444,11 +2480,6 @@ static ConsoleBuffer g_cbNonTermcap = { 0 };
 static ConsoleBuffer g_cbTermcap = { 0 };
 
 #ifdef FEAT_TITLE
-#ifdef __BORLANDC__
-typedef HWND (__stdcall *GETCONSOLEWINDOWPROC)(VOID);
-#else
-typedef HWND (WINAPI *GETCONSOLEWINDOWPROC)(VOID);
-#endif
 char g_szOrigTitle[256] = { 0 };
 HWND g_hWnd = NULL;	/* also used in os_mswin.c */
 static HICON g_hOrigIconSmall = NULL;
@@ -2565,8 +2596,8 @@ static DWORD g_cmodeout = 0;
 /*
  * non-GUI version of mch_init().
  */
-    void
-mch_init(void)
+    static void
+mch_init_c(void)
 {
 #ifndef FEAT_RESTORE_ORIG_SCREEN
     CONSOLE_SCREEN_BUFFER_INFO csbi;
@@ -2662,8 +2693,8 @@ mch_init(void)
  * Shut down and exit with status `r'
  * Careful: mch_exit() may be called before mch_init()!
  */
-    void
-mch_exit(int r)
+    static void
+mch_exit_c(int r)
 {
     exiting = TRUE;
 
@@ -2713,6 +2744,36 @@ mch_exit(int r)
 }
 #endif /* !FEAT_GUI_MSWIN */
 
+    void
+mch_init(void)
+{
+#ifdef VIMDLL
+    if (gui.starting)
+	mch_init_g();
+    else
+	mch_init_c();
+#elif defined(FEAT_GUI_MSWIN)
+    mch_init_g();
+#else
+    mch_init_c();
+#endif
+}
+
+    void
+mch_exit(int r)
+{
+#ifdef VIMDLL
+    if (gui.in_use || gui.starting)
+	mch_exit_g(r);
+    else
+	mch_exit_c(r);
+#elif defined(FEAT_GUI_MSWIN)
+    mch_exit_g(r);
+#else
+    mch_exit_c(r);
+#endif
+}
+
 /*
  * Do we have an interactive window?
  */
@@ -2723,9 +2784,13 @@ mch_check_win(
 {
     get_exe_name();
 
-#ifdef FEAT_GUI_MSWIN
+#if defined(FEAT_GUI_MSWIN) && !defined(VIMDLL)
     return OK;	    /* GUI always has a tty */
 #else
+# ifdef VIMDLL
+    if (gui.in_use)
+	return OK;
+# endif
     if (isatty(1))
 	return OK;
     return FAIL;
@@ -2831,6 +2896,23 @@ mch_get_pid(void)
     return (long)GetCurrentProcessId();
 }
 
+/*
+ * return TRUE if process "pid" is still running
+ */
+    int
+mch_process_running(long pid)
+{
+    HANDLE  hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, 0, (DWORD)pid);
+    DWORD   status = 0;
+    int	    ret = FALSE;
+
+    if (hProcess == NULL)
+	return FALSE;  // might not have access
+    if (GetExitCodeProcess(hProcess, &status) )
+	ret = status == STILL_ACTIVE;
+    CloseHandle(hProcess);
+    return ret;
+}
 
 /*
  * Get name of current directory into buffer 'buf' of length 'len' bytes.
@@ -3314,7 +3396,7 @@ mch_get_acl(char_u *fname)
     struct my_acl   *p = NULL;
     DWORD   err;
 
-    p = (struct my_acl *)alloc_clear((unsigned)sizeof(struct my_acl));
+    p = ALLOC_CLEAR_ONE(struct my_acl);
     if (p != NULL)
     {
 	WCHAR	*wn;
@@ -3448,7 +3530,7 @@ mch_free_acl(vim_acl_T acl)
 #endif
 }
 
-#ifndef FEAT_GUI_MSWIN
+#if !defined(FEAT_GUI_MSWIN) || defined(VIMDLL)
 
 /*
  * handler for ctrl-break, ctrl-c interrupts, and fatal events.
@@ -3518,6 +3600,10 @@ mch_settmode(int tmode)
     DWORD cmodeout;
     BOOL bEnableHandler;
 
+# ifdef VIMDLL
+    if (gui.in_use)
+	return;
+# endif
     GetConsoleMode(g_hConIn, &cmodein);
     GetConsoleMode(g_hConOut, &cmodeout);
     if (tmode == TMODE_RAW)
@@ -3530,7 +3616,7 @@ mch_settmode(int tmode)
 #endif
 	cmodeout &= ~(
 #ifdef FEAT_TERMGUICOLORS
-	    /* Do not turn off the ENABLE_PROCESSRD_OUTPUT flag when using
+	    /* Do not turn off the ENABLE_PROCESSED_OUTPUT flag when using
 	     * VTP. */
 	    ((vtp_working) ? 0 : ENABLE_PROCESSED_OUTPUT) |
 #else
@@ -3572,6 +3658,10 @@ mch_get_shellsize(void)
 {
     CONSOLE_SCREEN_BUFFER_INFO csbi;
 
+# ifdef VIMDLL
+    if (gui.in_use)
+	return OK;
+# endif
     if (!g_fTermcapMode && g_cbTermcap.IsValid)
     {
 	/*
@@ -3719,6 +3809,10 @@ mch_set_shellsize(void)
 {
     COORD coordScreen;
 
+# ifdef VIMDLL
+    if (gui.in_use)
+	return;
+# endif
     /* Don't change window size while still starting up */
     if (suppress_winsize != 0)
     {
@@ -3746,6 +3840,10 @@ mch_set_shellsize(void)
     void
 mch_new_shellsize(void)
 {
+# ifdef VIMDLL
+    if (gui.in_use)
+	return;
+# endif
     set_scroll_region(0, 0, Columns - 1, Rows - 1);
 }
 
@@ -4371,7 +4469,7 @@ mch_system_piped(char *cmd, int options)
 }
 
     static int
-mch_system(char *cmd, int options)
+mch_system_g(char *cmd, int options)
 {
     /* if we can pipe and the shelltemp option is off */
     if (!p_stmp)
@@ -4379,10 +4477,11 @@ mch_system(char *cmd, int options)
     else
 	return mch_system_classic(cmd, options);
 }
-#else
+#endif
 
+#if !defined(FEAT_GUI_MSWIN) || defined(VIMDLL)
     static int
-mch_system(char *cmd, int options)
+mch_system_c(char *cmd, int options)
 {
     int		ret;
     WCHAR	*wcmd;
@@ -4397,6 +4496,21 @@ mch_system(char *cmd, int options)
 }
 
 #endif
+
+    static int
+mch_system(char *cmd, int options)
+{
+#ifdef VIMDLL
+    if (gui.in_use || gui.starting)
+	return mch_system_g(cmd, options);
+    else
+	return mch_system_c(cmd, options);
+#elif defined(FEAT_GUI_MSWIN)
+    return mch_system_g(cmd, options);
+#else
+    return mch_system_c(cmd, options);
+#endif
+}
 
 #if defined(FEAT_GUI) && defined(FEAT_TERMINAL)
 /*
@@ -4421,7 +4535,7 @@ mch_call_shell_terminal(
 	cmdlen = STRLEN(p_sh) + 1;
     else
 	cmdlen = STRLEN(p_sh) + STRLEN(p_shcf) + STRLEN(cmd) + 10;
-    newcmd = lalloc(cmdlen, TRUE);
+    newcmd = alloc(cmdlen);
     if (newcmd == NULL)
 	return 255;
     if (cmd == NULL)
@@ -4529,7 +4643,11 @@ mch_call_shell(
 #endif
 #if defined(FEAT_GUI) && defined(FEAT_TERMINAL)
     /* TODO: make the terminal window work with input or output redirected. */
-    if (vim_strchr(p_go, GO_TERMINAL) != NULL
+    if (
+# ifdef VIMDLL
+	gui.in_use &&
+# endif
+	vim_strchr(p_go, GO_TERMINAL) != NULL
 	 && (options & (SHELL_FILTER|SHELL_DOOUT|SHELL_WRITE|SHELL_READ)) == 0)
     {
 	/* Use a terminal window to run the command in. */
@@ -4656,7 +4774,7 @@ mch_call_shell(
 		{
 		    /* make "cmd.exe /c arguments" */
 		    cmdlen = STRLEN(cmd_shell) + STRLEN(subcmd) + 5;
-		    newcmd = lalloc(cmdlen, TRUE);
+		    newcmd = alloc(cmdlen);
 		    if (newcmd != NULL)
 			vim_snprintf((char *)newcmd, cmdlen, "%s /c %s",
 						       cmd_shell, subcmd);
@@ -4681,7 +4799,10 @@ mch_call_shell(
 	    {
 		x = -1;
 #ifdef FEAT_GUI_MSWIN
-		emsg(_("E371: Command not found"));
+# ifdef VIMDLL
+		if (gui.in_use)
+# endif
+		    emsg(_("E371: Command not found"));
 #endif
 	    }
 
@@ -4699,17 +4820,24 @@ mch_call_shell(
 	}
 	else
 	{
-	    cmdlen = (
+	    cmdlen =
 #ifdef FEAT_GUI_MSWIN
-		(!p_stmp ? 0 : STRLEN(vimrun_path)) +
+		((gui.in_use || gui.starting) ?
+		    (!s_dont_use_vimrun && p_stmp ?
+			STRLEN(vimrun_path) : STRLEN(p_sh) + STRLEN(p_shcf))
+		    : 0) +
 #endif
-		STRLEN(p_sh) + STRLEN(p_shcf) + STRLEN(cmd) + 10);
+		STRLEN(p_sh) + STRLEN(p_shcf) + STRLEN(cmd) + 10;
 
-	    newcmd = lalloc(cmdlen, TRUE);
+	    newcmd = alloc(cmdlen);
 	    if (newcmd != NULL)
 	    {
 #if defined(FEAT_GUI_MSWIN)
-		if (need_vimrun_warning)
+		if (
+# ifdef VIMDLL
+		    (gui.in_use || gui.starting) &&
+# endif
+		    need_vimrun_warning)
 		{
 		    char *msg = _("VIMRUN.EXE not found in your $PATH.\n"
 			"External commands will not pause after completion.\n"
@@ -4724,14 +4852,26 @@ mch_call_shell(
 		    vim_free(wtitle);
 		    need_vimrun_warning = FALSE;
 		}
-		if (!s_dont_use_vimrun && p_stmp)
-		    /* Use vimrun to execute the command.  It opens a console
-		     * window, which can be closed without killing Vim. */
+		if (
+# ifdef VIMDLL
+		    (gui.in_use || gui.starting) &&
+# endif
+		    !s_dont_use_vimrun && p_stmp)
+		    // Use vimrun to execute the command.  It opens a console
+		    // window, which can be closed without killing Vim.
 		    vim_snprintf((char *)newcmd, cmdlen, "%s%s%s %s %s",
 			    vimrun_path,
 			    (msg_silent != 0 || (options & SHELL_DOOUT))
 								 ? "-s " : "",
 			    p_sh, p_shcf, cmd);
+		else if (
+# ifdef VIMDLL
+			(gui.in_use || gui.starting) &&
+# endif
+			STRCMP(p_shcf, "/c") == 0)
+		    // workaround for the case that "vimrun" does not exist
+		    vim_snprintf((char *)newcmd, cmdlen, "%s %s %s %s %s",
+					   p_sh, p_shcf, p_sh, p_shcf, cmd);
 		else
 #endif
 		    vim_snprintf((char *)newcmd, cmdlen, "%s %s %s",
@@ -4748,7 +4888,8 @@ mch_call_shell(
     /* Print the return value, unless "vimrun" was used. */
     if (x != 0 && !(options & SHELL_SILENT) && !emsg_silent
 #if defined(FEAT_GUI_MSWIN)
-		&& ((options & SHELL_DOOUT) || s_dont_use_vimrun || !p_stmp)
+	    && ((gui.in_use || gui.starting) ?
+		((options & SHELL_DOOUT) || s_dont_use_vimrun || !p_stmp) : 1)
 #endif
 	    )
     {
@@ -5280,7 +5421,7 @@ mch_clear_job(job_T *job)
 #endif
 
 
-#ifndef FEAT_GUI_MSWIN
+#if !defined(FEAT_GUI_MSWIN) || defined(VIMDLL)
 
 /*
  * Start termcap mode
@@ -5399,7 +5540,7 @@ termcap_mode_end(void)
 #endif /* FEAT_GUI_MSWIN */
 
 
-#ifdef FEAT_GUI_MSWIN
+#if defined(FEAT_GUI_MSWIN) && !defined(VIMDLL)
     void
 mch_write(
     char_u  *s UNUSED,
@@ -5696,7 +5837,7 @@ gotoxy(
 
 /*
  * Set the current text attribute = (foreground | background)
- * See ../doc/os_win32.txt for the numbers.
+ * See ../runtime/doc/os_win32.txt for the numbers.
  */
     static void
 textattr(WORD wAttr)
@@ -5813,7 +5954,7 @@ visual_bell(void)
     WORD    attrFlash = ~g_attrCurrent & 0xff;
 
     DWORD   dwDummy;
-    LPWORD  oldattrs = (LPWORD)alloc(Rows * Columns * sizeof(WORD));
+    LPWORD  oldattrs = ALLOC_MULT(WORD, Rows * Columns);
 
     if (oldattrs == NULL)
 	return;
@@ -5864,7 +6005,7 @@ write_chars(
     if (unicodebuf == NULL || length > unibuflen)
     {
 	vim_free(unicodebuf);
-	unicodebuf = (WCHAR *)lalloc(length * sizeof(WCHAR), FALSE);
+	unicodebuf = LALLOC_MULT(WCHAR, length);
 	unibuflen = length;
     }
     MultiByteToWideChar(cp, 0, (LPCSTR)pchBuf, cbToWrite,
@@ -5926,6 +6067,11 @@ mch_write(
     char_u  *s,
     int	    len)
 {
+# ifdef VIMDLL
+    if (gui.in_use)
+	return;
+# endif
+
     s[len] = NUL;
 
     if (!term_console)
@@ -6224,9 +6370,16 @@ mch_delay(
     long    msec,
     int	    ignoreinput UNUSED)
 {
-#ifdef FEAT_GUI_MSWIN
+#if defined(FEAT_GUI_MSWIN) && !defined(VIMDLL)
     Sleep((int)msec);	    /* never wait for input */
 #else /* Console */
+# ifdef VIMDLL
+    if (gui.in_use)
+    {
+	Sleep((int)msec);	    /* never wait for input */
+	return;
+    }
+# endif
     if (ignoreinput)
 # ifdef FEAT_MZSCHEME
 	if (mzthreads_allowed() && p_mzq > 0 && msec > p_mzq)
@@ -6288,13 +6441,16 @@ mch_remove(char_u *name)
     void
 mch_breakcheck(int force)
 {
-#ifndef FEAT_GUI_MSWIN	    /* never used */
-    if (g_fCtrlCPressed || g_fCBrkPressed)
-    {
-	ctrl_break_was_pressed = g_fCBrkPressed;
-	g_fCtrlCPressed = g_fCBrkPressed = FALSE;
-	got_int = TRUE;
-    }
+#if !defined(FEAT_GUI_MSWIN) || defined(VIMDLL)
+# ifdef VIMDLL
+    if (!gui.in_use)
+# endif
+	if (g_fCtrlCPressed || g_fCBrkPressed)
+	{
+	    ctrl_break_was_pressed = g_fCBrkPressed;
+	    g_fCtrlCPressed = g_fCBrkPressed = FALSE;
+	    got_int = TRUE;
+	}
 #endif
 }
 
@@ -6310,7 +6466,7 @@ mch_total_mem(int special UNUSED)
     MEMORYSTATUSEX  ms;
 
     /* Need to use GlobalMemoryStatusEx() when there is more memory than
-     * what fits in 32 bits. But it's not always available. */
+     * what fits in 32 bits. */
     ms.dwLength = sizeof(MEMORYSTATUSEX);
     GlobalMemoryStatusEx(&ms);
     if (ms.ullAvailVirtual < ms.ullTotalPhys)
@@ -6530,8 +6686,6 @@ getout:
     int
 mch_open(const char *name, int flags, int mode)
 {
-    /* _wopen() does not work with Borland C 5.5: creates a read-only file. */
-#ifndef __BORLANDC__
     WCHAR	*wn;
     int		f;
 
@@ -6542,16 +6696,6 @@ mch_open(const char *name, int flags, int mode)
     f = _wopen(wn, flags, mode);
     vim_free(wn);
     return f;
-#else
-    /* open() can open a file which name is longer than _MAX_PATH bytes
-     * and shorter than _MAX_PATH characters successfully, but sometimes it
-     * causes unexpected error in another part. We make it an error explicitly
-     * here. */
-    if (strlen(name) >= _MAX_PATH)
-	return -1;
-
-    return open(name, flags, mode);
-#endif
 }
 
 /*
@@ -6975,7 +7119,7 @@ fix_arg_enc(void)
 	return;
 
     /* Remember the buffer numbers for the arguments. */
-    fnum_list = (int *)alloc((int)sizeof(int) * GARGCOUNT);
+    fnum_list = ALLOC_MULT(int, GARGCOUNT);
     if (fnum_list == NULL)
 	return;		/* out of memory */
     for (i = 0; i < GARGCOUNT; ++i)
@@ -7062,7 +7206,7 @@ mch_setenv(char *var, char *value, int x)
     char_u	*envbuf;
     WCHAR	*p;
 
-    envbuf = alloc((unsigned)(STRLEN(var) + STRLEN(value) + 2));
+    envbuf = alloc(STRLEN(var) + STRLEN(value) + 2);
     if (envbuf == NULL)
 	return -1;
 
@@ -7100,17 +7244,22 @@ mch_setenv(char *var, char *value, int x)
 vtp_flag_init(void)
 {
     DWORD   ver = get_build_number();
-#ifndef FEAT_GUI_MSWIN
+#if !defined(FEAT_GUI_MSWIN) || defined(VIMDLL)
     DWORD   mode;
     HANDLE  out;
 
-    out = GetStdHandle(STD_OUTPUT_HANDLE);
+# ifdef VIMDLL
+    if (!gui.in_use)
+# endif
+    {
+	out = GetStdHandle(STD_OUTPUT_HANDLE);
 
-    vtp_working = (ver >= VTP_FIRST_SUPPORT_BUILD) ? 1 : 0;
-    GetConsoleMode(out, &mode);
-    mode |= (ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
-    if (SetConsoleMode(out, mode) == 0)
-	vtp_working = 0;
+	vtp_working = (ver >= VTP_FIRST_SUPPORT_BUILD) ? 1 : 0;
+	GetConsoleMode(out, &mode);
+	mode |= (ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+	if (SetConsoleMode(out, mode) == 0)
+	    vtp_working = 0;
+    }
 #endif
 
     if (ver >= CONPTY_FIRST_SUPPORT_BUILD)
@@ -7120,7 +7269,7 @@ vtp_flag_init(void)
 
 }
 
-#if !defined(FEAT_GUI_MSWIN) || defined(PROTO)
+#if !defined(FEAT_GUI_MSWIN) || defined(VIMDLL) || defined(PROTO)
 
     static void
 vtp_init(void)
@@ -7345,7 +7494,7 @@ is_conpty_stable(void)
     return conpty_stable;
 }
 
-#if !defined(FEAT_GUI_MSWIN) || defined(PROTO)
+#if !defined(FEAT_GUI_MSWIN) || defined(VIMDLL) || defined(PROTO)
     void
 resize_console_buf(void)
 {

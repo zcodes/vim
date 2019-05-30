@@ -456,7 +456,7 @@ close_buffer(
     win_T	*win,		/* if not NULL, set b_last_cursor */
     buf_T	*buf,
     int		action,
-    int		abort_if_last UNUSED)
+    int		abort_if_last)
 {
     int		is_curbuf;
     int		nwindows;
@@ -925,11 +925,9 @@ free_buffer_stuff(
 	CHANGEDTICK(buf) = tick;
     }
 #endif
-#ifdef FEAT_USR_CMDS
-    uc_clear(&buf->b_ucmds);		/* clear local user commands */
-#endif
+    uc_clear(&buf->b_ucmds);		// clear local user commands
 #ifdef FEAT_SIGNS
-    buf_delete_signs(buf, (char_u *)"*");	// delete any signs */
+    buf_delete_signs(buf, (char_u *)"*");	// delete any signs
 #endif
 #ifdef FEAT_NETBEANS_INTG
     netbeans_file_killed(buf);
@@ -974,43 +972,38 @@ goto_buffer(
     int		dir,
     int		count)
 {
-#if defined(HAS_SWAP_EXISTS_ACTION)
     bufref_T	old_curbuf;
 
     set_bufref(&old_curbuf, curbuf);
 
     swap_exists_action = SEA_DIALOG;
-#endif
     (void)do_buffer(*eap->cmd == 's' ? DOBUF_SPLIT : DOBUF_GOTO,
 					     start, dir, count, eap->forceit);
-#if defined(HAS_SWAP_EXISTS_ACTION)
     if (swap_exists_action == SEA_QUIT && *eap->cmd == 's')
     {
-# if defined(FEAT_EVAL)
+#if defined(FEAT_EVAL)
 	cleanup_T   cs;
 
 	/* Reset the error/interrupt/exception state here so that
 	 * aborting() returns FALSE when closing a window. */
 	enter_cleanup(&cs);
-# endif
+#endif
 
 	/* Quitting means closing the split window, nothing else. */
 	win_close(curwin, TRUE);
 	swap_exists_action = SEA_NONE;
 	swap_exists_did_quit = TRUE;
 
-# if defined(FEAT_EVAL)
+#if defined(FEAT_EVAL)
 	/* Restore the error/interrupt/exception state if not discarded by a
 	 * new aborting error, interrupt, or uncaught exception. */
 	leave_cleanup(&cs);
-# endif
+#endif
     }
     else
 	handle_swap_exists(&old_curbuf);
-#endif
 }
 
-#if defined(HAS_SWAP_EXISTS_ACTION) || defined(PROTO)
 /*
  * Handle the situation of swap_exists_action being set.
  * It is allowed for "old_curbuf" to be NULL or invalid.
@@ -1018,21 +1011,21 @@ goto_buffer(
     void
 handle_swap_exists(bufref_T *old_curbuf)
 {
-# if defined(FEAT_EVAL)
+#if defined(FEAT_EVAL)
     cleanup_T	cs;
-# endif
-# ifdef FEAT_SYN_HL
+#endif
+#ifdef FEAT_SYN_HL
     long	old_tw = curbuf->b_p_tw;
-# endif
+#endif
     buf_T	*buf;
 
     if (swap_exists_action == SEA_QUIT)
     {
-# if defined(FEAT_EVAL)
+#if defined(FEAT_EVAL)
 	/* Reset the error/interrupt/exception state here so that
 	 * aborting() returns FALSE when closing a buffer. */
 	enter_cleanup(&cs);
-# endif
+#endif
 
 	/* User selected Quit at ATTENTION prompt.  Go back to previous
 	 * buffer.  If that buffer is gone or the same as the current one,
@@ -1055,43 +1048,42 @@ handle_swap_exists(bufref_T *old_curbuf)
 	    // restore msg_silent, so that the command line will be shown
 	    msg_silent = old_msg_silent;
 
-# ifdef FEAT_SYN_HL
+#ifdef FEAT_SYN_HL
 	    if (old_tw != curbuf->b_p_tw)
 		check_colorcolumn(curwin);
-# endif
+#endif
 	}
 	/* If "old_curbuf" is NULL we are in big trouble here... */
 
-# if defined(FEAT_EVAL)
+#if defined(FEAT_EVAL)
 	/* Restore the error/interrupt/exception state if not discarded by a
 	 * new aborting error, interrupt, or uncaught exception. */
 	leave_cleanup(&cs);
-# endif
+#endif
     }
     else if (swap_exists_action == SEA_RECOVER)
     {
-# if defined(FEAT_EVAL)
+#if defined(FEAT_EVAL)
 	/* Reset the error/interrupt/exception state here so that
 	 * aborting() returns FALSE when closing a buffer. */
 	enter_cleanup(&cs);
-# endif
+#endif
 
 	/* User selected Recover at ATTENTION prompt. */
 	msg_scroll = TRUE;
-	ml_recover();
+	ml_recover(FALSE);
 	msg_puts("\n");	/* don't overwrite the last message */
 	cmdline_row = msg_row;
 	do_modelines(0);
 
-# if defined(FEAT_EVAL)
+#if defined(FEAT_EVAL)
 	/* Restore the error/interrupt/exception state if not discarded by a
 	 * new aborting error, interrupt, or uncaught exception. */
 	leave_cleanup(&cs);
-# endif
+#endif
     }
     swap_exists_action = SEA_NONE;
 }
-#endif
 
 /*
  * do_bufdel() - delete or unload buffer(s)
@@ -1750,9 +1742,12 @@ enter_buffer(buf_T *buf)
     }
     else
     {
-	if (!msg_silent)
-	    need_fileinfo = TRUE;	/* display file info after redraw */
-	(void)buf_check_timestamp(curbuf, FALSE); /* check if file changed */
+	if (!msg_silent && !shortmess(SHM_FILEINFO))
+	    need_fileinfo = TRUE;	// display file info after redraw
+
+	// check if file changed
+	(void)buf_check_timestamp(curbuf, FALSE);
+
 	curwin->w_topline = 1;
 #ifdef FEAT_DIFF
 	curwin->w_topfill = 0;
@@ -1963,7 +1958,7 @@ buflist_new(
     }
     if (buf != curbuf || curbuf == NULL)
     {
-	buf = (buf_T *)alloc_clear((unsigned)sizeof(buf_T));
+	buf = ALLOC_CLEAR_ONE(buf_T);
 	if (buf == NULL)
 	{
 	    vim_free(ffname);
@@ -1990,7 +1985,7 @@ buflist_new(
     }
 
     clear_wininfo(buf);
-    buf->b_wininfo = (wininfo_T *)alloc_clear((unsigned)sizeof(wininfo_T));
+    buf->b_wininfo = ALLOC_CLEAR_ONE(wininfo_T);
 
     if ((ffname != NULL && (buf->b_ffname == NULL || buf->b_sfname == NULL))
 	    || buf->b_wininfo == NULL)
@@ -2221,6 +2216,9 @@ free_buf_options(
     clear_string_option(&buf->b_p_path);
     clear_string_option(&buf->b_p_tags);
     clear_string_option(&buf->b_p_tc);
+#ifdef FEAT_EVAL
+    clear_string_option(&buf->b_p_tfu);
+#endif
 #ifdef FEAT_INS_EXPAND
     clear_string_option(&buf->b_p_dict);
     clear_string_option(&buf->b_p_tsr);
@@ -2579,7 +2577,7 @@ ExpandBufnames(
     /* Make a copy of "pat" and change "^" to "\(^\|[\/]\)". */
     if (*pat == '^')
     {
-	patc = alloc((unsigned)STRLEN(pat) + 11);
+	patc = alloc(STRLEN(pat) + 11);
 	if (patc == NULL)
 	    return FAIL;
 	STRCPY(patc, "\\(^\\|[\\/]\\)");
@@ -2636,7 +2634,7 @@ ExpandBufnames(
 		break;
 	    if (round == 1)
 	    {
-		*file = (char_u **)alloc((unsigned)(count * sizeof(char_u *)));
+		*file = ALLOC_MULT(char_u *, count);
 		if (*file == NULL)
 		{
 		    vim_regfree(regmatch.regprog);
@@ -2773,7 +2771,7 @@ buflist_setfpos(
     if (wip == NULL)
     {
 	/* allocate a new entry */
-	wip = (wininfo_T *)alloc_clear((unsigned)sizeof(wininfo_T));
+	wip = ALLOC_CLEAR_ONE(wininfo_T);
 	if (wip == NULL)
 	    return;
 	wip->wi_win = win;
@@ -3432,7 +3430,7 @@ fileinfo(
     char	*buffer;
     size_t	len;
 
-    buffer = (char *)alloc(IOSIZE);
+    buffer = alloc(IOSIZE);
     if (buffer == NULL)
 	return;
 
@@ -3895,7 +3893,8 @@ build_stl_str_hl(
     char_u	base;
     char_u	opt;
 #define TMPLEN 70
-    char_u	tmp[TMPLEN];
+    char_u	buf_tmp[TMPLEN];
+    char_u	win_tmp[TMPLEN];
     char_u	*usefmt = fmt;
     struct stl_hlrec *sp;
     int		save_must_redraw = must_redraw;
@@ -3908,9 +3907,17 @@ build_stl_str_hl(
      */
     if (fmt[0] == '%' && fmt[1] == '!')
     {
+	typval_T	tv;
+
+	tv.v_type = VAR_NUMBER;
+	tv.vval.v_number = wp->w_id;
+	set_var((char_u *)"g:statusline_winid", &tv, FALSE);
+
 	usefmt = eval_to_string_safe(fmt + 2, NULL, use_sandbox);
 	if (usefmt == NULL)
 	    usefmt = fmt;
+
+	do_unlet((char_u *)"g:statusline_winid", TRUE);
     }
 #endif
 
@@ -4227,8 +4234,11 @@ build_stl_str_hl(
 	    p = t;
 
 #ifdef FEAT_EVAL
-	    vim_snprintf((char *)tmp, sizeof(tmp), "%d", curbuf->b_fnum);
-	    set_internal_string_var((char_u *)"g:actual_curbuf", tmp);
+	    vim_snprintf((char *)buf_tmp, sizeof(buf_tmp),
+							 "%d", curbuf->b_fnum);
+	    set_internal_string_var((char_u *)"g:actual_curbuf", buf_tmp);
+	    vim_snprintf((char *)win_tmp, sizeof(win_tmp), "%d", curwin->w_id);
+	    set_internal_string_var((char_u *)"g:actual_curwin", win_tmp);
 
 	    save_curbuf = curbuf;
 	    save_curwin = curwin;
@@ -4240,6 +4250,7 @@ build_stl_str_hl(
 	    curwin = save_curwin;
 	    curbuf = save_curbuf;
 	    do_unlet((char_u *)"g:actual_curbuf", TRUE);
+	    do_unlet((char_u *)"g:actual_curwin", TRUE);
 
 	    if (str != NULL && *str != 0)
 	    {
@@ -4292,21 +4303,21 @@ build_stl_str_hl(
 	    break;
 
 	case STL_ALTPERCENT:
-	    str = tmp;
+	    str = buf_tmp;
 	    get_rel_pos(wp, str, TMPLEN);
 	    break;
 
 	case STL_ARGLISTSTAT:
 	    fillable = FALSE;
-	    tmp[0] = 0;
-	    if (append_arg_number(wp, tmp, (int)sizeof(tmp), FALSE))
-		str = tmp;
+	    buf_tmp[0] = 0;
+	    if (append_arg_number(wp, buf_tmp, (int)sizeof(buf_tmp), FALSE))
+		str = buf_tmp;
 	    break;
 
 	case STL_KEYMAP:
 	    fillable = FALSE;
-	    if (get_keymap_str(wp, (char_u *)"<%s>", tmp, TMPLEN))
-		str = tmp;
+	    if (get_keymap_str(wp, (char_u *)"<%s>", buf_tmp, TMPLEN))
+		str = buf_tmp;
 	    break;
 	case STL_PAGENUM:
 #if defined(FEAT_PRINTER) || defined(FEAT_GUI_TABLINE)
@@ -4362,9 +4373,9 @@ build_stl_str_hl(
 	    if (*wp->w_buffer->b_p_ft != NUL
 		    && STRLEN(wp->w_buffer->b_p_ft) < TMPLEN - 3)
 	    {
-		vim_snprintf((char *)tmp, sizeof(tmp), "[%s]",
+		vim_snprintf((char *)buf_tmp, sizeof(buf_tmp), "[%s]",
 							wp->w_buffer->b_p_ft);
-		str = tmp;
+		str = buf_tmp;
 	    }
 	    break;
 
@@ -4373,11 +4384,11 @@ build_stl_str_hl(
 	    if (*wp->w_buffer->b_p_ft != NUL
 		    && STRLEN(wp->w_buffer->b_p_ft) < TMPLEN - 2)
 	    {
-		vim_snprintf((char *)tmp, sizeof(tmp), ",%s",
+		vim_snprintf((char *)buf_tmp, sizeof(buf_tmp), ",%s",
 							wp->w_buffer->b_p_ft);
-		for (t = tmp; *t != 0; t++)
+		for (t = buf_tmp; *t != 0; t++)
 		    *t = TOUPPER_LOC(*t);
-		str = tmp;
+		str = buf_tmp;
 	    }
 	    break;
 
@@ -4900,7 +4911,7 @@ do_arg_all(
     setpcmark();
 
     opened_len = ARGCOUNT;
-    opened = alloc_clear((unsigned)opened_len);
+    opened = alloc_clear(opened_len);
     if (opened == NULL)
 	return;
 
@@ -4945,7 +4956,7 @@ do_arg_all(
 		    if (i < alist->al_ga.ga_len
 			    && (AARGLIST(alist)[i].ae_fnum == buf->b_fnum
 				|| fullpathcmp(alist_name(&AARGLIST(alist)[i]),
-					      buf->b_ffname, TRUE) & FPC_SAME))
+					buf->b_ffname, TRUE, TRUE) & FPC_SAME))
 		    {
 			int weight = 1;
 
@@ -5258,28 +5269,23 @@ ex_buffer_all(exarg_T *eap)
 		continue;
 
 	    /* Open the buffer in this window. */
-#if defined(HAS_SWAP_EXISTS_ACTION)
 	    swap_exists_action = SEA_DIALOG;
-#endif
 	    set_curbuf(buf, DOBUF_GOTO);
 	    if (!bufref_valid(&bufref))
 	    {
 		/* autocommands deleted the buffer!!! */
-#if defined(HAS_SWAP_EXISTS_ACTION)
 		swap_exists_action = SEA_NONE;
-#endif
 		break;
 	    }
-#if defined(HAS_SWAP_EXISTS_ACTION)
 	    if (swap_exists_action == SEA_QUIT)
 	    {
-# if defined(FEAT_EVAL)
+#if defined(FEAT_EVAL)
 		cleanup_T   cs;
 
 		/* Reset the error/interrupt/exception state here so that
 		 * aborting() returns FALSE when closing a window. */
 		enter_cleanup(&cs);
-# endif
+#endif
 
 		/* User selected Quit at ATTENTION prompt; close this window. */
 		win_close(curwin, TRUE);
@@ -5287,16 +5293,15 @@ ex_buffer_all(exarg_T *eap)
 		swap_exists_action = SEA_NONE;
 		swap_exists_did_quit = TRUE;
 
-# if defined(FEAT_EVAL)
+#if defined(FEAT_EVAL)
 		/* Restore the error/interrupt/exception state if not
 		 * discarded by a new aborting error, interrupt, or uncaught
 		 * exception. */
 		leave_cleanup(&cs);
-# endif
+#endif
 	    }
 	    else
 		handle_swap_exists(NULL);
-#endif
 	}
 
 	ui_breakcheck();
@@ -5673,7 +5678,17 @@ bt_help(buf_T *buf)
     int
 bt_prompt(buf_T *buf)
 {
-    return buf != NULL && buf->b_p_bt[0] == 'p';
+    return buf != NULL && buf->b_p_bt[0] == 'p' && buf->b_p_bt[1] == 'r';
+}
+
+/*
+ * Return TRUE if "buf" is a buffer for a popup window.
+ */
+    int
+bt_popup(buf_T *buf)
+{
+    return buf != NULL && buf->b_p_bt != NULL
+	&& buf->b_p_bt[0] == 'p' && buf->b_p_bt[1] == 'o';
 }
 
 /*
