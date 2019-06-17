@@ -296,6 +296,7 @@ static void	ex_tag_cmd(exarg_T *eap, char_u *name);
 # define ex_endtry		ex_ni
 # define ex_endfunction		ex_ni
 # define ex_let			ex_ni
+# define ex_const		ex_ni
 # define ex_unlet		ex_ni
 # define ex_lockvar		ex_ni
 # define ex_unlockvar		ex_ni
@@ -4852,6 +4853,7 @@ replace_makeprg(exarg_T *eap, char_u *p, char_u **cmdlinep)
 
 /*
  * Expand file name in Ex command argument.
+ * When an error is detected, "errormsgp" is set to a non-NULL pointer.
  * Return FAIL for failure, OK otherwise.
  */
     int
@@ -5452,6 +5454,8 @@ ex_doautocmd(exarg_T *eap)
     static void
 ex_bunload(exarg_T *eap)
 {
+    if (ERROR_IF_POPUP_WINDOW)
+	return;
     eap->errmsg = do_bufdel(
 	    eap->cmdidx == CMD_bdelete ? DOBUF_DEL
 		: eap->cmdidx == CMD_bwipeout ? DOBUF_WIPE
@@ -5466,6 +5470,8 @@ ex_bunload(exarg_T *eap)
     static void
 ex_buffer(exarg_T *eap)
 {
+    if (ERROR_IF_POPUP_WINDOW)
+	return;
     if (*eap->arg)
 	eap->errmsg = e_trailing;
     else
@@ -6768,6 +6774,9 @@ ex_splitview(exarg_T *eap)
 		       || eap->cmdidx == CMD_tabfind
 		       || eap->cmdidx == CMD_tabnew;
 
+    if (ERROR_IF_POPUP_WINDOW)
+	return;
+
 #ifdef FEAT_GUI
     need_mouse_correct = TRUE;
 #endif
@@ -6895,6 +6904,8 @@ ex_tabnext(exarg_T *eap)
 {
     int tab_number;
 
+    if (ERROR_IF_POPUP_WINDOW)
+	return;
     switch (eap->cmdidx)
     {
 	case CMD_tabfirst:
@@ -7146,6 +7157,8 @@ do_exedit(
     int		need_hide;
     int		exmode_was = exmode_active;
 
+    if (ERROR_IF_POPUP_WINDOW)
+	return;
     /*
      * ":vi" command ends Ex mode.
      */
@@ -9896,7 +9909,7 @@ makeopens(
 		    && wp->w_buffer->b_ffname != NULL
 		    && !bt_help(wp->w_buffer)
 #ifdef FEAT_QUICKFIX
-		    && !bt_nofile(wp->w_buffer)
+		    && !bt_nofilename(wp->w_buffer)
 #endif
 		    )
 	    {
@@ -10223,7 +10236,7 @@ ses_do_win(win_T *wp)
     if (wp->w_buffer->b_fname == NULL
 #ifdef FEAT_QUICKFIX
 	    /* When 'buftype' is "nofile" can't restore the window contents. */
-	    || bt_nofile(wp->w_buffer)
+	    || bt_nofilename(wp->w_buffer)
 #endif
        )
 	return (ssop_flags & SSOP_BLANK);
@@ -10310,7 +10323,7 @@ put_view(
 	 */
 	if (wp->w_buffer->b_ffname != NULL
 # ifdef FEAT_QUICKFIX
-		&& !bt_nofile(wp->w_buffer)
+		&& !bt_nofilename(wp->w_buffer)
 # endif
 		)
 	{

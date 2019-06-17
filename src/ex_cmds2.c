@@ -282,7 +282,7 @@ remove_timer(timer_T *timer)
     static void
 free_timer(timer_T *timer)
 {
-    free_callback(timer->tr_callback, timer->tr_partial);
+    free_callback(&timer->tr_callback);
     vim_free(timer);
 }
 
@@ -325,9 +325,8 @@ timer_callback(timer_T *timer)
     argv[0].vval.v_number = (varnumber_T)timer->tr_id;
     argv[1].v_type = VAR_UNKNOWN;
 
-    call_func(timer->tr_callback, -1,
-			&rettv, 1, argv, NULL, 0L, 0L, &dummy, TRUE,
-			timer->tr_partial, NULL);
+    call_callback(&timer->tr_callback, -1,
+			&rettv, 1, argv, NULL, 0L, 0L, &dummy, TRUE, NULL);
     clear_tv(&rettv);
 }
 
@@ -542,17 +541,8 @@ add_timer_info(typval_T *rettv, timer_T *timer)
     {
 	if (dict_add(dict, di) == FAIL)
 	    vim_free(di);
-	else if (timer->tr_partial != NULL)
-	{
-	    di->di_tv.v_type = VAR_PARTIAL;
-	    di->di_tv.vval.v_partial = timer->tr_partial;
-	    ++timer->tr_partial->pt_refcount;
-	}
 	else
-	{
-	    di->di_tv.v_type = VAR_FUNC;
-	    di->di_tv.vval.v_string = vim_strsave(timer->tr_callback);
-	}
+	    put_callback(&timer->tr_callback, &di->di_tv);
     }
 }
 
@@ -578,15 +568,15 @@ set_ref_in_timer(int copyID)
 
     for (timer = first_timer; timer != NULL; timer = timer->tr_next)
     {
-	if (timer->tr_partial != NULL)
+	if (timer->tr_callback.cb_partial != NULL)
 	{
 	    tv.v_type = VAR_PARTIAL;
-	    tv.vval.v_partial = timer->tr_partial;
+	    tv.vval.v_partial = timer->tr_callback.cb_partial;
 	}
 	else
 	{
 	    tv.v_type = VAR_FUNC;
-	    tv.vval.v_string = timer->tr_callback;
+	    tv.vval.v_string = timer->tr_callback.cb_name;
 	}
 	abort = abort || set_ref_in_item(&tv, copyID, NULL, NULL);
     }
@@ -1207,7 +1197,7 @@ dialog_changed(
     }
     else if (ret == VIM_NO)
     {
-	unchanged(buf, TRUE);
+	unchanged(buf, TRUE, FALSE);
     }
     else if (ret == VIM_ALL)
     {
@@ -1250,7 +1240,7 @@ dialog_changed(
 	 * mark all buffers as unchanged
 	 */
 	FOR_ALL_BUFFERS(buf2)
-	    unchanged(buf2, TRUE);
+	    unchanged(buf2, TRUE, FALSE);
     }
 }
 #endif
@@ -1874,6 +1864,8 @@ do_argfile(exarg_T *eap, int argn)
     char_u	*p;
     int		old_arg_idx = curwin->w_arg_idx;
 
+    if (ERROR_IF_POPUP_WINDOW)
+	return;
     if (argn < 0 || argn >= ARGCOUNT)
     {
 	if (ARGCOUNT <= 1)

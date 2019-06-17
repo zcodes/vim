@@ -1349,7 +1349,7 @@ ex_doautoall(exarg_T *eap)
      */
     FOR_ALL_BUFFERS(buf)
     {
-	if (buf->b_ml.ml_mfp != NULL && !bt_popup(buf))
+	if (buf->b_ml.ml_mfp != NULL)
 	{
 	    // find a window for this buffer and save some values
 	    aucmd_prepbuf(&aco, buf);
@@ -1612,8 +1612,6 @@ apply_autocmds(
     int		force,	    // when TRUE, ignore autocmd_busy
     buf_T	*buf)	    // buffer for <abuf>
 {
-    if (bt_popup(buf))
-	return FALSE;
     return apply_autocmds_group(event, fname, fname_io, force,
 						      AUGROUP_ALL, buf, NULL);
 }
@@ -1711,7 +1709,6 @@ has_cursormoved(void)
     return (first_autopat[(int)EVENT_CURSORMOVED] != NULL);
 }
 
-#if defined(FEAT_CONCEAL) || defined(PROTO)
 /*
  * Return TRUE when there is a CursorMovedI autocommand defined.
  */
@@ -1720,7 +1717,6 @@ has_cursormovedI(void)
 {
     return (first_autopat[(int)EVENT_CURSORMOVEDI] != NULL);
 }
-#endif
 
 /*
  * Return TRUE when there is a TextChanged autocommand defined.
