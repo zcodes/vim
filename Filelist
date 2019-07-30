@@ -88,6 +88,7 @@ SRC_ALL =	\
 		src/regexp.h \
 		src/screen.c \
 		src/search.c \
+		src/session.c \
 		src/sha256.c \
 		src/sign.c \
 		src/sound.c \
@@ -110,6 +111,7 @@ SRC_ALL =	\
 		src/version.c \
 		src/version.h \
 		src/vim.h \
+		src/viminfo.c \
 		src/winclip.c \
 		src/window.c \
 		src/tee/tee.c \
@@ -217,6 +219,7 @@ SRC_ALL =	\
 		src/proto/regexp.pro \
 		src/proto/screen.pro \
 		src/proto/search.pro \
+		src/proto/session.pro \
 		src/proto/sha256.pro \
 		src/proto/sign.pro \
 		src/proto/sound.pro \
@@ -234,6 +237,7 @@ SRC_ALL =	\
 		src/proto/usercmd.pro \
 		src/proto/userfunc.pro \
 		src/proto/version.pro \
+		src/proto/viminfo.pro \
 		src/proto/winclip.pro \
 		src/proto/window.pro \
 		src/libvterm/.bzrignore \

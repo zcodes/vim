@@ -75,6 +75,7 @@ SRC =	arabic.c						\
 	regexp.c						\
 	screen.c						\
 	search.c						\
+	session.c						\
 	sha256.c						\
 	sign.c							\
 	spell.c							\
@@ -89,6 +90,7 @@ SRC =	arabic.c						\
 	usercmd.c						\
 	userfunc.c						\
 	version.c						\
+	viminfo.c						\
 	window.c						\
 
 OBJ =	$(SRC:.c=.o)

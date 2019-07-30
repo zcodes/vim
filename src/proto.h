@@ -107,6 +107,9 @@ extern int _stricoll(char *a, char *b);
 # ifdef FEAT_ARABIC
 #  include "arabic.pro"
 # endif
+# ifdef FEAT_VIMINFO
+# include "viminfo.pro"
+# endif
 
 /* These prototypes cannot be produced automatically. */
 int smsg(const char *, ...)
@@ -180,6 +183,7 @@ void qsort(void *base, size_t elm_count, size_t elm_size, int (*cmp)(const void 
 # endif
 # include "regexp.pro"
 # include "screen.pro"
+# include "session.pro"
 # if defined(FEAT_CRYPT) || defined(FEAT_PERSISTENT_UNDO)
 #  include "sha256.pro"
 # endif
