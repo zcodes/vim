@@ -86,7 +86,7 @@ func Test_popup_with_border_and_padding()
 	  call setline(1, range(1, 100))
 	  call popup_create('hello border', #{line: 2, col: 3, border: []})
 	  call popup_create('hello padding', #{line: 2, col: 23, padding: []})
-	  call popup_create('hello both', #{line: 2, col: 43, border: [], padding: []})
+	  call popup_create('hello both', #{line: 2, col: 43, border: [], padding: [], highlight: 'Normal'})
 	  call popup_create('border TL', #{line: 6, col: 3, border: [1, 0, 0, 4]})
 	  call popup_create('paddings', #{line: 6, col: 23, padding: [1, 3, 2, 4]})
 	  call popup_create('wrapped longer text', #{line: 8, col: 55, padding: [0, 3, 0, 3], border: [0, 1, 0, 1]})
@@ -354,6 +354,7 @@ func Test_popup_drag()
 	call setline(1, range(1, 20))
 	let winid = popup_create(['1111', '222222', '33333'], #{
 	      \ drag: 1,
+	      \ resize: 1,
 	      \ border: [],
 	      \ line: &lines - 4,
 	      \ })
@@ -362,6 +363,11 @@ func Test_popup_drag()
 	endfunc
 	map <silent> <F3> :call test_setmouse(&lines - 4, &columns / 2)<CR>
 	map <silent> <F4> :call test_setmouse(&lines - 8, &columns / 2)<CR>
+	func Resize()
+	  call feedkeys("\<F5>\<LeftMouse>\<F6>\<LeftDrag>\<LeftRelease>", "xt")
+	endfunc
+	map <silent> <F5> :call test_setmouse(6, 41)<CR>
+	map <silent> <F6> :call test_setmouse(7, 45)<CR>
   END
   call writefile(lines, 'XtestPopupDrag')
   let buf = RunVimInTerminal('-S XtestPopupDrag', #{rows: 10})
@@ -369,6 +375,9 @@ func Test_popup_drag()
 
   call term_sendkeys(buf, ":call Dragit()\<CR>")
   call VerifyScreenDump(buf, 'Test_popupwin_drag_02', {})
+
+  call term_sendkeys(buf, ":call Resize()\<CR>")
+  call VerifyScreenDump(buf, 'Test_popupwin_drag_03', {})
 
   " clean up
   call StopVimInTerminal(buf)
@@ -648,6 +657,7 @@ func Test_popup_invalid_arguments()
   call assert_fails('call popup_create("text", #{mask: ["asdf"]})', 'E475:')
   call popup_clear()
   call assert_fails('call popup_create("text", #{mask: test_null_list()})', 'E475:')
+  call assert_fails('call popup_create("text", #{mapping: []})', 'E745:')
   call popup_clear()
 endfunc
 
@@ -936,6 +946,7 @@ func Test_popup_getoptions()
   call assert_equal(21, res.maxheight)
   call assert_equal(100, res.zindex)
   call assert_equal(1, res.fixed)
+  call assert_equal(1, res.mapping)
   if has('timers')
     call assert_equal(5000, res.time)
   endif
@@ -1194,6 +1205,8 @@ func Test_popup_menu()
     let s:cb_winid = a:id
     let s:cb_res = a:res
   endfunc
+  " mapping won't be used in popup
+  map j k
 
   let winid = ShowMenu(" ", 1)
   let winid = ShowMenu("j \<CR>", 2)
@@ -1206,6 +1219,7 @@ func Test_popup_menu()
   let winid = ShowMenu("\<C-C>", -1)
 
   delfunc QuitCallback
+  unmap j
 endfunc
 
 func Test_popup_menu_screenshot()
@@ -1268,11 +1282,19 @@ func Test_popup_title()
   " put the title on.
   let lines =<< trim END
 	call setline(1, range(1, 20))
-	call popup_create(['one', 'two', 'another'], #{title: 'Title String'})
+	let winid = popup_create(['one', 'two', 'another'], #{title: 'Title String'})
   END
   call writefile(lines, 'XtestPopupTitle')
   let buf = RunVimInTerminal('-S XtestPopupTitle', #{rows: 10})
   call VerifyScreenDump(buf, 'Test_popupwin_title', {})
+
+  call term_sendkeys(buf, ":call popup_setoptions(winid, #{maxwidth: 20, title: 'a very long title that is not going to fit'})\<CR>")
+  call term_sendkeys(buf, ":\<CR>")
+  call VerifyScreenDump(buf, 'Test_popupwin_longtitle_1', {})
+
+  call term_sendkeys(buf, ":call popup_setoptions(winid, #{border: []})\<CR>")
+  call term_sendkeys(buf, ":\<CR>")
+  call VerifyScreenDump(buf, 'Test_popupwin_longtitle_2', {})
 
   " clean up
   call StopVimInTerminal(buf)
@@ -2184,6 +2206,9 @@ func Test_previewpopup()
 
   call term_sendkeys(buf, "/another\<CR>\<C-W>}")
   call VerifyScreenDump(buf, 'Test_popupwin_previewpopup_4', {})
+
+  call term_sendkeys(buf, ":cd ..\<CR>:\<CR>")
+  call VerifyScreenDump(buf, 'Test_popupwin_previewpopup_5', {})
 
   call StopVimInTerminal(buf)
   call delete('Xtags')
