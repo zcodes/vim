@@ -561,7 +561,7 @@ typedef struct expand
     int		xp_context;		// type of expansion
     char_u	*xp_pattern;		// start of item to expand
     int		xp_pattern_len;		// bytes in xp_pattern before cursor
-#if defined(FEAT_EVAL) && defined(FEAT_CMDL_COMPL)
+#if defined(FEAT_EVAL)
     char_u	*xp_arg;		// completion function
     sctx_T	xp_script_ctx;		// SCTX for completion function
 #endif
@@ -583,6 +583,33 @@ typedef struct expand
 #define XP_BS_NONE	0	// nothing special for backslashes
 #define XP_BS_ONE	1	// uses one backslash before a space
 #define XP_BS_THREE	2	// uses three backslashes before a space
+
+/*
+ * Variables shared between getcmdline(), redrawcmdline() and others.
+ * These need to be saved when using CTRL-R |, that's why they are in a
+ * structure.
+ */
+typedef struct
+{
+    char_u	*cmdbuff;	/* pointer to command line buffer */
+    int		cmdbufflen;	/* length of cmdbuff */
+    int		cmdlen;		/* number of chars in command line */
+    int		cmdpos;		/* current cursor position */
+    int		cmdspos;	/* cursor column on screen */
+    int		cmdfirstc;	/* ':', '/', '?', '=', '>' or NUL */
+    int		cmdindent;	/* number of spaces before cmdline */
+    char_u	*cmdprompt;	/* message in front of cmdline */
+    int		cmdattr;	/* attributes for prompt */
+    int		overstrike;	/* Typing mode on the command line.  Shared by
+				   getcmdline() and put_on_cmdline(). */
+    expand_T	*xpc;		/* struct being used for expansion, xp_pattern
+				   may point into cmdbuff */
+    int		xp_context;	/* type of expansion */
+# ifdef FEAT_EVAL
+    char_u	*xp_arg;	/* user-defined expansion arg */
+    int		input_fn;	/* when TRUE Invoked for input() function */
+# endif
+} cmdline_info_T;
 
 /*
  * Command modifiers ":vertical", ":browse", ":confirm" and ":hide" set a flag.
@@ -2040,9 +2067,7 @@ typedef struct
 # define B_SPELL(buf)  (0)
 #endif
 
-#ifdef FEAT_QUICKFIX
 typedef struct qf_info_S qf_info_T;
-#endif
 
 #ifdef FEAT_PROFILE
 /*
@@ -2257,10 +2282,8 @@ struct file_buffer
 
     varnumber_T	b_last_changedtick; // b:changedtick when TextChanged or
 				    // TextChangedI was last triggered.
-#ifdef FEAT_INS_EXPAND
     varnumber_T	b_last_changedtick_pum; // b:changedtick when TextChangedP was
 					// last triggered.
-#endif
 
     int		b_saving;	// Set to TRUE if we are in the middle of
 				// saving the buffer.
@@ -2355,9 +2378,7 @@ struct file_buffer
     linenr_T	b_u_line_lnum;	// line number of line in u_line
     colnr_T	b_u_line_colnr;	// optional column number
 
-#ifdef FEAT_INS_EXPAND
     int		b_scanned;	// ^N/^P have scanned this buffer
-#endif
 
     // flags for use of ":lmap" and IM control
     long	b_p_iminsert;	// input mode for insert
@@ -2415,9 +2436,7 @@ struct file_buffer
 #ifdef FEAT_FOLDING
     char_u	*b_p_cms;	// 'commentstring'
 #endif
-#ifdef FEAT_INS_EXPAND
     char_u	*b_p_cpt;	// 'complete'
-#endif
 #ifdef BACKSLASH_IN_FILENAME
     char_u	*b_p_csl;	// 'completeslash'
 #endif
@@ -2524,10 +2543,8 @@ struct file_buffer
     char_u	*b_p_tags;	// 'tags' local value
     char_u	*b_p_tc;	// 'tagcase' local value
     unsigned	b_tc_flags;     // flags for 'tagcase'
-#ifdef FEAT_INS_EXPAND
     char_u	*b_p_dict;	// 'dictionary' local value
     char_u	*b_p_tsr;	// 'thesaurus' local value
-#endif
     long	b_p_ul;		// 'undolevels' local value
 #ifdef FEAT_PERSISTENT_UNDO
     int		b_p_udf;	// 'undofile'
@@ -3009,6 +3026,9 @@ struct window_S
     char_u	*w_popup_title;
     poppos_T	w_popup_pos;
     int		w_popup_fixed;	    // do not shift popup to fit on screen
+    int		w_popup_prop_type;  // when not zero: textprop type ID
+    win_T	*w_popup_prop_win;  // window to search for textprop
+    int		w_popup_prop_id;    // when not zero: textprop ID
     int		w_zindex;
     int		w_minheight;	    // "minheight" for popup window
     int		w_minwidth;	    // "minwidth" for popup window
@@ -3028,10 +3048,17 @@ struct window_S
 
     int		w_popup_leftoff;    // columns left of the screen
     int		w_popup_rightoff;   // columns right of the screen
-    varnumber_T	w_popup_last_changedtick; // b:changedtick when position was
-					  // computed
+    varnumber_T	w_popup_last_changedtick; // b:changedtick of popup buffer
+					  // when position was computed
+    varnumber_T	w_popup_prop_changedtick; // b:changedtick of buffer with
+					  // w_popup_prop_type when position
+					  // was computed
+    int		w_popup_prop_topline; // w_topline of window with
+				      // w_popup_prop_type when position was
+				      // computed
     callback_T	w_close_cb;	    // popup close callback
     callback_T	w_filter_cb;	    // popup filter callback
+    int		w_filter_mode;	    // mode when filter callback is used
 
     win_T	*w_popup_curwin;    // close popup if curwin differs
     linenr_T	w_popup_lnum;	    // close popup if cursor not on this line

@@ -55,6 +55,11 @@
 #endif
 
 static void channel_read(channel_T *channel, ch_part_T part, char *func);
+static ch_mode_T channel_get_mode(channel_T *channel, ch_part_T part);
+static int channel_get_timeout(channel_T *channel, ch_part_T part);
+static ch_part_T channel_part_send(channel_T *channel);
+static ch_part_T channel_part_read(channel_T *channel);
+static void free_job_options(jobopt_T *opt);
 
 /* Whether a redraw is needed for appending a line to a buffer. */
 static int channel_need_redraw = FALSE;
@@ -497,7 +502,31 @@ free_unused_channels(int copyID, int mask)
 
 #if defined(FEAT_GUI) || defined(PROTO)
 
-#if defined(FEAT_GUI_X11) || defined(FEAT_GUI_GTK)
+# if defined(FEAT_GUI_X11) || defined(FEAT_GUI_GTK)
+/*
+ * Lookup the channel from the socket.  Set "partp" to the fd index.
+ * Returns NULL when the socket isn't found.
+ */
+    static channel_T *
+channel_fd2channel(sock_T fd, ch_part_T *partp)
+{
+    channel_T	*channel;
+    ch_part_T	part;
+
+    if (fd != INVALID_FD)
+	for (channel = first_channel; channel != NULL;
+						   channel = channel->ch_next)
+	{
+	    for (part = PART_SOCK; part < PART_IN; ++part)
+		if (channel->ch_part[part].ch_fd == fd)
+		{
+		    *partp = part;
+		    return channel;
+		}
+	}
+    return NULL;
+}
+
     static void
 channel_read_fd(int fd)
 {
@@ -510,12 +539,12 @@ channel_read_fd(int fd)
     else
 	channel_read(channel, part, "channel_read_fd");
 }
-#endif
+# endif
 
 /*
  * Read a command from netbeans.
  */
-#ifdef FEAT_GUI_X11
+# ifdef FEAT_GUI_X11
     static void
 messageFromServerX11(XtPointer clientData,
 		  int *unused1 UNUSED,
@@ -523,10 +552,10 @@ messageFromServerX11(XtPointer clientData,
 {
     channel_read_fd((int)(long)clientData);
 }
-#endif
+# endif
 
-#ifdef FEAT_GUI_GTK
-# if GTK_CHECK_VERSION(3,0,0)
+# ifdef FEAT_GUI_GTK
+#  if GTK_CHECK_VERSION(3,0,0)
     static gboolean
 messageFromServerGtk3(GIOChannel *unused1 UNUSED,
 		  GIOCondition unused2 UNUSED,
@@ -536,7 +565,7 @@ messageFromServerGtk3(GIOChannel *unused1 UNUSED,
     return TRUE; /* Return FALSE instead in case the event source is to
 		  * be removed after this function returns. */
 }
-# else
+#  else
     static void
 messageFromServerGtk2(gpointer clientData,
 		  gint unused1 UNUSED,
@@ -544,8 +573,8 @@ messageFromServerGtk2(gpointer clientData,
 {
     channel_read_fd((int)(long)clientData);
 }
+#  endif
 # endif
-#endif
 
     static void
 channel_gui_register_one(channel_T *channel, ch_part_T part)
@@ -666,7 +695,7 @@ channel_gui_unregister(channel_T *channel)
 	channel_gui_unregister_one(channel, part);
 }
 
-#endif
+#endif  // FEAT_GUI
 
 static char *e_cannot_connect = N_("E902: Cannot connect to port");
 
@@ -1175,7 +1204,7 @@ channel_set_options(channel_T *channel, jobopt_T *opt)
 /*
  * Implements ch_open().
  */
-    channel_T *
+    static channel_T *
 channel_open_func(typval_T *argvars)
 {
     char_u	*address;
@@ -1348,7 +1377,7 @@ channel_set_job(channel_T *channel, job_T *job, jobopt_T *options)
 /*
  * Set the callback for "channel"/"part" for the response with "id".
  */
-    void
+    static void
 channel_set_req_callback(
 	channel_T   *channel,
 	ch_part_T   part,
@@ -2848,7 +2877,7 @@ channel_is_open(channel_T *channel)
 /*
  * Return TRUE if "channel" has JSON or other typeahead.
  */
-    int
+    static int
 channel_has_readahead(channel_T *channel, ch_part_T part)
 {
     ch_mode_T	ch_mode = channel->ch_part[part].ch_mode;
@@ -2959,7 +2988,7 @@ channel_part_info(channel_T *channel, dict_T *dict, char *name, ch_part_T part)
     dict_add_number(dict, namebuf, chanpart->ch_timeout);
 }
 
-    void
+    static void
 channel_info(channel_T *channel, dict_T *dict)
 {
     dict_add_number(dict, "id", channel->ch_id);
@@ -3067,7 +3096,7 @@ channel_close(channel_T *channel, int invoke_close_cb)
 /*
  * Close the "in" part channel "channel".
  */
-    void
+    static void
 channel_close_in(channel_T *channel)
 {
     ch_close_part(channel, PART_IN);
@@ -3676,7 +3705,7 @@ get_channel_arg(typval_T *tv, int check_open, int reading, ch_part_T part)
 /*
  * Common for ch_read() and ch_readraw().
  */
-    void
+    static void
 common_channel_read(typval_T *argvars, typval_T *rettv, int raw, int blob)
 {
     channel_T	*channel;
@@ -3755,33 +3784,6 @@ common_channel_read(typval_T *argvars, typval_T *rettv, int raw, int blob)
 theend:
     free_job_options(&opt);
 }
-
-# if defined(MSWIN) || defined(FEAT_GUI_X11) || defined(FEAT_GUI_GTK) \
-	|| defined(PROTO)
-/*
- * Lookup the channel from the socket.  Set "partp" to the fd index.
- * Returns NULL when the socket isn't found.
- */
-    channel_T *
-channel_fd2channel(sock_T fd, ch_part_T *partp)
-{
-    channel_T	*channel;
-    ch_part_T	part;
-
-    if (fd != INVALID_FD)
-	for (channel = first_channel; channel != NULL;
-						   channel = channel->ch_next)
-	{
-	    for (part = PART_SOCK; part < PART_IN; ++part)
-		if (channel->ch_part[part].ch_fd == fd)
-		{
-		    *partp = part;
-		    return channel;
-		}
-	}
-    return NULL;
-}
-# endif
 
 # if defined(MSWIN) || defined(FEAT_GUI) || defined(PROTO)
 /*
@@ -4092,7 +4094,7 @@ send_common(
 /*
  * common for "ch_evalexpr()" and "ch_sendexpr()"
  */
-    void
+    static void
 ch_expr_common(typval_T *argvars, typval_T *rettv, int eval)
 {
     char_u	*text;
@@ -4154,7 +4156,7 @@ ch_expr_common(typval_T *argvars, typval_T *rettv, int eval)
 /*
  * common for "ch_evalraw()" and "ch_sendraw()"
  */
-    void
+    static void
 ch_raw_common(typval_T *argvars, typval_T *rettv, int eval)
 {
     char_u	buf[NUMBUFLEN];
@@ -4540,7 +4542,7 @@ set_ref_in_channel(int copyID)
 /*
  * Return the "part" to write to for "channel".
  */
-    ch_part_T
+    static ch_part_T
 channel_part_send(channel_T *channel)
 {
     if (channel->CH_SOCK_FD == INVALID_FD)
@@ -4551,7 +4553,7 @@ channel_part_send(channel_T *channel)
 /*
  * Return the default "part" to read from for "channel".
  */
-    ch_part_T
+    static ch_part_T
 channel_part_read(channel_T *channel)
 {
     if (channel->CH_SOCK_FD == INVALID_FD)
@@ -4563,7 +4565,7 @@ channel_part_read(channel_T *channel)
  * Return the mode of "channel"/"part"
  * If "channel" is invalid returns MODE_JSON.
  */
-    ch_mode_T
+    static ch_mode_T
 channel_get_mode(channel_T *channel, ch_part_T part)
 {
     if (channel == NULL)
@@ -4574,7 +4576,7 @@ channel_get_mode(channel_T *channel, ch_part_T part)
 /*
  * Return the timeout of "channel"/"part"
  */
-    int
+    static int
 channel_get_timeout(channel_T *channel, ch_part_T part)
 {
     return channel->ch_part[part].ch_timeout;
@@ -4638,7 +4640,7 @@ clear_job_options(jobopt_T *opt)
 /*
  * Free any members of a jobopt_T.
  */
-    void
+    static void
 free_job_options(jobopt_T *opt)
 {
     if (opt->jo_callback.cb_partial != NULL)
@@ -5309,7 +5311,7 @@ job_free(job_T *job)
     }
 }
 
-job_T *jobs_to_free = NULL;
+static job_T *jobs_to_free = NULL;
 
 /*
  * Put "job" in a list to be freed later, when it's no longer referenced.

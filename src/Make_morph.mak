@@ -25,11 +25,13 @@ RM =		rm
 	${CC} ${CFLAGS} $< -o $@
 
 SRC =	arabic.c						\
+	arglist.c						\
 	autocmd.c						\
 	blowfish.c						\
 	buffer.c						\
 	change.c						\
 	charset.c						\
+	cmdexpand.c						\
 	cmdhist.c						\
 	crypt.c							\
 	crypt_zip.c						\
@@ -40,12 +42,14 @@ SRC =	arabic.c						\
 	edit.c							\
 	eval.c							\
 	evalfunc.c						\
+	evalvars.c						\
 	ex_cmds.c						\
 	ex_cmds2.c						\
 	ex_docmd.c						\
 	ex_eval.c						\
 	ex_getln.c						\
 	fileio.c						\
+	filepath.c						\
 	findfile.c						\
 	fold.c							\
 	getchar.c						\
@@ -75,6 +79,7 @@ SRC =	arabic.c						\
 	profiler.c						\
 	quickfix.c						\
 	regexp.c						\
+	scriptfile.c						\
 	screen.c						\
 	search.c						\
 	session.c						\

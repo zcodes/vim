@@ -751,7 +751,7 @@ get_equi_class(char_u **pp)
 /*
  * Table for equivalence class "c". (IBM-1047)
  */
-char *EQUIVAL_CLASS_C[16] = {
+static char *EQUIVAL_CLASS_C[16] = {
     "A\x62\x63\x64\x65\x66\x67",
     "C\x68",
     "E\x71\x72\x73\x74",
@@ -3436,7 +3436,7 @@ static int	regmatch(char_u *prog, proftime_T *tm, int *timed_out);
 static int	regrepeat(char_u *p, long maxcount);
 
 #ifdef DEBUG
-int		regnarrate = 0;
+static int		regnarrate = 0;
 #endif
 
 /*
@@ -7210,7 +7210,7 @@ typedef struct {
 static regsubmatch_T rsm;  /* can only be used when can_f_submatch is TRUE */
 #endif
 
-#if defined(FEAT_MODIFY_FNAME) || defined(FEAT_EVAL) || defined(PROTO)
+#ifdef FEAT_EVAL
 
 /*
  * Put the submatches in "argv[0]" which is a list passed into call_func() by
@@ -7254,6 +7254,7 @@ clear_submatch_list(staticList10_T *sl)
     for (i = 0; i < 10; ++i)
 	vim_free(sl->sl_items[i].li_tv.vval.v_string);
 }
+#endif
 
 /*
  * vim_regsub() - perform substitutions after a vim_regexec() or
@@ -7305,7 +7306,6 @@ vim_regsub(
 
     return result;
 }
-#endif
 
     int
 vim_regsub_multi(
@@ -8206,8 +8206,6 @@ vim_regexec(regmatch_T *rmp, char_u *line, colnr_T col)
     return vim_regexec_string(rmp, line, col, FALSE);
 }
 
-#if defined(FEAT_MODIFY_FNAME) || defined(FEAT_EVAL) \
-	|| defined(FIND_REPLACE_DIALOG) || defined(PROTO)
 /*
  * Like vim_regexec(), but consider a "\n" in "line" to be a line break.
  * Note: "rmp->regprog" may be freed and changed.
@@ -8218,7 +8216,6 @@ vim_regexec_nl(regmatch_T *rmp, char_u *line, colnr_T col)
 {
     return vim_regexec_string(rmp, line, col, TRUE);
 }
-#endif
 
 /*
  * Match a regexp against multiple lines.
