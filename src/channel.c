@@ -577,7 +577,7 @@ messageFromServerGtk2(gpointer clientData,
 # endif
 
     static void
-channel_gui_register_one(channel_T *channel, ch_part_T part)
+channel_gui_register_one(channel_T *channel, ch_part_T part UNUSED)
 {
     if (!CH_HAS_GUI)
 	return;
@@ -661,7 +661,7 @@ channel_gui_register_all(void)
 }
 
     static void
-channel_gui_unregister_one(channel_T *channel, ch_part_T part)
+channel_gui_unregister_one(channel_T *channel UNUSED, ch_part_T part UNUSED)
 {
 # ifdef FEAT_GUI_X11
     if (channel->ch_part[part].ch_inputHandler != (XtInputId)NULL)
@@ -1036,7 +1036,7 @@ prepare_buffer(buf_T *buf)
  * Returns NULL if there is something very wrong (error already reported).
  */
     static buf_T *
-find_buffer(char_u *name, int err, int msg)
+channel_find_buffer(char_u *name, int err, int msg)
 {
     buf_T *buf = NULL;
     buf_T *save_curbuf = curbuf;
@@ -1126,7 +1126,7 @@ channel_set_options(channel_T *channel, jobopt_T *opt)
 
 	    if (opt->jo_set2 & JO2_OUT_MSG)
 		msg = opt->jo_message[PART_OUT];
-	    buf = find_buffer(opt->jo_io_name[PART_OUT], FALSE, msg);
+	    buf = channel_find_buffer(opt->jo_io_name[PART_OUT], FALSE, msg);
 	}
 	if (buf != NULL)
 	{
@@ -1173,7 +1173,7 @@ channel_set_options(channel_T *channel, jobopt_T *opt)
 
 	    if (opt->jo_set2 & JO2_ERR_MSG)
 		msg = opt->jo_message[PART_ERR];
-	    buf = find_buffer(opt->jo_io_name[PART_ERR], TRUE, msg);
+	    buf = channel_find_buffer(opt->jo_io_name[PART_ERR], TRUE, msg);
 	}
 	if (buf != NULL)
 	{
@@ -3483,6 +3483,7 @@ channel_read(channel_T *channel, ch_part_T part, char *func)
  * Read from RAW or NL "channel"/"part".  Blocks until there is something to
  * read or the timeout expires.
  * When "raw" is TRUE don't block waiting on a NL.
+ * Does not trigger timers or handle messages.
  * Returns what was read in allocated memory.
  * Returns NULL in case of error or timeout.
  */
@@ -3569,6 +3570,17 @@ channel_read_block(
     return msg;
 }
 
+static int channel_blocking_wait = 0;
+
+/*
+ * Return TRUE if in a blocking wait that might trigger callbacks.
+ */
+    int
+channel_in_blocking_wait(void)
+{
+    return channel_blocking_wait > 0;
+}
+
 /*
  * Read one JSON message with ID "id" from "channel"/"part" and store the
  * result in "rettv".
@@ -3589,10 +3601,14 @@ channel_read_json_block(
     sock_T	fd;
     int		timeout;
     chanpart_T	*chanpart = &channel->ch_part[part];
+    int		retval = FAIL;
 
     ch_log(channel, "Blocking read JSON for id %d", id);
+    ++channel_blocking_wait;
+
     if (id >= 0)
 	channel_add_block_id(chanpart, id);
+
     for (;;)
     {
 	more = channel_parse_json(channel, part);
@@ -3600,10 +3616,9 @@ channel_read_json_block(
 	// search for message "id"
 	if (channel_get_json(channel, part, id, TRUE, rettv) == OK)
 	{
-	    if (id >= 0)
-		channel_remove_block_id(chanpart, id);
 	    ch_log(channel, "Received JSON for id %d", id);
-	    return OK;
+	    retval = OK;
+	    break;
 	}
 
 	if (!more)
@@ -3659,7 +3674,9 @@ channel_read_json_block(
     }
     if (id >= 0)
 	channel_remove_block_id(chanpart, id);
-    return FAIL;
+    --channel_blocking_wait;
+
+    return retval;
 }
 
 /*
@@ -4195,9 +4212,9 @@ ch_raw_common(typval_T *argvars, typval_T *rettv, int eval)
     free_job_options(&opt);
 }
 
-# define KEEP_OPEN_TIME 20  /* msec */
+#define KEEP_OPEN_TIME 20  /* msec */
 
-# if (defined(UNIX) && !defined(HAVE_SELECT)) || defined(PROTO)
+#if (defined(UNIX) && !defined(HAVE_SELECT)) || defined(PROTO)
 /*
  * Add open channels to the poll struct.
  * Return the adjusted struct index.
@@ -4288,9 +4305,9 @@ channel_poll_check(int ret_in, void *fds_in)
 
     return ret;
 }
-# endif /* UNIX && !HAVE_SELECT */
+#endif /* UNIX && !HAVE_SELECT */
 
-# if (!defined(MSWIN) && defined(HAVE_SELECT)) || defined(PROTO)
+#if (!defined(MSWIN) && defined(HAVE_SELECT)) || defined(PROTO)
 
 /*
  * The "fd_set" type is hidden to avoid problems with the function proto.
@@ -4381,7 +4398,7 @@ channel_select_check(int ret_in, void *rfds_in, void *wfds_in)
 	if (ret > 0 && in_part->ch_fd != INVALID_FD
 					    && FD_ISSET(in_part->ch_fd, wfds))
 	{
-	    /* Clear the flag first, ch_fd may change in channel_write_input(). */
+	    // Clear the flag first, ch_fd may change in channel_write_input().
 	    FD_CLR(in_part->ch_fd, wfds);
 	    channel_write_input(channel);
 	    --ret;
@@ -4390,11 +4407,12 @@ channel_select_check(int ret_in, void *rfds_in, void *wfds_in)
 
     return ret;
 }
-# endif /* !MSWIN && HAVE_SELECT */
+#endif // !MSWIN && HAVE_SELECT
 
 /*
  * Execute queued up commands.
- * Invoked from the main loop when it's safe to execute received commands.
+ * Invoked from the main loop when it's safe to execute received commands,
+ * and during a blocking wait for ch_evalexpr().
  * Return TRUE when something was done.
  */
     int
@@ -5782,7 +5800,7 @@ job_check_ended(void)
     job_T *
 job_start(
 	typval_T    *argvars,
-	char	    **argv_arg,
+	char	    **argv_arg UNUSED,
 	jobopt_T    *opt_arg,
 	int	    is_terminal UNUSED)
 {

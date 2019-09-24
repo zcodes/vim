@@ -797,8 +797,9 @@ func Test_popup_with_showbreak()
 	 set showbreak=>>\ 
 	 call setline(1, range(1, 20))
 	 let winid = popup_dialog(
-	   \ 'a long line here',
-	   \ #{filter: 'popup_filter_yesno'})
+	   \ 'a long line here that wraps',
+	   \ #{filter: 'popup_filter_yesno',
+	   \   maxwidth: 12})
   END
   call writefile(lines, 'XtestPopupShowbreak')
   let buf = RunVimInTerminal('-S XtestPopupShowbreak', #{rows: 10})
@@ -833,7 +834,7 @@ func Test_popup_time()
 
   sleep 700m
   redraw
-  let line = join(map(range(1, 5), 'screenstring(1, v:val)'), '')
+  let line = join(map(range(1, 5), '1->screenstring(v:val)'), '')
   call assert_equal('hello', line)
 
   call popup_create('on the command line', #{
@@ -1136,6 +1137,7 @@ endfunc
 
 func Test_popup_beval()
   CheckScreendump
+  CheckFeature balloon_eval_term
 
   let lines =<< trim END
 	call setline(1, range(1, 20))
@@ -1762,6 +1764,7 @@ func Test_popup_scrollbar()
 
   " remove the minwidth and maxheight
   call term_sendkeys(buf, ":call popup_setoptions(winid, #{maxheight: 0, minwidth: 0})\<CR>")
+  call term_sendkeys(buf, ":\<CR>")
   call VerifyScreenDump(buf, 'Test_popupwin_scroll_10', {})
 
   " clean up
@@ -2159,9 +2162,9 @@ func Test_popup_menu_filter()
 		call win_execute(a:winid, "call setpos('.', [0, line('.') - 1, 1, 0])")
 		return 1
 	  endif
-	  if a:key == 'x'
+	  if a:key == ':'
 		call popup_close(a:winid)
-		return 1
+		return 0
 	  endif
 	  return 0
 	endfunction
@@ -2185,7 +2188,10 @@ func Test_popup_menu_filter()
   call term_sendkeys(buf, "0")
   call VerifyScreenDump(buf, 'Test_popupwin_menu_filter_4', {})
 
-  call term_sendkeys(buf, "x")
+  " check that when the popup is closed in the filter the screen is redrawn
+  call term_sendkeys(buf, ":")
+  call VerifyScreenDump(buf, 'Test_popupwin_menu_filter_5', {})
+  call term_sendkeys(buf, "\<CR>")
 
   " clean up
   call StopVimInTerminal(buf)
@@ -2301,6 +2307,20 @@ func Test_popup_cursorline()
   call term_sendkeys(buf, "j")
   call VerifyScreenDump(buf, 'Test_popupwin_cursorline_6', {})
   call term_sendkeys(buf, "x")
+  call StopVimInTerminal(buf)
+
+  " ---------
+  " Cursor in second line when creating the popup
+  " ---------
+  let lines =<< trim END
+    let winid = popup_create(['111', '222', '333'], #{
+	  \ cursorline : 1,
+	  \ })
+    call win_execute(winid, "2")
+  END
+  call writefile(lines, 'XtestPopupCursorLine')
+  let buf = RunVimInTerminal('-S XtestPopupCursorLine', #{rows: 10})
+  call VerifyScreenDump(buf, 'Test_popupwin_cursorline_7', {})
   call StopVimInTerminal(buf)
 
   call delete('XtestPopupCursorLine')

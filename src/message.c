@@ -168,11 +168,6 @@ msg_attr_keep(
 	ch_log(NULL, "ERROR: %s", (char *)s);
 #endif
 
-    /* When displaying keep_msg, don't let msg_start() free it, caller must do
-     * that. */
-    if ((char_u *)s == keep_msg)
-	keep_msg = NULL;
-
     /* Truncate the message if needed. */
     msg_start();
     buf = msg_strtrunc((char_u *)s, FALSE);
@@ -1063,9 +1058,7 @@ wait_return(int redraw)
 	screenalloc(FALSE);
 
 	State = HITRETURN;
-#ifdef FEAT_MOUSE
 	setmouse();
-#endif
 #ifdef USE_ON_FLY_SCROLL
 	dont_scroll = TRUE;		/* disallow scrolling here */
 #endif
@@ -1221,9 +1214,7 @@ wait_return(int redraw)
      */
     tmpState = State;
     State = oldState;		    /* restore State before set_shellsize */
-#ifdef FEAT_MOUSE
     setmouse();
-#endif
     msg_check();
 
 #if defined(UNIX) || defined(VMS)
@@ -2689,9 +2680,7 @@ do_more_prompt(int typed_char)
     }
 
     State = ASKMORE;
-#ifdef FEAT_MOUSE
     setmouse();
-#endif
     if (typed_char == NUL)
 	msg_moremsg(FALSE);
     for (;;)
@@ -2907,9 +2896,7 @@ do_more_prompt(int typed_char)
     /* clear the --more-- message */
     screen_fill((int)Rows - 1, (int)Rows, 0, (int)Columns, ' ', ' ', 0);
     State = oldState;
-#ifdef FEAT_MOUSE
     setmouse();
-#endif
     if (quit_more)
     {
 	msg_row = Rows - 1;
@@ -3613,9 +3600,7 @@ do_dialog(
 
     oldState = State;
     State = CONFIRM;
-#ifdef FEAT_MOUSE
     setmouse();
-#endif
 
     /*
      * Since we wait for a keypress, don't make the
@@ -3678,9 +3663,7 @@ do_dialog(
     }
 
     State = oldState;
-#ifdef FEAT_MOUSE
     setmouse();
-#endif
     --no_wait_return;
     msg_end_prompt();
 
