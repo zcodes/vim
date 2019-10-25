@@ -593,23 +593,23 @@ typedef struct expand
  */
 typedef struct
 {
-    char_u	*cmdbuff;	/* pointer to command line buffer */
-    int		cmdbufflen;	/* length of cmdbuff */
-    int		cmdlen;		/* number of chars in command line */
-    int		cmdpos;		/* current cursor position */
-    int		cmdspos;	/* cursor column on screen */
-    int		cmdfirstc;	/* ':', '/', '?', '=', '>' or NUL */
-    int		cmdindent;	/* number of spaces before cmdline */
-    char_u	*cmdprompt;	/* message in front of cmdline */
-    int		cmdattr;	/* attributes for prompt */
-    int		overstrike;	/* Typing mode on the command line.  Shared by
-				   getcmdline() and put_on_cmdline(). */
-    expand_T	*xpc;		/* struct being used for expansion, xp_pattern
-				   may point into cmdbuff */
-    int		xp_context;	/* type of expansion */
+    char_u	*cmdbuff;	// pointer to command line buffer
+    int		cmdbufflen;	// length of cmdbuff
+    int		cmdlen;		// number of chars in command line
+    int		cmdpos;		// current cursor position
+    int		cmdspos;	// cursor column on screen
+    int		cmdfirstc;	// ':', '/', '?', '=', '>' or NUL
+    int		cmdindent;	// number of spaces before cmdline
+    char_u	*cmdprompt;	// message in front of cmdline
+    int		cmdattr;	// attributes for prompt
+    int		overstrike;	// Typing mode on the command line.  Shared by
+				// getcmdline() and put_on_cmdline().
+    expand_T	*xpc;		// struct being used for expansion, xp_pattern
+				// may point into cmdbuff
+    int		xp_context;	// type of expansion
 # ifdef FEAT_EVAL
-    char_u	*xp_arg;	/* user-defined expansion arg */
-    int		input_fn;	/* when TRUE Invoked for input() function */
+    char_u	*xp_arg;	// user-defined expansion arg
+    int		input_fn;	// when TRUE Invoked for input() function
 # endif
 } cmdline_info_T;
 
@@ -777,33 +777,32 @@ typedef struct proptype_S
 // Sign group
 typedef struct signgroup_S
 {
-    int		next_sign_id;		// next sign id for this group
-    short_u	refcount;		// number of signs in this group
+    int		sg_next_sign_id;	// next sign id for this group
+    short_u	sg_refcount;		// number of signs in this group
     char_u	sg_name[1];		// sign group name, actually longer
 } signgroup_T;
 
-typedef struct signlist signlist_T;
-
-struct signlist
+typedef struct sign_entry sign_entry_T;
+struct sign_entry
 {
-    int		id;		// unique identifier for each placed sign
-    linenr_T	lnum;		// line number which has this sign
-    int		typenr;		// typenr of sign
-    signgroup_T	*group;		// sign group
-    int		priority;	// priority for highlighting
-    signlist_T	*next;		// next signlist entry
-    signlist_T  *prev;		// previous entry -- for easy reordering
+    int		 se_id;		// unique identifier for each placed sign
+    linenr_T	 se_lnum;	// line number which has this sign
+    int		 se_typenr;	// typenr of sign
+    signgroup_T	 *se_group;	// sign group
+    int		 se_priority;	// priority for highlighting
+    sign_entry_T *se_next;	// next entry in a list of signs
+    sign_entry_T *se_prev;	// previous entry -- for easy reordering
 };
 
 /*
  * Sign attributes. Used by the screen refresh routines.
  */
 typedef struct sign_attrs_S {
-    int		typenr;
-    void	*icon;
-    char_u	*text;
-    int		texthl;
-    int		linehl;
+    int		sat_typenr;
+    void	*sat_icon;
+    char_u	*sat_text;
+    int		sat_texthl;
+    int		sat_linehl;
 } sign_attrs_T;
 
 #if defined(FEAT_SIGNS) || defined(PROTO)
@@ -1140,26 +1139,14 @@ typedef struct
 } vimconv_T;
 
 /*
- * Structure used for reading from the viminfo file.
- */
-typedef struct
-{
-    char_u	*vir_line;	// text of the current line
-    FILE	*vir_fd;	// file descriptor
-    vimconv_T	vir_conv;	// encoding conversion
-    int		vir_version;	// viminfo version detected or -1
-    garray_T	vir_barlines;	// lines starting with |
-} vir_T;
-
-/*
  * Structure used for the command line history.
  */
 typedef struct hist_entry
 {
-    int		hisnum;		/* identifying number */
-    int		viminfo;	/* when TRUE hisstr comes from viminfo */
-    char_u	*hisstr;	/* actual entry, separator char after the NUL */
-    time_t	time_set;	/* when it was typed, zero if unknown */
+    int		hisnum;		// identifying number
+    int		viminfo;	// when TRUE hisstr comes from viminfo
+    char_u	*hisstr;	// actual entry, separator char after the NUL
+    time_t	time_set;	// when it was typed, zero if unknown
 } histentry_T;
 
 #define CONV_NONE		0
@@ -1190,6 +1177,8 @@ struct mapblock
     char_u	*m_orig_str;	// rhs as entered by the user
     int		m_keylen;	// strlen(m_keys)
     int		m_mode;		// valid mode
+    int		m_simplified;	// m_keys was simplified, do not use this map
+				// if seenModifyOtherKeys is TRUE
     int		m_noremap;	// if non-zero no re-mapping for m_str
     char	m_silent;	// <silent> used, don't echo commands
     char	m_nowait;	// <nowait> used
@@ -1585,23 +1574,23 @@ typedef struct scriptitem_S
     ino_t	sn_ino;
 # endif
 # ifdef FEAT_PROFILE
-    int		sn_prof_on;	/* TRUE when script is/was profiled */
-    int		sn_pr_force;	/* forceit: profile functions in this script */
-    proftime_T	sn_pr_child;	/* time set when going into first child */
-    int		sn_pr_nest;	/* nesting for sn_pr_child */
-    /* profiling the script as a whole */
-    int		sn_pr_count;	/* nr of times sourced */
-    proftime_T	sn_pr_total;	/* time spent in script + children */
-    proftime_T	sn_pr_self;	/* time spent in script itself */
-    proftime_T	sn_pr_start;	/* time at script start */
-    proftime_T	sn_pr_children; /* time in children after script start */
-    /* profiling the script per line */
-    garray_T	sn_prl_ga;	/* things stored for every line */
-    proftime_T	sn_prl_start;	/* start time for current line */
-    proftime_T	sn_prl_children; /* time spent in children for this line */
-    proftime_T	sn_prl_wait;	/* wait start time for current line */
-    int		sn_prl_idx;	/* index of line being timed; -1 if none */
-    int		sn_prl_execed;	/* line being timed was executed */
+    int		sn_prof_on;	// TRUE when script is/was profiled
+    int		sn_pr_force;	// forceit: profile functions in this script
+    proftime_T	sn_pr_child;	// time set when going into first child
+    int		sn_pr_nest;	// nesting for sn_pr_child
+    // profiling the script as a whole
+    int		sn_pr_count;	// nr of times sourced
+    proftime_T	sn_pr_total;	// time spent in script + children
+    proftime_T	sn_pr_self;	// time spent in script itself
+    proftime_T	sn_pr_start;	// time at script start
+    proftime_T	sn_pr_children; // time in children after script start
+    // profiling the script per line
+    garray_T	sn_prl_ga;	// things stored for every line
+    proftime_T	sn_prl_start;	// start time for current line
+    proftime_T	sn_prl_children; // time spent in children for this line
+    proftime_T	sn_prl_wait;	// wait start time for current line
+    int		sn_prl_idx;	// index of line being timed; -1 if none
+    int		sn_prl_execed;	// line being timed was executed
 # endif
 } scriptitem_T;
 
@@ -1609,9 +1598,9 @@ typedef struct scriptitem_S
 /* Struct used in sn_prl_ga for every line of a script. */
 typedef struct sn_prl_S
 {
-    int		snp_count;	/* nr of times line was executed */
-    proftime_T	sn_prl_total;	/* time spent in a line + children */
-    proftime_T	sn_prl_self;	/* time spent in a line itself */
+    int		snp_count;	// nr of times line was executed
+    proftime_T	sn_prl_total;	// time spent in a line + children
+    proftime_T	sn_prl_self;	// time spent in a line itself
 } sn_prl_T;
 
 #  define PRL_ITEM(si, idx)	(((sn_prl_T *)(si)->sn_prl_ga.ga_data)[(idx)])
@@ -1944,6 +1933,7 @@ struct channel_S {
 #define JO2_ANSI_COLORS	    0x8000	// "ansi_colors"
 #define JO2_TTY_TYPE	    0x10000	// "tty_type"
 #define JO2_BUFNR	    0x20000	// "bufnr"
+#define JO2_TERM_API	    0x40000	// "term_api"
 
 #define JO_MODE_ALL	(JO_MODE + JO_IN_MODE + JO_OUT_MODE + JO_ERR_MODE)
 #define JO_CB_ALL \
@@ -2013,6 +2003,8 @@ typedef struct
     long_u	jo_ansi_colors[16];
 # endif
     int		jo_tty_type;	    // first character of "tty_type"
+    char_u	*jo_term_api;
+    char_u	jo_term_api_buf[NUMBUFLEN];
 #endif
 } jobopt_T;
 
@@ -2351,7 +2343,7 @@ struct file_buffer
     garray_T	b_ucmds;
     // start and end of an operator, also used for '[ and ']
     pos_T	b_op_start;
-    pos_T	b_op_start_orig;  /* used for Insstart_orig */
+    pos_T	b_op_start_orig;  // used for Insstart_orig
     pos_T	b_op_end;
 
 #ifdef FEAT_VIMINFO
@@ -2432,9 +2424,7 @@ struct file_buffer
 #if defined(FEAT_CINDENT) || defined(FEAT_SMARTINDENT)
     char_u	*b_p_cinw;	// 'cinwords'
 #endif
-#ifdef FEAT_COMMENTS
     char_u	*b_p_com;	// 'comments'
-#endif
 #ifdef FEAT_FOLDING
     char_u	*b_p_cms;	// 'commentstring'
 #endif
@@ -2690,7 +2680,7 @@ struct file_buffer
 #endif
 
 #ifdef FEAT_SIGNS
-    signlist_T	*b_signlist;	   // list of signs to draw
+    sign_entry_T *b_signlist;	   // list of placed signs
 # ifdef FEAT_NETBEANS_INTG
     int		b_has_sign_column; // Flag that is set when a first sign is
 				   // added and remains set until the end of
@@ -3229,8 +3219,8 @@ struct window_S
     long	w_scbind_pos;
 
 #ifdef FEAT_EVAL
-    dictitem_T	w_winvar;	/* variable for "w:" Dictionary */
-    dict_T	*w_vars;	/* internal variables, local to window */
+    dictitem_T	w_winvar;	// variable for "w:" Dictionary
+    dict_T	*w_vars;	// internal variables, local to window
 #endif
 
     /*
@@ -3799,9 +3789,9 @@ typedef enum {
 // Variable flavor
 typedef enum
 {
-    VAR_FLAVOUR_DEFAULT,	/* doesn't start with uppercase */
-    VAR_FLAVOUR_SESSION,	/* starts with uppercase, some lower */
-    VAR_FLAVOUR_VIMINFO		/* all uppercase */
+    VAR_FLAVOUR_DEFAULT,	// doesn't start with uppercase
+    VAR_FLAVOUR_SESSION,	// starts with uppercase, some lower
+    VAR_FLAVOUR_VIMINFO		// all uppercase
 } var_flavour_T;
 
 // argument for mouse_find_win()
@@ -3835,6 +3825,26 @@ typedef enum {
 # define NUM_REGISTERS		37
 #endif
 
+// structure used by block_prep, op_delete and op_yank for blockwise operators
+// also op_change, op_shift, op_insert, op_replace - AKelly
+struct block_def
+{
+    int		startspaces;	// 'extra' cols before first char
+    int		endspaces;	// 'extra' cols after last char
+    int		textlen;	// chars in block
+    char_u	*textstart;	// pointer to 1st char (partially) in block
+    colnr_T	textcol;	// index of chars (partially) in block
+    colnr_T	start_vcol;	// start col of 1st char wholly inside block
+    colnr_T	end_vcol;	// start col of 1st char wholly after block
+    int		is_short;	// TRUE if line is too short to fit in block
+    int		is_MAX;		// TRUE if curswant==MAXCOL when starting
+    int		is_oneChar;	// TRUE if block within one character
+    int		pre_whitesp;	// screen cols of ws before block
+    int		pre_whitesp_c;	// chars of ws before block
+    colnr_T	end_char_vcols;	// number of vcols of post-block char
+    colnr_T	start_char_vcols; // number of vcols of pre-block char
+};
+
 // Each yank register has an array of pointers to lines.
 typedef struct
 {
@@ -3865,3 +3875,45 @@ typedef struct spat
     int		    no_scs;	// no smartcase for this pattern
     soffset_T	    off;
 } spat_T;
+
+/*
+ * Optional extra arguments for searchit().
+ */
+typedef struct
+{
+    linenr_T	sa_stop_lnum;	// stop after this line number when != 0
+#ifdef FEAT_RELTIME
+    proftime_T	*sa_tm;		// timeout limit or NULL
+    int		sa_timed_out;	// set when timed out
+#endif
+    int		sa_wrapped;	// search wrapped around
+} searchit_arg_T;
+
+#define WRITEBUFSIZE	8192	// size of normal write buffer
+
+#define FIO_LATIN1	0x01	// convert Latin1
+#define FIO_UTF8	0x02	// convert UTF-8
+#define FIO_UCS2	0x04	// convert UCS-2
+#define FIO_UCS4	0x08	// convert UCS-4
+#define FIO_UTF16	0x10	// convert UTF-16
+#ifdef MSWIN
+# define FIO_CODEPAGE	0x20	// convert MS-Windows codepage
+# define FIO_PUT_CP(x) (((x) & 0xffff) << 16)	// put codepage in top word
+# define FIO_GET_CP(x)	(((x)>>16) & 0xffff)	// get codepage from top word
+#endif
+#ifdef MACOS_CONVERT
+# define FIO_MACROMAN	0x20	// convert MacRoman
+#endif
+#define FIO_ENDIAN_L	0x80	// little endian
+#define FIO_ENCRYPTED	0x1000	// encrypt written bytes
+#define FIO_NOCONVERT	0x2000	// skip encoding conversion
+#define FIO_UCSBOM	0x4000	// check for BOM at start of file
+#define FIO_ALL	-1	// allow all formats
+
+// When converting, a read() or write() may leave some bytes to be converted
+// for the next call.  The value is guessed...
+#define CONV_RESTLEN 30
+
+// We have to guess how much a sequence of bytes may expand when converting
+// with iconv() to be able to allocate a buffer.
+#define ICONV_MULT 8

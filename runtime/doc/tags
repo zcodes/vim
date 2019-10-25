@@ -1016,6 +1016,8 @@ $VIM_POSIX	vi_diff.txt	/*$VIM_POSIX*
 't_Sb'	term.txt	/*'t_Sb'*
 't_Sf'	term.txt	/*'t_Sf'*
 't_Si'	term.txt	/*'t_Si'*
+'t_TE'	term.txt	/*'t_TE'*
+'t_TI'	term.txt	/*'t_TI'*
 't_Te'	term.txt	/*'t_Te'*
 't_Ts'	term.txt	/*'t_Ts'*
 't_VS'	term.txt	/*'t_VS'*
@@ -4041,6 +4043,7 @@ E274	eval.txt	/*E274*
 E275	textprop.txt	/*E275*
 E276	eval.txt	/*E276*
 E277	remote.txt	/*E277*
+E278	popup.txt	/*E278*
 E28	syntax.txt	/*E28*
 E280	if_tcl.txt	/*E280*
 E282	starting.txt	/*E282*
@@ -7293,6 +7296,7 @@ if_ruby.txt	if_ruby.txt	/*if_ruby.txt*
 if_sniff.txt	if_sniff.txt	/*if_sniff.txt*
 if_tcl.txt	if_tcl.txt	/*if_tcl.txt*
 ignore-errors	eval.txt	/*ignore-errors*
+ignore-timestamp	editing.txt	/*ignore-timestamp*
 improved-autocmds-5.4	version5.txt	/*improved-autocmds-5.4*
 improved-quickfix	version5.txt	/*improved-quickfix*
 improved-sessions	version5.txt	/*improved-sessions*
@@ -8085,7 +8089,6 @@ new-vimgrep	version7.txt	/*new-vimgrep*
 new-virtedit	version6.txt	/*new-virtedit*
 news	intro.txt	/*news*
 nextnonblank()	eval.txt	/*nextnonblank()*
-nice	todo.txt	/*nice*
 no-eval-feature	eval.txt	/*no-eval-feature*
 no-type-checking	eval.txt	/*no-type-checking*
 no_buffers_menu	gui.txt	/*no_buffers_menu*
@@ -9102,6 +9105,8 @@ t_ST	term.txt	/*t_ST*
 t_Sb	term.txt	/*t_Sb*
 t_Sf	term.txt	/*t_Sf*
 t_Si	term.txt	/*t_Si*
+t_TE	term.txt	/*t_TE*
+t_TI	term.txt	/*t_TI*
 t_Te	term.txt	/*t_Te*
 t_Ts	term.txt	/*t_Ts*
 t_VS	term.txt	/*t_VS*
@@ -9342,6 +9347,7 @@ term_list()	terminal.txt	/*term_list()*
 term_scrape()	terminal.txt	/*term_scrape()*
 term_sendkeys()	terminal.txt	/*term_sendkeys()*
 term_setansicolors()	terminal.txt	/*term_setansicolors()*
+term_setapi()	terminal.txt	/*term_setapi()*
 term_setkill()	terminal.txt	/*term_setkill()*
 term_setrestore()	terminal.txt	/*term_setrestore()*
 term_setsize()	terminal.txt	/*term_setsize()*
@@ -10163,6 +10169,7 @@ zz	scroll.txt	/*zz*
 {move-around}	visual.txt	/*{move-around}*
 {offset}	pattern.txt	/*{offset}*
 {pat}	autocmd.txt	/*{pat}*
+{register}	change.txt	/*{register}*
 {rhs}	map.txt	/*{rhs}*
 {subject}	helphelp.txt	/*{subject}*
 {}	intro.txt	/*{}*

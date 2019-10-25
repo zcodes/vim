@@ -1122,7 +1122,16 @@ may_trigger_safestateagain(void)
     if (was_safe)
     {
 #ifdef FEAT_JOB_CHANNEL
-	ch_log(NULL, "SafeState: back to waiting, triggering SafeStateAgain");
+	// Only do this message when another message was given, otherwise we
+	// get lots of them.
+	if ((did_repeated_msg & REPEATED_MSG_SAFESTATE) == 0)
+	{
+	    int did = did_repeated_msg;
+
+	    ch_log(NULL,
+		      "SafeState: back to waiting, triggering SafeStateAgain");
+	    did_repeated_msg = did | REPEATED_MSG_SAFESTATE;
+	}
 #endif
 	apply_autocmds(EVENT_SAFESTATEAGAIN, NULL, NULL, FALSE, curbuf);
     }
@@ -1371,27 +1380,20 @@ main_loop(
 	    validate_cursor();
 
 #ifdef FEAT_SYN_HL
-	    if (curwin->w_p_cul && curwin->w_p_wrap
-				&& (curwin->w_p_culopt_flags & CULOPT_SCRLINE))
-		must_redraw = NOT_VALID;
+	    // Might need to update for 'cursorline'.
+	    // When 'cursorlineopt' is "screenline" need to redraw always.
+	    if (curwin->w_p_cul
+		    && (curwin->w_last_cursorline != curwin->w_cursor.lnum
+			|| (curwin->w_p_culopt_flags & CULOPT_SCRLINE))
+		    && !char_avail())
+		redraw_later(VALID);
 #endif
-
 	    if (VIsual_active)
 		update_curbuf(INVERTED); // update inverted part
 	    else if (must_redraw)
 	    {
 		mch_disable_flush();	// Stop issuing gui_mch_flush().
-#ifdef FEAT_SYN_HL
-		// Might need some more update for the cursorscreen line.
-		// TODO: can we optimize this?
-		if (curwin->w_p_cul
-			&& curwin->w_p_wrap
-			&& (curwin->w_p_culopt_flags & CULOPT_SCRLINE)
-			&& !char_avail())
-		    update_screen(VALID);
-		else
-#endif
-		    update_screen(0);
+		update_screen(0);
 		mch_enable_flush();
 	    }
 	    else if (redraw_cmdline || clear_cmdline)
@@ -4330,7 +4332,7 @@ server_to_input_buf(char_u *str)
      *  <lt> sequence is recognised - needed for a real backslash.
      */
     p_cpo = (char_u *)"Bk";
-    str = replace_termcodes((char_u *)str, &ptr, FALSE, TRUE, FALSE);
+    str = replace_termcodes((char_u *)str, &ptr, REPTERM_DO_LT, NULL);
     p_cpo = cpo_save;
 
     if (*ptr != NUL)	/* trailing CTRL-V results in nothing */

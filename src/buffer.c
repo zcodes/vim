@@ -880,6 +880,7 @@ free_buffer(buf_T *buf)
     /* b:changedtick uses an item in buf_T, remove it now */
     dictitem_remove(buf->b_vars, (dictitem_T *)&buf->b_ct_di);
     unref_var_dict(buf->b_vars);
+    remove_listeners(buf);
 #endif
 #ifdef FEAT_LUA
     lua_buffer_free(buf);
@@ -908,6 +909,7 @@ free_buffer(buf_T *buf)
 #ifdef FEAT_JOB_CHANNEL
     vim_free(buf->b_prompt_text);
     free_callback(&buf->b_prompt_callback);
+    free_callback(&buf->b_prompt_interrupt);
 #endif
 
     buf_hashtab_remove(buf);
@@ -1738,21 +1740,21 @@ set_curbuf(buf_T *buf, int action)
     static void
 enter_buffer(buf_T *buf)
 {
-    /* Copy buffer and window local option values.  Not for a help buffer. */
+    // Get the buffer in the current window.
+    curwin->w_buffer = buf;
+    curbuf = buf;
+    ++curbuf->b_nwindows;
+
+    // Copy buffer and window local option values.  Not for a help buffer.
     buf_copy_options(buf, BCO_ENTER | BCO_NOHELP);
     if (!buf->b_help)
 	get_winopts(buf);
 #ifdef FEAT_FOLDING
     else
-	/* Remove all folds in the window. */
+	// Remove all folds in the window.
 	clearFolding(curwin);
-    foldUpdateAll(curwin);	/* update folds (later). */
+    foldUpdateAll(curwin);	// update folds (later).
 #endif
-
-    /* Get the buffer in the current window. */
-    curwin->w_buffer = buf;
-    curbuf = buf;
-    ++curbuf->b_nwindows;
 
 #ifdef FEAT_DIFF
     if (curwin->w_p_diff)
@@ -2226,9 +2228,7 @@ free_buf_options(
     keymap_clear(&buf->b_kmap_ga);
     ga_clear(&buf->b_kmap_ga);
 #endif
-#ifdef FEAT_COMMENTS
     clear_string_option(&buf->b_p_com);
-#endif
 #ifdef FEAT_FOLDING
     clear_string_option(&buf->b_p_cms);
 #endif
@@ -2980,9 +2980,7 @@ get_winopts(buf_T *buf)
     if (p_fdls >= 0)
 	curwin->w_p_fdl = p_fdls;
 #endif
-#ifdef FEAT_SYN_HL
-    check_colorcolumn(curwin);
-#endif
+    after_copy_winopt(curwin);
 }
 
 /*
