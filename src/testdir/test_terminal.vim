@@ -68,6 +68,23 @@ func Test_terminal_basic()
   unlet g:job
 endfunc
 
+func Test_terminal_TerminalWinOpen()
+  au TerminalWinOpen * let b:done = 'yes'
+  let buf = Run_shell_in_terminal({})
+  call assert_equal('yes', b:done)
+  call StopShellInTerminal(buf)
+  " closing window wipes out the terminal buffer with the finished job
+  close
+
+  if has("unix")
+    terminal ++hidden ++open sleep 1
+    sleep 1
+    call assert_fails("echo b:done", 'E121:')
+  endif
+
+  au! TerminalWinOpen
+endfunc
+
 func Test_terminal_make_change()
   let buf = Run_shell_in_terminal({})
   call StopShellInTerminal(buf)
@@ -546,11 +563,14 @@ func Test_terminal_finish_open_close()
 endfunc
 
 func Test_terminal_cwd()
-  if !executable('pwd')
-    return
+  if has('win32')
+    let cmd = 'cmd /c cd'
+  else
+    CheckExecutable pwd
+    let cmd = 'pwd'
   endif
   call mkdir('Xdir')
-  let buf = term_start('pwd', {'cwd': 'Xdir'})
+  let buf = term_start(cmd, {'cwd': 'Xdir'})
   call WaitForAssert({-> assert_equal('Xdir', fnamemodify(getline(1), ":t"))})
 
   exe buf . 'bwipe'
@@ -2014,7 +2034,13 @@ func Test_terminal_does_not_truncate_last_newlines()
 endfunc
 
 func Test_terminal_no_job()
-  let term = term_start('false', {'term_finish': 'close'})
+  if has('win32')
+    let cmd = 'cmd /c ""'
+  else
+    CheckExecutable false
+    let cmd = 'false'
+  endif
+  let term = term_start(cmd, {'term_finish': 'close'})
   call WaitForAssert({-> assert_equal(v:null, term_getjob(term)) })
 endfunc
 
