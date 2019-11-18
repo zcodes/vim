@@ -899,8 +899,8 @@ adjust_clip_reg(int *rp)
 	    *rp = ((clip_unnamed & CLIP_UNNAMED_PLUS) && clip_plus.available)
 								  ? '+' : '*';
 	else
-	    *rp = ((clip_unnamed_saved & CLIP_UNNAMED_PLUS) && clip_plus.available)
-								  ? '+' : '*';
+	    *rp = ((clip_unnamed_saved & CLIP_UNNAMED_PLUS)
+					   && clip_plus.available) ? '+' : '*';
     }
     if (!clip_star.available && *rp == '*')
 	*rp = 0;
@@ -1288,7 +1288,7 @@ op_yank(oparg_T *oap, int deleting, int mess)
 		&& !oap->block_mode
 		&& yanklines == 1)
 	    yanklines = 0;
-	// Some versions of Vi use ">=" here, some don't... 
+	// Some versions of Vi use ">=" here, some don't...
 	if (yanklines > p_report)
 	{
 	    char namebuf[100];
@@ -1316,13 +1316,16 @@ op_yank(oparg_T *oap, int deleting, int mess)
 	}
     }
 
-    // Set "'[" and "']" marks.
-    curbuf->b_op_start = oap->start;
-    curbuf->b_op_end = oap->end;
-    if (yanktype == MLINE && !oap->block_mode)
+    if (!cmdmod.lockmarks)
     {
-	curbuf->b_op_start.col = 0;
-	curbuf->b_op_end.col = MAXCOL;
+	// Set "'[" and "']" marks.
+	curbuf->b_op_start = oap->start;
+	curbuf->b_op_end = oap->end;
+	if (yanktype == MLINE && !oap->block_mode)
+	{
+	    curbuf->b_op_start.col = 0;
+	    curbuf->b_op_end.col = MAXCOL;
+	}
     }
 
 #ifdef FEAT_CLIPBOARD
@@ -1474,6 +1477,8 @@ do_put(
     char_u	*insert_string = NULL;
     int		allocated = FALSE;
     long	cnt;
+    pos_T	orig_start = curbuf->b_op_start;
+    pos_T	orig_end = curbuf->b_op_end;
 
 #ifdef FEAT_CLIPBOARD
     // Adjust register name for "unnamed" in 'clipboard'.
@@ -2100,6 +2105,11 @@ error:
     curwin->w_set_curswant = TRUE;
 
 end:
+    if (cmdmod.lockmarks)
+    {
+	curbuf->b_op_start = orig_start;
+	curbuf->b_op_end = orig_end;
+    }
     if (allocated)
 	vim_free(insert_string);
     if (regname == '=')

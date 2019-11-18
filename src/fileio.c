@@ -188,6 +188,7 @@ readfile(
 					   wasn't possible */
     char_u	conv_rest[CONV_RESTLEN];
     int		conv_restlen = 0;	/* nr of bytes in conv_rest[] */
+    pos_T	orig_start;
     buf_T	*old_curbuf;
     char_u	*old_b_ffname;
     char_u	*old_b_fname;
@@ -250,9 +251,7 @@ readfile(
      */
     if (!filtering && !read_stdin && !read_buffer)
     {
-	pos_T	    pos;
-
-	pos = curbuf->b_op_start;
+	orig_start = curbuf->b_op_start;
 
 	/* Set '[ mark to the line above where the lines go (line 1 if zero). */
 	curbuf->b_op_start.lnum = ((from == 0) ? 1 : from);
@@ -276,7 +275,7 @@ readfile(
 	    return OK;
 #endif
 
-	curbuf->b_op_start = pos;
+	curbuf->b_op_start = orig_start;
     }
 
     if ((shortmess(SHM_OVER) || curbuf->b_help) && p_verbose == 0)
@@ -620,6 +619,7 @@ readfile(
     /*
      * Set '[ mark to the line above where the lines go (line 1 if zero).
      */
+    orig_start = curbuf->b_op_start;
     curbuf->b_op_start.lnum = ((from == 0) ? 1 : from);
     curbuf->b_op_start.col = 0;
 
@@ -661,6 +661,7 @@ readfile(
 	try_mac = (vim_strchr(p_ffs, 'm') != NULL);
 	try_dos = (vim_strchr(p_ffs, 'd') != NULL);
 	try_unix = (vim_strchr(p_ffs, 'x') != NULL);
+	curbuf->b_op_start = orig_start;
 
 	if (msg_scrolled == n)
 	    msg_scroll = m;
@@ -2474,13 +2475,14 @@ failed:
 	check_cursor_lnum();
 	beginline(BL_WHITE | BL_FIX);	    /* on first non-blank */
 
-	/*
-	 * Set '[ and '] marks to the newly read lines.
-	 */
-	curbuf->b_op_start.lnum = from + 1;
-	curbuf->b_op_start.col = 0;
-	curbuf->b_op_end.lnum = from + linecnt;
-	curbuf->b_op_end.col = 0;
+	if (!cmdmod.lockmarks)
+	{
+	    // Set '[ and '] marks to the newly read lines.
+	    curbuf->b_op_start.lnum = from + 1;
+	    curbuf->b_op_start.col = 0;
+	    curbuf->b_op_end.lnum = from + linecnt;
+	    curbuf->b_op_end.col = 0;
+	}
 
 #ifdef MSWIN
 	/*
@@ -4192,7 +4194,7 @@ buf_check_timestamp(
 			if (!focus)
 #endif
 			    /* give the user some time to think about it */
-			    ui_delay(1000L, TRUE);
+			    ui_delay(1004L, TRUE);
 
 			/* don't redraw and erase the message */
 			redraw_cmdline = FALSE;

@@ -1,4 +1,4 @@
-*todo.txt*      For Vim version 8.1.  Last change: 2019 Oct 26
+*todo.txt*      For Vim version 8.1.  Last change: 2019 Nov 17
 
 
 		  VIM REFERENCE MANUAL	  by Bram Moolenaar
@@ -38,7 +38,26 @@ browser use: https://github.com/vim/vim/issues/1234
 							*known-bugs*
 -------------------- Known bugs and current work -----------------------
 
-Termdebug:  Ctrl-W . doesn't work with modifyOtherKeys set.
+Patch #5232 from Andy Massimino to replace:
+    Patch to parse ":line" in tags file and use it for search. (Daniel Hahler,
+    #2546)  Fixes #1057.  Missing a test.
+
+Update files for javascriptreact and typescriptreact.
+Can we close #4830?
+
+When 'selection' is "exclusive" then using vi' on the second ' does not select
+anything. (#5183)
+Patch from Christian: 
+https://github.com/chrisbra/vim/commit/7482d1d389e7db97e247f8b509003e5ec27427a9
+When using exclusive selection and vi" that fails, cursor moves to the left.
+Cursor should not move. (#4024)
+
+Patch: New value "uselast" for 'switchbuf'. (Lemonboy, 2017 Apr 23, #1652)
+
+Patch to remove FORTIFY_SOURCE also from CPPFLAGS. (Benedikt Morbach, #2786)
+
+Patch from Namsh to allow building with both XIM and hangulin. (2019 Aug 29)
+
 
 Popup windows:
 - Use popup (or popup menu) for command line completion
@@ -54,14 +73,13 @@ Popup windows:
   incomplete cell.
 
 Text properties:
-- Implement prop_find() #4970
-- Adjusting column/length when inserting text
+- Implement prop_find() issue #4970
 - Text properties spanning more than one line
-- prop_find()
+- See remarks at top of src/textprop.c
 
-'incsearch' with :s: (#3321)
+'incsearch' with :s: 
 - Get E20 when using command history to get "'<,'>s/a/b" and no Visual area
-  was set. (#3837)
+  was set. (issue #3837)
 - :s/foo  using CTRL-G moves to another line, should not happen, or use the
   correct line (it uses the last but one line) (Lifepillar, Aug 18, #3345)
 - :s@pat/tern@ doesn't include "/" in the pattern. (Takahiro Yoshihara, #3637)
@@ -73,7 +91,7 @@ Text properties:
   Then :%s?foo should take the first match above the cursor line.
 
 Prompt buffer:
-- Add a command line history, using up/down keys.  #5010
+- Add a command line history, using up/down keys.  issue #5010
 - delay next prompt until plugin gives OK?
 - add prompt_addtext({buf}, {expr})	none	add text to a prompt buffer
 
@@ -86,7 +104,7 @@ Terminal debugger:
 - Termdebug does not work when Vim was build with mzscheme: gdb hangs just
   after "run".  Everything else works, including communication channel.  Not
   initializing mzscheme avoid the problem, thus it's not some #ifdef.
-- Add support for lldb?  #3565
+- Add support for lldb?  issue #3565
 - Could we do something similar for debugging Vim scripts?  At least see the
   script while stepping through it.  Simple version would use an extra window.
   More complete solution would actually run Vim in a Terminal and control it
@@ -104,8 +122,6 @@ Terminal emulator window:
 - Allow for specifying the directory, with ++cwd={dir}.
 - With a vertical split only one window is updated. (Linwei, 2018 Jun 2,
   #2977)
-- Add a way to make ":term cmd" run "cmd" in a shell, instead of executing it
-  directly.  Perhaps ":term ++shell cmd". (#3340)
 - When pasting should call vterm_keyboard_start_paste(), e.g. when using
   K_MIDDLEMOUSE, calling insert_reg().
 - Users expect parsing the :term argument like a shell does, also support
@@ -125,22 +141,14 @@ Terminal emulator window:
   conversions.
 
 Error numbers available:
-E279, E290, E292, E362, E366, E450, E451, E452,
+E290, E292, E362, E366, E450, E451, E452,
 E453, E454, E460, E489, E491, E565, E578, E610, E611, E653,
 E654, E856, E857, E860, E861, E863, E889, E900
-
-"gN" does not work properly with single-char search pattern. (Jaehwang Jerry
-Jung, #5075)
 
 Running test_gui and test_gui_init with Motif sometimes kills the window
 manager.  Problem with Motif? Now test_gui crashes in submenu_change().
 Athena is OK.
 Motif: Build on Ubuntu can't enter any text in dialog text fields.
-
-In a function these two lines are different:
-    let [a, b, c] =<< trim END      fails
-    let [a,b,c] =<< trim END        works
-issue #5051
 
 Patch to properly break CJK lines: Anton Kochkov, #3875
 Flag in 'formatoptions' is not used in the tests.
@@ -153,14 +161,9 @@ Undo puts cursor in wrong line after "cG<Esc>" undo.
 
 Sound: support on Mac?  Or does libcanberra work there?
 
-Patch for #4733: #4734.  Test needs improvements.
-
-Patch to sort buffers on b_last_used time.  (Andy Massimino, #4722)
-
-Patch to highlight the line number differently below the cursor line. (Shaun
-Brady, #624)
-
-Patch to add more tests for cmd.exe: #4928
+Patch to user manual: #5098.  Comments by DC Slagel:
+- semicolon use should be OK.
+- Keep capital after colon.
 
 Patch to fix session file when using multiple tabs. (Jason Franklin, 2019 May
 20)
@@ -174,9 +177,6 @@ terminal.c and then CTRL-N twice.
 Should do current file first and not split it up when more results are found.
 (Also #1890)
 
-Patch to use timers in matchparen. (Daniel Hahler, #1338)
-Ready to include now?
-
 Adding "10" to 'spellsuggest' causes spell suggestions to become very slow.
 (#4087)
 
@@ -187,24 +187,13 @@ Adding "10" to 'spellsuggest' causes spell suggestions to become very slow.
 goes to any buffer, and then :bnext skips help buffers, since they are
 unlisted. (#4478)
 
-Patch to fix using zero sc_sid. (#4877)
-
 Enable 'termbidi' if $VTE_VERSION >= 5703 ?
 
 Universal solution to detect if t_RS is working, using cursor position.
 Koichi Iwamoto, #2126
 
-Make 'showbreak' global-local.
-
 The :syntax cchar value can only be a single character.  It would be useful to
 support combining characters. (Charles Campbell)  Also #4687
-
-Patch to make gM move to middle of line. (Yasuhiro Matsumoto, Sep 8, #2070)
-
-Patch to add v:argv, arguments that Vim was started with. (Dmitri
-Vereshchagin, #1322)
-
-New value "uselast" for 'switchbuf'. (Lemonboy, 2017 Apr 23, #1652)
 
 Include Haiku port. (Adrien Destugues, Siarzhuk Zharski, 2013 Oct 24)
 It can replace the BeOS code, which is likely not used anymore.
@@ -216,10 +205,6 @@ Problem showing a line if the number column width changes when using "o".
 
 When using :packadd for a replacement language plugin, it is loaded after the
 default one.  #4698
-
-Patch to remove FORTIFY_SOURCE also from CPPFLAGS. (Benedikt Morbach, #2786)
-
-Patch from Namsh to allow building with both XIM and hangulin. (2019 Aug 29)
 
 When using :packadd files under "later" are not used, which is inconsistent
 with packages under "start". (xtal8, #1994)
@@ -259,6 +244,16 @@ Also see issue #609.
 We could add the enable/disable sequences to t_ti/t_te or t_ks/t_ke.
 
 Check_external_diff() is used too often. (Daniel Hahler, #4800)
+
+Win32: after "[I" showing matches, scroll wheel messes up screen. (Tsakiridis,
+2007 Feb 18)
+Patch by Alex Dobrynin, 2007 Jun 3.  Also fixes other scroll wheel problems.
+
+Add a WindowScrolled event.  Trigger around the same time as CursorMoved.
+Can be used to update highlighting. #3127  #5181
+
+Patch for Template string: #4491.  New pull: #4634
+Have another look at the implementation: Is the code worth it?
 
 Incorrect formatting with autoindent. (Sebastian Gniazdowski, #4909)
 
@@ -318,6 +313,9 @@ Problem with :tlmenu: Detach item added with all modes?  Issue #3563.
 
 Add an argument to expandcmd() to expand like ":next" does.
 
+When both "a" and "l" is in 'formatoptions' then auto-formatting also happens
+in a long line. #5189
+
 The quoting of the [command] argument of :terminal is not clearly documented.
 Give a few examples. (#4288)
 
@@ -332,6 +330,12 @@ Patch for this (Tristan Konolige, #1011, only adds the option, no implem.):
 Bug: script written with "-W scriptout" contains Key codes, while the script
 read with "-s scriptin" expects escape codes.  Probably "scriptout" needs to
 be adjusted. (Daniel Steinberg, 2019 Feb 24, #4041)
+
+Add a string to the 'display' option ("smoothscroll" ?) to make CTRL-E and
+CTRL-Y scroll one screen line, also if this means the first line doesn't start
+with the first character (like what happens with a last line that doesn't
+fit).  Display "<<<" at the start of the first visible line (like "@@@" is
+displayed in the last line). (Arseny Nasokin,  #5154)
 
 Patch for ambiguous width characters in libvterm on MS-Windows 10.
 (Nobuhiro Takasaki, #4411)
@@ -450,9 +454,6 @@ Missing tests for:
 Redo only remembers the last change.  Could use "{count}g." to redo an older
 change.  How does the user know which change?  At least have a way to list
 them: ":repeats".  Add to history, like search history and command line history.
-
-When using exclusive selection and vi" that fails, cursor moves to the left.
-Cursor should not move. (#4024)
 
 Incsearch test fails when locale is "C". (Dominique Pelle, #3986)
 Also run all tests with C locale?
@@ -677,9 +678,6 @@ used for git temp files.
 
 Cursor in wrong position when line wraps. (#2540)
 
-Patch to parse ":line" in tags file and use it for search. (Daniel Hahler,
-#2546)  Fixes #1057.  Missing a test.
-
 Setting 'columns' in a BufEnter autocommand causes a second tab width to
 behave strangely, as if there is a gap and a vertical window separator.
 (Michael Soyka, 2018 Sep 23, #3477)
@@ -726,9 +724,6 @@ Column number is wrong when using 'linebreak' and 'wrap'. (Keith Smiley, 2018
 Jan 15, #2555)
 
 ":bufdo e" disabled syntax HL in windows other than the current. (BPJ)
-
-Patch for Template string: #4491.  New pull: #4634
-It's an awful lot of code for something that is just a bit nicer syntax.
 
 Check argument of systemlist(). (Pavlov)
 
@@ -1146,6 +1141,9 @@ sort() is not stable when using numeric/float sort (Nikolay Pavlov, 2016 Sep
 
 +channel:
 - Add a in_cb, invoked when the write buffer has become empty. (Matteo Landi)
+- Add ch_readlines(): for a channel in NL mode, reads as many lines as are
+  available.  Should be more efficient than looping over ch_read() with
+  ch_status() to check for more.
 - Add a separate timeout for opening a socket.  Currently it's fixed at 50
   msec, which is too small for a remote connection. (tverniquet, #2130)
 - Problem with stderr on Windows? (Vincent Rischmann, 2016 Aug 31, #1026)
@@ -2728,10 +2726,6 @@ patches by Mathias, see mail Feb 22)
 
 Win32: compiling with normal features and OLE fails.  Patch by Mathias
 Michaelis, 2006 Jun 4.
-
-Win32: after "[I" showing matches, scroll wheel messes up screen. (Tsakiridis,
-2007 Feb 18)
-Patch by Alex Dobrynin, 2007 Jun 3.  Also fixes other scroll wheel problems.
 
 Win32: using CTRL-S in Insert mode doesn't remove the "+" from the tab pages
 label.  (Tsakiridis, 2007 Feb 18)  Patch from Ian Kelling, 2008 Aug 6.
@@ -4629,9 +4623,6 @@ Messages:
 
 
 Screen updating:
-7   Add a string to the 'display' option to make CTRL-E and CTRL-Y scroll one
-    screen line, also if this means the first line doesn't start with the
-    first character (like what happens with a single line that doesn't fit).
 -   screen_line():
     - insert/delete character stuff.
     - improve delete rest of line (spaces at end of line).
