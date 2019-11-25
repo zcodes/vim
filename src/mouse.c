@@ -13,6 +13,22 @@
 
 #include "vim.h"
 
+#ifdef CHECK_DOUBLE_CLICK
+/*
+ * Return the duration from t1 to t2 in milliseconds.
+ */
+    static long
+time_diff_ms(struct timeval *t1, struct timeval *t2)
+{
+    // This handles wrapping of tv_usec correctly without any special case.
+    // Example of 2 pairs (tv_sec, tv_usec) with a duration of 5 ms:
+    //	   t1 = (1, 998000) t2 = (2, 3000) gives:
+    //	   (2 - 1) * 1000 + (3000 - 998000) / 1000 -> 5 ms.
+    return (t2->tv_sec - t1->tv_sec) * 1000
+	 + (t2->tv_usec - t1->tv_usec) / 1000;
+}
+#endif
+
 /*
  * Get class of a character for selection: same class means same word.
  * 0: blank
@@ -2713,14 +2729,7 @@ check_termcode_mouse(
 			timediff = p_mouset;
 		    }
 		    else
-		    {
-			timediff = (mouse_time.tv_usec
-				- orig_mouse_time.tv_usec) / 1000;
-			if (timediff < 0)
-			    --orig_mouse_time.tv_sec;
-			timediff += (mouse_time.tv_sec
-				- orig_mouse_time.tv_sec) * 1000;
-		    }
+			timediff = time_diff_ms(&orig_mouse_time, &mouse_time);
 		    orig_mouse_time = mouse_time;
 		    if (mouse_code == orig_mouse_code
 			    && timediff < p_mouset
@@ -2822,7 +2831,6 @@ mouse_comp_pos(
     int		retval = FALSE;
     int		off;
     int		count;
-    char_u	*p;
 
 #ifdef FEAT_RIGHTLEFT
     if (win->w_p_rl)
@@ -2882,11 +2890,6 @@ mouse_comp_pos(
 	col += row * (win->w_width - off);
 	// add skip column (for long wrapping line)
 	col += win->w_skipcol;
-	// limit to text length plus one
-	p = ml_get_buf(win->w_buffer, lnum, FALSE);
-	count = STRLEN(p);
-	if (col > count)
-	    col = count;
     }
 
     if (!win->w_p_wrap)
@@ -3053,7 +3056,17 @@ f_getmousepos(typval_T *argvars UNUSED, typval_T *rettv)
 	    col -= left_off;
 	    if (row >= 0 && row < wp->w_height && col >= 0 && col < wp->w_width)
 	    {
+		char_u	*p;
+		int	count;
+
 		mouse_comp_pos(wp, &row, &col, &line, NULL);
+
+		// limit to text length plus one
+		p = ml_get_buf(wp->w_buffer, line, FALSE);
+		count = (int)STRLEN(p);
+		if (col > count)
+		    col = count;
+
 		column = col + 1;
 	    }
 	}

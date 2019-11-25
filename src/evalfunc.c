@@ -20,7 +20,7 @@
 # include <float.h>
 #endif
 
-#ifdef MACOS_X
+#if defined(MACOS_X)
 # include <time.h>	// for time_t
 #endif
 
@@ -114,6 +114,7 @@ static void f_inputlist(typval_T *argvars, typval_T *rettv);
 static void f_inputrestore(typval_T *argvars, typval_T *rettv);
 static void f_inputsave(typval_T *argvars, typval_T *rettv);
 static void f_inputsecret(typval_T *argvars, typval_T *rettv);
+static void f_interrupt(typval_T *argvars, typval_T *rettv);
 static void f_invert(typval_T *argvars, typval_T *rettv);
 static void f_islocked(typval_T *argvars, typval_T *rettv);
 #if defined(FEAT_FLOAT) && defined(HAVE_MATH_H)
@@ -237,6 +238,9 @@ static void f_stridx(typval_T *argvars, typval_T *rettv);
 static void f_strlen(typval_T *argvars, typval_T *rettv);
 static void f_strcharpart(typval_T *argvars, typval_T *rettv);
 static void f_strpart(typval_T *argvars, typval_T *rettv);
+#ifdef HAVE_STRPTIME
+static void f_strptime(typval_T *argvars, typval_T *rettv);
+#endif
 static void f_strridx(typval_T *argvars, typval_T *rettv);
 static void f_strtrans(typval_T *argvars, typval_T *rettv);
 static void f_strdisplaywidth(typval_T *argvars, typval_T *rettv);
@@ -506,6 +510,7 @@ static funcentry_T global_functions[] =
     {"inputsave",	0, 0, 0,	  f_inputsave},
     {"inputsecret",	1, 2, FEARG_1,	  f_inputsecret},
     {"insert",		2, 3, FEARG_1,	  f_insert},
+    {"interrupt",	0, 0, 0,	  f_interrupt},
     {"invert",		1, 1, FEARG_1,	  f_invert},
     {"isdirectory",	1, 1, FEARG_1,	  f_isdirectory},
 #if defined(FEAT_FLOAT) && defined(HAVE_MATH_H)
@@ -738,6 +743,9 @@ static funcentry_T global_functions[] =
     {"string",		1, 1, FEARG_1,	  f_string},
     {"strlen",		1, 1, FEARG_1,	  f_strlen},
     {"strpart",		2, 3, FEARG_1,	  f_strpart},
+#ifdef HAVE_STRPTIME
+    {"strptime",	2, 2, FEARG_1,	  f_strptime},
+#endif
     {"strridx",		2, 3, FEARG_1,	  f_strridx},
     {"strtrans",	1, 1, FEARG_1,	  f_strtrans},
     {"strwidth",	1, 1, FEARG_1,	  f_strwidth},
@@ -2530,7 +2538,7 @@ common_function(typval_T *argvars, typval_T *rettv, int is_funcref)
 		    arg_idx = 0;
 		else if (list->lv_len > MAX_FUNC_ARGS)
 		{
-		    emsg_funcname((char *)e_toomanyarg, name);
+		    emsg_funcname((char *)e_toomanyarg, s);
 		    vim_free(name);
 		    goto theend;
 		}
@@ -3395,9 +3403,6 @@ f_has(typval_T *argvars, typval_T *rettv)
 #ifdef FEAT_GUI_MSWIN
 	"gui_win32",
 #endif
-#ifdef FEAT_HANGULIN
-	"hangul_input",
-#endif
 #if defined(HAVE_ICONV_H) && defined(USE_ICONV)
 	"iconv",
 #endif
@@ -4146,6 +4151,15 @@ f_inputsecret(typval_T *argvars, typval_T *rettv)
     f_input(argvars, rettv);
     --cmdline_star;
     --inputsecret_flag;
+}
+
+/*
+ * "interrupt()" function
+ */
+    static void
+f_interrupt(typval_T *argvars UNUSED, typval_T *rettv UNUSED)
+{
+    got_int = TRUE;
 }
 
 /*
@@ -7411,6 +7425,40 @@ f_strpart(typval_T *argvars, typval_T *rettv)
     rettv->v_type = VAR_STRING;
     rettv->vval.v_string = vim_strnsave(p + n, len);
 }
+
+#ifdef HAVE_STRPTIME
+/*
+ * "strptime({format}, {timestring})" function
+ */
+    static void
+f_strptime(typval_T *argvars, typval_T *rettv)
+{
+    struct tm	tmval;
+    char_u	*fmt;
+    char_u	*str;
+    vimconv_T   conv;
+    char_u	*enc;
+
+    vim_memset(&tmval, NUL, sizeof(tmval));
+    fmt = tv_get_string(&argvars[0]);
+    str = tv_get_string(&argvars[1]);
+
+    conv.vc_type = CONV_NONE;
+    enc = enc_locale();
+    convert_setup(&conv, p_enc, enc);
+    if (conv.vc_type != CONV_NONE)
+	fmt = string_convert(&conv, fmt, NULL);
+    if (fmt == NULL
+	    || strptime((char *)str, (char *)fmt, &tmval) == NULL
+	    || (rettv->vval.v_number = mktime(&tmval)) == -1)
+	rettv->vval.v_number = 0;
+
+    if (conv.vc_type != CONV_NONE)
+	vim_free(fmt);
+    convert_setup(&conv, NULL, NULL);
+    vim_free(enc);
+}
+#endif
 
 /*
  * "strridx()" function
