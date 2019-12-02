@@ -36,8 +36,21 @@
     Error: configure did not run properly.  Check auto/config.log.
 # endif
 
+# if defined(__gnu_linux__) || defined(__CYGWIN__)
+// Needed for strptime().  Needs to be done early, since header files can
+// include other header files and end up including time.h, where these symbols
+// matter for Vim.
+// 700 is needed for mkdtemp().
+#  ifndef _XOPEN_SOURCE
+#   define _XOPEN_SOURCE    700
+#  endif
+#  ifndef __USE_XOPEN
+#   define __USE_XOPEN
+#  endif
+# endif
+
 // for INT_MAX, LONG_MAX et al.
-#include <limits.h>
+# include <limits.h>
 
 /*
  * Cygwin may have fchdir() in a newer release, but in most versions it
@@ -640,7 +653,7 @@ extern int (*dyn_libintl_wputenv)(const wchar_t *envstring);
 #define POPUP_HANDLED_4	    0x08    // used by may_update_popup_mask()
 #define POPUP_HANDLED_5	    0x10    // used by update_popups()
 
-#ifdef FEAT_TEXT_PROP
+#ifdef FEAT_PROP_POPUP
 # define WIN_IS_POPUP(wp) ((wp)->w_popup_flags != 0)
 #else
 # define WIN_IS_POPUP(wp) 0
@@ -2059,7 +2072,7 @@ typedef struct
     short_u	origin_end_col;
     short_u	word_start_col;
     short_u	word_end_col;
-#ifdef FEAT_TEXT_PROP
+#ifdef FEAT_PROP_POPUP
     // limits for selection inside a popup window
     short_u	min_col;
     short_u	max_col;

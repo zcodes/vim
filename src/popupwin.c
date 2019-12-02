@@ -13,7 +13,7 @@
 
 #include "vim.h"
 
-#if defined(FEAT_TEXT_PROP) || defined(PROTO)
+#if defined(FEAT_PROP_POPUP) || defined(PROTO)
 
 typedef struct {
     char	*pp_name;
@@ -611,7 +611,7 @@ popup_highlight_curline(win_T *wp)
     int	    sign_id = 0;
     char_u  *sign_name = popup_get_sign_name(wp);
 
-    buf_delete_signs(wp->w_buffer, (char_u *)"popupmenu");
+    buf_delete_signs(wp->w_buffer, (char_u *)"PopUpMenu");
 
     if ((wp->w_popup_flags & POPF_CURSORLINE) != 0)
     {
@@ -626,7 +626,7 @@ popup_highlight_curline(win_T *wp)
 	    sign_define_by_name(sign_name, NULL, (char_u *)linehl, NULL, NULL);
 	}
 
-	sign_place(&sign_id, (char_u *)"popupmenu", sign_name,
+	sign_place(&sign_id, (char_u *)"PopUpMenu", sign_name,
 			       wp->w_buffer, wp->w_cursor.lnum, SIGN_DEF_PRIO);
 	redraw_win_later(wp, NOT_VALID);
     }
@@ -2386,8 +2386,10 @@ f_popup_show(typval_T *argvars, typval_T *rettv UNUSED)
     if (wp != NULL)
     {
 	popup_show(wp);
+#ifdef FEAT_QUICKFIX
 	if (wp->w_popup_flags & POPF_INFO)
 	    pum_position_info_popup(wp);
+#endif
     }
 }
 
@@ -3686,6 +3688,13 @@ set_ref_in_popups(int copyID)
     return abort;
 }
 
+    int
+popup_is_popup(win_T *wp)
+{
+    return wp->w_popup_flags != 0;
+}
+
+#if defined(FEAT_QUICKFIX) || defined(PROTO)
 /*
  * Find an existing popup used as the preview window, in the current tab page.
  * Return NULL if not found.
@@ -3702,13 +3711,6 @@ popup_find_preview_window(void)
     return NULL;
 }
 
-    int
-popup_is_popup(win_T *wp)
-{
-    return wp->w_popup_flags != 0;
-}
-
-#if defined(FEAT_QUICKFIX) || defined(PROTO)
 /*
  * Find an existing popup used as the info window, in the current tab page.
  * Return NULL if not found.
@@ -3729,19 +3731,28 @@ popup_find_info_window(void)
     void
 f_popup_findinfo(typval_T *argvars UNUSED, typval_T *rettv)
 {
+#ifdef FEAT_QUICKFIX
     win_T   *wp = popup_find_info_window();
 
     rettv->vval.v_number = wp == NULL ? 0 : wp->w_id;
+#else
+    rettv->vval.v_number = 0;
+#endif
 }
 
     void
 f_popup_findpreview(typval_T *argvars UNUSED, typval_T *rettv)
 {
+#ifdef FEAT_QUICKFIX
     win_T   *wp = popup_find_preview_window();
 
     rettv->vval.v_number = wp == NULL ? 0 : wp->w_id;
+#else
+    rettv->vval.v_number = 0;
+#endif
 }
 
+#if defined(FEAT_QUICKFIX) || defined(PROTO)
 /*
  * Create a popup to be used as the preview or info window.
  * NOTE: this makes the popup the current window, so that the file can be
@@ -3775,7 +3786,6 @@ popup_create_preview_window(int info)
     return OK;
 }
 
-#if defined(FEAT_QUICKFIX) || defined(PROTO)
 /*
  * Close any preview popup.
  */
@@ -3851,6 +3861,7 @@ popup_set_title(win_T *wp)
     }
 }
 
+# if defined(FEAT_QUICKFIX) || defined(PROTO)
 /*
  * If there is a preview window, update the title.
  * Used after changing directory.
@@ -3863,5 +3874,6 @@ popup_update_preview_title(void)
     if (wp != NULL)
 	popup_set_title(wp);
 }
+# endif
 
-#endif // FEAT_TEXT_PROP
+#endif // FEAT_PROP_POPUP

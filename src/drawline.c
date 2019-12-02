@@ -182,7 +182,7 @@ get_sign_display_info(
 }
 #endif
 
-#ifdef FEAT_TEXT_PROP
+#ifdef FEAT_PROP_POPUP
 static textprop_T	*current_text_props = NULL;
 static buf_T		*current_buf = NULL;
 
@@ -297,7 +297,7 @@ win_line(
     int		*color_cols = NULL;	// pointer to according columns array
 #endif
     int		eol_hl_off = 0;		// 1 if highlighted char after EOL
-#ifdef FEAT_TEXT_PROP
+#ifdef FEAT_PROP_POPUP
     int		text_prop_count;
     int		text_prop_next = 0;	// next text property to use
     textprop_T	*text_props = NULL;
@@ -752,7 +752,7 @@ win_line(
 	area_highlighting = TRUE;
     }
 
-#ifdef FEAT_TEXT_PROP
+#ifdef FEAT_PROP_POPUP
     if (WIN_IS_POPUP(wp))
 	screen_line_flags |= SLF_POPUP;
 #endif
@@ -924,7 +924,7 @@ win_line(
     }
 #endif
 
-#ifdef FEAT_TEXT_PROP
+#ifdef FEAT_PROP_POPUP
     {
 	char_u *prop_start;
 
@@ -1230,8 +1230,7 @@ win_line(
 		    if (tocol == vcol)
 			tocol += n_extra;
 		    // combine 'showbreak' with 'wincolor'
-		    if (win_attr != 0)
-			char_attr = hl_combine_attr(win_attr, char_attr);
+		    char_attr = hl_combine_attr(win_attr, char_attr);
 #  ifdef FEAT_SYN_HL
 		    // combine 'showbreak' with 'cursorline'
 		    if (cul_attr != 0)
@@ -1348,7 +1347,7 @@ win_line(
 	    }
 #endif
 
-#ifdef FEAT_TEXT_PROP
+#ifdef FEAT_PROP_POPUP
 	    if (text_props != NULL)
 	    {
 		int pi;
@@ -1473,7 +1472,7 @@ win_line(
 # endif
 		}
 	    }
-# ifdef FEAT_TEXT_PROP
+# ifdef FEAT_PROP_POPUP
 	    // Combine text property highlight into syntax highlight.
 	    if (text_prop_type != NULL)
 	    {
@@ -1616,6 +1615,8 @@ win_line(
 			if (cul_attr)
 			    multi_attr = hl_combine_attr(multi_attr, cul_attr);
 #endif
+			multi_attr = hl_combine_attr(win_attr, multi_attr);
+
 			// put the pointer back to output the double-width
 			// character at the start of the next line.
 			++n_extra;
@@ -1790,7 +1791,7 @@ win_line(
 		    mb_c = c;
 		    mb_utf8 = FALSE;
 		    mb_l = 1;
-		    multi_attr = HL_ATTR(HLF_AT);
+		    multi_attr = hl_combine_attr(win_attr, HL_ATTR(HLF_AT));
 		    // Put pointer back so that the character will be
 		    // displayed at the start of the next line.
 		    --ptr;
@@ -1939,11 +1940,11 @@ win_line(
 		    c_final = NUL;
 		    if (VIM_ISWHITE(c))
 		    {
-#ifdef FEAT_CONCEAL
+# ifdef FEAT_CONCEAL
 			if (c == TAB)
 			    // See "Tab alignment" below.
 			    FIX_FOR_BOGUSCOLS;
-#endif
+# endif
 			if (!wp->w_p_list)
 			    c = ' ';
 		    }
@@ -3123,7 +3124,7 @@ win_line(
 	cap_col = 0;
     }
 #endif
-#ifdef FEAT_TEXT_PROP
+#ifdef FEAT_PROP_POPUP
     vim_free(text_props);
     vim_free(text_prop_idxs);
 #endif
