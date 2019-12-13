@@ -1353,6 +1353,7 @@ $VIM_POSIX	vi_diff.txt	/*$VIM_POSIX*
 +perl	various.txt	/*+perl*
 +perl/dyn	various.txt	/*+perl\/dyn*
 +persistent_undo	various.txt	/*+persistent_undo*
++popupwin	various.txt	/*+popupwin*
 +postscript	various.txt	/*+postscript*
 +printer	various.txt	/*+printer*
 +profile	various.txt	/*+profile*
@@ -4866,6 +4867,7 @@ InsertChange	autocmd.txt	/*InsertChange*
 InsertCharPre	autocmd.txt	/*InsertCharPre*
 InsertEnter	autocmd.txt	/*InsertEnter*
 InsertLeave	autocmd.txt	/*InsertLeave*
+Integer	eval.txt	/*Integer*
 J	change.txt	/*J*
 Japanese	mbyte.txt	/*Japanese*
 Job	eval.txt	/*Job*
@@ -6463,6 +6465,7 @@ ft-man-plugin	filetype.txt	/*ft-man-plugin*
 ft-maple-syntax	syntax.txt	/*ft-maple-syntax*
 ft-masm-syntax	syntax.txt	/*ft-masm-syntax*
 ft-mathematica-syntax	syntax.txt	/*ft-mathematica-syntax*
+ft-matlab-indent	indent.txt	/*ft-matlab-indent*
 ft-mma-syntax	syntax.txt	/*ft-mma-syntax*
 ft-moo-syntax	syntax.txt	/*ft-moo-syntax*
 ft-msql-syntax	syntax.txt	/*ft-msql-syntax*
@@ -7673,6 +7676,8 @@ matchlist()	eval.txt	/*matchlist()*
 matchparen	pi_paren.txt	/*matchparen*
 matchstr()	eval.txt	/*matchstr()*
 matchstrpos()	eval.txt	/*matchstrpos()*
+matlab-indent	indent.txt	/*matlab-indent*
+matlab-indenting	indent.txt	/*matlab-indenting*
 max()	eval.txt	/*max()*
 mbyte-IME	mbyte.txt	/*mbyte-IME*
 mbyte-XIM	mbyte.txt	/*mbyte-XIM*
@@ -8082,6 +8087,7 @@ new-onemore	version7.txt	/*new-onemore*
 new-operator-mod	version6.txt	/*new-operator-mod*
 new-options-5.2	version5.txt	/*new-options-5.2*
 new-options-5.4	version5.txt	/*new-options-5.4*
+new-other-8.2	version8.txt	/*new-other-8.2*
 new-perl-python	version5.txt	/*new-perl-python*
 new-persistent-undo	version7.txt	/*new-persistent-undo*
 new-plugins	version6.txt	/*new-plugins*

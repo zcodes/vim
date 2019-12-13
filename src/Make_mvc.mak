@@ -1411,6 +1411,13 @@ clean: testclean
 	$(MAKE) /NOLOGO -f Makefile clean
 	cd ..
 
+# Run vim script to generate the Ex command lookup table.
+# This only needs to be run when a command name has been added or changed.
+# If this fails because you don't have Vim yet, first build and install Vim
+# without changes.
+cmdidxs: ex_cmds.h
+	vim --clean -X -u create_cmdidxs.vim
+
 test:
 	cd testdir
 	$(MAKE) /NOLOGO -f Make_dos.mak win32
@@ -1530,7 +1537,7 @@ $(OUTDIR)/ex_cmds.obj:	$(OUTDIR) ex_cmds.c  $(INCL)
 
 $(OUTDIR)/ex_cmds2.obj:	$(OUTDIR) ex_cmds2.c  $(INCL)
 
-$(OUTDIR)/ex_docmd.obj:	$(OUTDIR) ex_docmd.c  $(INCL)
+$(OUTDIR)/ex_docmd.obj:	$(OUTDIR) ex_docmd.c  $(INCL) ex_cmdidxs.h
 
 $(OUTDIR)/ex_eval.obj:	$(OUTDIR) ex_eval.c  $(INCL)
 
@@ -1570,6 +1577,7 @@ $(OUTDIR)/if_lua.obj: $(OUTDIR) if_lua.c  $(INCL)
 	$(CC) $(CFLAGS_OUTDIR) $(LUA_INC) if_lua.c
 
 auto/if_perl.c : if_perl.xs typemap
+	-mkdir auto
 	$(XSUBPP) -prototypes -typemap $(XSUBPP_TYPEMAP) \
 		-typemap typemap if_perl.xs -output $@
 

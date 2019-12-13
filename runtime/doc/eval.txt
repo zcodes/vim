@@ -1,4 +1,4 @@
-*eval.txt*	For Vim version 8.1.  Last change: 2019 Nov 28
+*eval.txt*	For Vim version 8.2.  Last change: 2019 Dec 06
 
 
 		  VIM REFERENCE MANUAL	  by Bram Moolenaar
@@ -42,7 +42,8 @@ Profiling is documented at |profiling|.
 						*E712* *E896* *E897* *E899*
 There are ten types of variables:
 
-Number		A 32 or 64 bit signed number.  |expr-number| *Number*
+							*Number* *Integer*
+Number		A 32 or 64 bit signed number.  |expr-number|
 		64-bit Numbers are available only when compiled with the
 		|+num64| feature.
 		Examples:  -123  0x10  0177  0b1011
@@ -10675,7 +10676,7 @@ eval			Compiled with expression evaluation support.  Always
 ex_extra		|+ex_extra| (always true)
 extra_search		Compiled with support for |'incsearch'| and
 			|'hlsearch'|
-farsi			Compiled with Farsi support |farsi|.
+farsi			Support for Farsi was removed |farsi|.
 file_in_path		Compiled with support for |gf| and |<cfile>|
 filterpipe		When 'shelltemp' is off pipes are used for shell
 			read/write/filter commands
@@ -10801,6 +10802,7 @@ ttyout			output is a terminal (tty)
 unix			Unix version of Vim. *+unix*
 unnamedplus		Compiled with support for "unnamedplus" in 'clipboard'
 user_commands		User-defined commands. (always true)
+vartabs			Compiled with variable tabstop support |'vartabstop'|.
 vcon			Win32: Virtual console support is working, can use
 			'termguicolors'. Also see |+vtp|.
 vertsplit		Compiled with vertically split windows |:vsplit|.
