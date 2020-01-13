@@ -247,7 +247,7 @@ theend:
     return retval;
 }
 
-#if defined(UNIX) || defined(FEAT_GUI) || defined(PROTO)
+#if defined(UNIX) || defined(VMS) || defined(FEAT_GUI) || defined(PROTO)
 /*
  * Common code for mch_inchar() and gui_inchar(): Wait for a while or
  * indefinitely until characters are available, dealing with timers and
@@ -1168,7 +1168,7 @@ clip_start_selection(int col, int row, int repeated_click)
     cb->prev = cb->start;
 
 #ifdef DEBUG_SELECTION
-    printf("Selection started at (%u,%u)\n", cb->start.lnum, cb->start.col);
+    printf("Selection started at (%ld,%d)\n", cb->start.lnum, cb->start.col);
 #endif
 }
 
@@ -1203,7 +1203,7 @@ clip_process_selection(
 	}
 
 #ifdef DEBUG_SELECTION
-	printf("Selection ended: (%u,%u) to (%u,%u)\n", cb->start.lnum,
+	printf("Selection ended: (%ld,%d) to (%ld,%d)\n", cb->start.lnum,
 		cb->start.col, cb->end.lnum, cb->end.col);
 #endif
 	if (clip_isautosel_star()
@@ -1347,7 +1347,7 @@ clip_process_selection(
     cb->prev.col  = col;
 
 #ifdef DEBUG_SELECTION
-	printf("Selection is: (%u,%u) to (%u,%u)\n", cb->start.lnum,
+	printf("Selection is: (%ld,%d) to (%ld,%d)\n", cb->start.lnum,
 		cb->start.col, cb->end.lnum, cb->end.col);
 #endif
 }
@@ -2356,9 +2356,9 @@ fill_input_buf(int exit_on_error UNUSED)
 	    ++inbufcount;
 	}
     }
-#endif // UNIX or VMS
+#endif // UNIX || VMS || MACOS_X
 }
-#endif // defined(UNIX) || defined(FEAT_GUI) || defined(VMS)
+#endif // USE_INPUT_BUF
 
 /*
  * Exit because of an input read error.

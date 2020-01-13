@@ -15,10 +15,7 @@ SCRIPTS_FIRST = \
 SCRIPTS_ALL = \
 	test42.out \
 	test44.out \
-	test64.out \
-	test69.out \
 	test70.out \
-	test95.out \
 	test99.out \
 	test_eval.out
 
@@ -37,9 +34,7 @@ SCRIPTS_MORE2 = \
 
 # Tests that run on most systems, but not on VMS
 SCRIPTS_MORE4 = \
-	test59.out \
-	test72.out \
-
+	test59.out
 
 # Tests specifically for MS-Windows.
 SCRIPTS_WIN32 =
@@ -102,6 +97,7 @@ NEW_TESTS = \
 	test_ex_equal \
 	test_ex_undo \
 	test_ex_z \
+	test_ex_mode \
 	test_excmd \
 	test_exec_while_if \
 	test_execute_func \
@@ -433,6 +429,7 @@ NEW_TESTS_RES = \
 	test_textformat.res \
 	test_textobjects.res \
 	test_textprop.res \
+	test_timers.res \
 	test_trycatch.res \
 	test_undo.res \
 	test_user_func.res \

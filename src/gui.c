@@ -3108,7 +3108,11 @@ button_set:
     if (clip_star.state == SELECT_IN_PROGRESS)
     {
 	clip_process_selection(button, X_2_COL(x), Y_2_ROW(y), repeated_click);
-	return;
+
+	// A release event may still need to be sent if the position is equal.
+	row = gui_xy2colrow(x, y, &col);
+	if (button != MOUSE_RELEASE || row != prev_row || col != prev_col)
+	    return;
     }
 
     // Determine which mouse settings to look for based on the current mode
@@ -3700,13 +3704,11 @@ get_tabline_label(
     if (**opt != NUL)
     {
 	int	use_sandbox = FALSE;
-	int	save_called_emsg = called_emsg;
+	int	called_emsg_before = called_emsg;
 	char_u	res[MAXPATHL];
 	tabpage_T *save_curtab;
 	char_u	*opt_name = (char_u *)(tooltip ? "guitabtooltip"
 							     : "guitablabel");
-
-	called_emsg = FALSE;
 
 	printer_page_num = tabpage_index(tp);
 # ifdef FEAT_EVAL
@@ -3738,10 +3740,9 @@ get_tabline_label(
 	curwin = curtab->tp_curwin;
 	curbuf = curwin->w_buffer;
 
-	if (called_emsg)
+	if (called_emsg > called_emsg_before)
 	    set_string_option_direct(opt_name, -1,
 					   (char_u *)"", OPT_FREE, SID_ERROR);
-	called_emsg |= save_called_emsg;
     }
 
     // If 'guitablabel'/'guitabtooltip' is not set or the result is empty then
@@ -5009,21 +5010,23 @@ ex_gui(exarg_T *eap)
     if (!gui.in_use)
     {
 #if defined(VIMDLL) && !defined(EXPERIMENTAL_GUI_CMD)
-	emsg(_(e_nogvim));
-	return;
-#else
+	if (!gui.starting)
+	{
+	    emsg(_(e_nogvim));
+	    return;
+	}
+#endif
 	// Clear the command.  Needed for when forking+exiting, to avoid part
 	// of the argument ending up after the shell prompt.
 	msg_clr_eos_force();
-# ifdef GUI_MAY_SPAWN
+#ifdef GUI_MAY_SPAWN
 	if (!ends_excmd(*eap->arg))
 	    gui_start(eap->arg);
 	else
-# endif
+#endif
 	    gui_start(NULL);
-# ifdef FEAT_JOB_CHANNEL
+#ifdef FEAT_JOB_CHANNEL
 	channel_gui_register_all();
-# endif
 #endif
     }
     if (!ends_excmd(*eap->arg))
