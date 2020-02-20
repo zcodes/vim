@@ -1449,3 +1449,97 @@ func Test_searchdecl()
 
   bwipe!
 endfunc
+
+func Test_search_special()
+  " this was causing illegal memory access and an endless loop
+  set t_PE=
+  exe "norm /\x80PS"
+endfunc
+
+" Test for command failures when the last search pattern is not set.
+" Need to run this in a new vim instance where last search pattern is not set.
+func Test_search_with_no_last_pat()
+  let lines =<< trim [SCRIPT]
+    call assert_fails("normal i\<C-R>/\e", 'E35:')
+    call assert_fails("exe '/'", 'E35:')
+    call assert_fails("exe '?'", 'E35:')
+    call assert_fails("/", 'E35:')
+    call assert_fails("?", 'E35:')
+    call assert_fails("normal n", 'E35:')
+    call assert_fails("normal N", 'E35:')
+    call assert_fails("normal gn", 'E35:')
+    call assert_fails("normal gN", 'E35:')
+    call assert_fails("normal cgn", 'E35:')
+    call assert_fails("normal cgN", 'E35:')
+    let p = []
+    let p = @/
+    call assert_equal('', p)
+    call assert_fails("normal :\<C-R>/", 'E35:')
+    call assert_fails("//p", 'E35:')
+    call assert_fails(";//p", 'E35:')
+    call assert_fails("??p", 'E35:')
+    call assert_fails(";??p", 'E35:')
+    call assert_fails('g//p', 'E476:')
+    call assert_fails('v//p', 'E476:')
+    call writefile(v:errors, 'Xresult')
+    qall!
+  [SCRIPT]
+  call writefile(lines, 'Xscript')
+
+  if RunVim([], [], '--clean -S Xscript')
+    call assert_equal([], readfile('Xresult'))
+  endif
+  call delete('Xscript')
+  call delete('Xresult')
+endfunc
+
+" Test for using tilde (~) atom in search. This should use the last used
+" substitute pattern
+func Test_search_tilde_pat()
+  let lines =<< trim [SCRIPT]
+    set regexpengine=1
+    call assert_fails('exe "normal /~\<CR>"', 'E33:')
+    call assert_fails('exe "normal ?~\<CR>"', 'E33:')
+    set regexpengine=2
+    call assert_fails('exe "normal /~\<CR>"', 'E383:')
+    call assert_fails('exe "normal ?~\<CR>"', 'E383:')
+    set regexpengine&
+    call writefile(v:errors, 'Xresult')
+    qall!
+  [SCRIPT]
+  call writefile(lines, 'Xscript')
+  if RunVim([], [], '--clean -S Xscript')
+    call assert_equal([], readfile('Xresult'))
+  endif
+  call delete('Xscript')
+  call delete('Xresult')
+endfunc
+
+" Test for searching a pattern that is not present with 'nowrapscan'
+func Test_search_pat_not_found()
+  new
+  set nowrapscan
+  let @/ = '1abcxyz2'
+  call assert_fails('normal n', 'E385:')
+  call assert_fails('normal N', 'E384:')
+  set wrapscan&
+  close
+endfunc
+
+" Test for v:searchforward variable
+func Test_searchforward_var()
+  new
+  call setline(1, ['foo', '', 'foo'])
+  call cursor(2, 1)
+  let @/ = 'foo'
+  let v:searchforward = 0
+  normal N
+  call assert_equal(3, line('.'))
+  call cursor(2, 1)
+  let v:searchforward = 1
+  normal N
+  call assert_equal(1, line('.'))
+  close!
+endfunc
+
+" vim: shiftwidth=2 sts=2 expandtab
