@@ -32,7 +32,11 @@ in_vim9script(void)
     void
 ex_vim9script(exarg_T *eap)
 {
-    scriptitem_T *si = SCRIPT_ITEM(current_sctx.sc_sid);
+    scriptitem_T    *si = SCRIPT_ITEM(current_sctx.sc_sid);
+    garray_T	    *gap;
+    garray_T	    func_ga;
+    int		    idx;
+    ufunc_T	    *ufunc;
 
     if (!getline_equal(eap->getline, eap->cookie, getsourceline))
     {
@@ -47,12 +51,103 @@ ex_vim9script(exarg_T *eap)
     current_sctx.sc_version = SCRIPT_VERSION_VIM9;
     si->sn_version = SCRIPT_VERSION_VIM9;
     si->sn_had_command = TRUE;
+    ga_init2(&func_ga, sizeof(ufunc_T *), 20);
 
     if (STRCMP(p_cpo, CPO_VIM) != 0)
     {
 	si->sn_save_cpo = p_cpo;
 	p_cpo = vim_strsave((char_u *)CPO_VIM);
     }
+
+    // Make a pass through the script to find:
+    // - function declarations
+    // - variable and constant declarations
+    // - imports
+    // The types are recognized, so that they can be used when compiling a
+    // function.
+    gap = source_get_line_ga(eap->cookie);
+    for (;;)
+    {
+	char_u	    *line;
+	char_u	    *p;
+
+	if (ga_grow(gap, 1) == FAIL)
+	    return;
+	line = eap->getline(':', eap->cookie, 0, TRUE);
+	if (line == NULL)
+	    break;
+	((char_u **)(gap->ga_data))[gap->ga_len++] = line;
+	line = skipwhite(line);
+	p = line;
+	if (checkforcmd(&p, "function", 2) || checkforcmd(&p, "def", 3))
+	{
+	    int		    lnum_start = SOURCING_LNUM - 1;
+
+	    // Handle :function and :def by calling def_function().
+	    // It will read upto the matching :endded or :endfunction.
+	    eap->cmdidx = *line == 'f' ? CMD_function : CMD_def;
+	    eap->cmd = line;
+	    eap->arg = p;
+	    eap->forceit = FALSE;
+	    ufunc = def_function(eap, NULL, NULL, FALSE);
+
+	    if (ufunc != NULL && *line == 'd' && ga_grow(&func_ga, 1) == OK)
+	    {
+		// Add the function to the list of :def functions, so that it
+		// can be referenced by index.  It's compiled below.
+		add_def_function(ufunc);
+		((ufunc_T **)(func_ga.ga_data))[func_ga.ga_len++] = ufunc;
+	    }
+
+	    // Store empty lines in place of the function, we don't need to
+	    // process it again.
+	    vim_free(((char_u **)(gap->ga_data))[--gap->ga_len]);
+	    if (ga_grow(gap, SOURCING_LNUM - lnum_start) == OK)
+		while (lnum_start < SOURCING_LNUM)
+		{
+		    // getsourceline() will skip over NULL lines.
+		    ((char_u **)(gap->ga_data))[gap->ga_len++] = NULL;
+		    ++lnum_start;
+		}
+	}
+	else if (checkforcmd(&p, "let", 3) || checkforcmd(&p, "const", 4))
+	{
+	    eap->cmd = line;
+	    eap->arg = p;
+	    eap->forceit = FALSE;
+	    eap->cmdidx = *line == 'l' ? CMD_let: CMD_const;
+
+	    // The command will be executed again, it's OK to redefine the
+	    // variable then.
+	    ex_let_const(eap, TRUE);
+	}
+	else if (checkforcmd(&p, "import", 3))
+	{
+	    eap->arg = p;
+	    ex_import(eap);
+
+	    // Store empty line, we don't need to process the command again.
+	    vim_free(((char_u **)(gap->ga_data))[--gap->ga_len]);
+	    ((char_u **)(gap->ga_data))[gap->ga_len++] = NULL;
+	}
+	else if (checkforcmd(&p, "finish", 4))
+	{
+	    // TODO: this should not happen below "if false".
+	    // Use "if cond | finish | endif as a workaround.
+	    break;
+	}
+    }
+
+    // Compile the :def functions.
+    for (idx = 0; idx < func_ga.ga_len; ++idx)
+    {
+	ufunc = ((ufunc_T **)(func_ga.ga_data))[idx];
+	compile_def_function(ufunc, FALSE, NULL);
+    }
+    ga_clear(&func_ga);
+
+    // Return to process the commands at the script level.
+    source_use_line_ga(eap->cookie);
 }
 
 /*
@@ -64,7 +159,7 @@ ex_vim9script(exarg_T *eap)
  * ":export {Name, ...}"
  */
     void
-ex_export(exarg_T *eap UNUSED)
+ex_export(exarg_T *eap)
 {
     if (current_sctx.sc_version != SCRIPT_VERSION_VIM9)
     {
@@ -119,11 +214,13 @@ free_imports(int sid)
 
     for (idx = 0; idx < si->sn_imports.ga_len; ++idx)
     {
-	imported_T *imp = ((imported_T *)si->sn_imports.ga_data + idx);
+	imported_T *imp = ((imported_T *)si->sn_imports.ga_data) + idx;
 
 	vim_free(imp->imp_name);
     }
     ga_clear(&si->sn_imports);
+    ga_clear(&si->sn_var_vals);
+    ga_clear(&si->sn_type_list);
 }
 
 /*
@@ -143,11 +240,94 @@ ex_import(exarg_T *eap)
 	emsg(_(e_needs_vim9));
     else
     {
-	char_u *cmd_end = handle_import(eap->arg, NULL, current_sctx.sc_sid);
+	char_u *cmd_end = handle_import(eap->arg, NULL,
+						    current_sctx.sc_sid, NULL);
 
 	if (cmd_end != NULL)
 	    eap->nextcmd = check_nextcmd(cmd_end);
     }
+}
+
+/*
+ * Find an exported item in "sid" matching the name at "*argp".
+ * When it is a variable return the index.
+ * When it is a user function return "*ufunc".
+ * When not found returns -1 and "*ufunc" is NULL.
+ */
+    int
+find_exported(
+	int	    sid,
+	char_u	    **argp,
+	int	    *name_len,
+	ufunc_T	    **ufunc,
+	type_T	    **type)
+{
+    char_u	*name = *argp;
+    char_u	*arg = *argp;
+    int		cc;
+    int		idx = -1;
+    svar_T	*sv;
+    scriptitem_T *script = SCRIPT_ITEM(sid);
+
+    // isolate one name
+    while (eval_isnamec(*arg))
+	++arg;
+    *name_len = (int)(arg - name);
+
+    // find name in "script"
+    // TODO: also find script-local user function
+    cc = *arg;
+    *arg = NUL;
+    idx = get_script_item_idx(sid, name, FALSE);
+    if (idx >= 0)
+    {
+	sv = ((svar_T *)script->sn_var_vals.ga_data) + idx;
+	if (!sv->sv_export)
+	{
+	    semsg(_("E1049: Item not exported in script: %s"), name);
+	    *arg = cc;
+	    return -1;
+	}
+	*type = sv->sv_type;
+	*ufunc = NULL;
+    }
+    else
+    {
+	char_u	buffer[200];
+	char_u	*funcname;
+
+	// it could be a user function.
+	if (STRLEN(name) < sizeof(buffer) - 10)
+	    funcname = buffer;
+	else
+	{
+	    funcname = alloc(STRLEN(name) + 10);
+	    if (funcname == NULL)
+	    {
+		*arg = cc;
+		return -1;
+	    }
+	}
+	funcname[0] = K_SPECIAL;
+	funcname[1] = KS_EXTRA;
+	funcname[2] = (int)KE_SNR;
+	sprintf((char *)funcname + 3, "%ld_%s", (long)sid, name);
+	*ufunc = find_func(funcname, FALSE, NULL);
+	if (funcname != buffer)
+	    vim_free(funcname);
+
+	if (*ufunc == NULL)
+	{
+	    semsg(_("E1048: Item not found in script: %s"), name);
+	    *arg = cc;
+	    return -1;
+	}
+    }
+    *arg = cc;
+    arg = skipwhite(arg);
+    *argp = arg;
+
+    return idx;
 }
 
 /*
@@ -156,7 +336,7 @@ ex_import(exarg_T *eap)
  * Returns a pointer to after the command or NULL in case of failure
  */
     char_u *
-handle_import(char_u *arg_start, garray_T *gap, int import_sid)
+handle_import(char_u *arg_start, garray_T *gap, int import_sid, void *cctx)
 {
     char_u	*arg = arg_start;
     char_u	*cmd_end;
@@ -180,9 +360,9 @@ handle_import(char_u *arg_start, garray_T *gap, int import_sid)
     {
 	if (*arg == '*')
 	    arg = skipwhite(arg + 1);
-	else
+	else if (eval_isnamec1(*arg))
 	{
-	    while (eval_isnamec1(*arg))
+	    while (eval_isnamec(*arg))
 		++arg;
 	    arg = skipwhite(arg);
 	}
@@ -191,10 +371,13 @@ handle_import(char_u *arg_start, garray_T *gap, int import_sid)
 	    // skip over "as Name "
 	    arg = skipwhite(arg + 2);
 	    as_ptr = arg;
-	    while (eval_isnamec1(*arg))
-		++arg;
+	    if (eval_isnamec1(*arg))
+		while (eval_isnamec(*arg))
+		    ++arg;
 	    as_len = (int)(arg - as_ptr);
 	    arg = skipwhite(arg);
+	    if (check_defined(as_ptr, as_len, cctx) == FAIL)
+		return NULL;
 	}
 	else if (*arg_start == '*')
 	{
@@ -204,7 +387,7 @@ handle_import(char_u *arg_start, garray_T *gap, int import_sid)
     }
     if (STRNCMP("from", arg, 4) != 0 || !VIM_ISWHITE(arg[4]))
     {
-	emsg(_("E1045: Missing \"from\""));
+	emsg(_("E1070: Missing \"from\""));
 	return NULL;
     }
     from_ptr = arg;
@@ -217,7 +400,7 @@ handle_import(char_u *arg_start, garray_T *gap, int import_sid)
 	ret = get_string_tv(&arg, &tv, TRUE);
     if (ret == FAIL || tv.vval.v_string == NULL || *tv.vval.v_string == NUL)
     {
-	emsg(_("E1045: Invalid string after \"from\""));
+	emsg(_("E1071: Invalid string after \"from\""));
 	return NULL;
     }
     cmd_end = arg;
@@ -289,8 +472,6 @@ handle_import(char_u *arg_start, garray_T *gap, int import_sid)
     }
     else
     {
-	scriptitem_T *script = SCRIPT_ITEM(sid);
-
 	arg = arg_start;
 	if (*arg == '{')
 	    arg = skipwhite(arg + 1);
@@ -298,68 +479,18 @@ handle_import(char_u *arg_start, garray_T *gap, int import_sid)
 	{
 	    char_u	*name = arg;
 	    int		name_len;
-	    int		cc;
 	    int		idx;
-	    svar_T	*sv;
 	    imported_T	*imported;
-	    ufunc_T	*ufunc;
+	    ufunc_T	*ufunc = NULL;
+	    type_T	*type;
 
-	    // isolate one name
-	    while (eval_isnamec1(*arg))
-		++arg;
-	    name_len = (int)(arg - name);
+	    idx = find_exported(sid, &arg, &name_len, &ufunc, &type);
 
-	    // find name in "script"
-	    // TODO: also find script-local user function
-	    cc = *arg;
-	    *arg = NUL;
-	    idx = get_script_item_idx(sid, name, FALSE);
-	    if (idx >= 0)
-	    {
-		sv = ((svar_T *)script->sn_var_vals.ga_data) + idx;
-		if (!sv->sv_export)
-		{
-		    semsg(_("E1049: Item not exported in script: %s"), name);
-		    *arg = cc;
-		    return NULL;
-		}
-		ufunc = NULL;
-	    }
-	    else
-	    {
-		char_u	buffer[200];
-		char_u	*funcname;
+	    if (idx < 0 && ufunc == NULL)
+		return NULL;
 
-		// it could be a user function.
-		if (STRLEN(name) < sizeof(buffer) - 10)
-		    funcname = buffer;
-		else
-		{
-		    funcname = alloc(STRLEN(name) + 10);
-		    if (funcname == NULL)
-		    {
-			*arg = cc;
-			return NULL;
-		    }
-		}
-		funcname[0] = K_SPECIAL;
-		funcname[1] = KS_EXTRA;
-		funcname[2] = (int)KE_SNR;
-		sprintf((char *)funcname + 3, "%ld_%s", (long)sid, name);
-		ufunc = find_func(funcname, NULL);
-		if (funcname != buffer)
-		    vim_free(funcname);
-
-		if (ufunc == NULL)
-		{
-		    semsg(_("E1048: Item not found in script: %s"), name);
-		    *arg = cc;
-		    return NULL;
-		}
-		sv = NULL;
-	    }
-	    *arg = cc;
-	    arg = skipwhite(arg);
+	    if (check_defined(name, name_len, cctx) == FAIL)
+		return NULL;
 
 	    imported = new_imported(gap != NULL ? gap
 				       : &SCRIPT_ITEM(import_sid)->sn_imports);
@@ -372,7 +503,7 @@ handle_import(char_u *arg_start, garray_T *gap, int import_sid)
 	    imported->imp_sid = sid;
 	    if (idx >= 0)
 	    {
-		imported->imp_type = sv->sv_type;
+		imported->imp_type = type;
 		imported->imp_var_vals_idx = idx;
 	    }
 	    else
@@ -396,6 +527,7 @@ handle_import(char_u *arg_start, garray_T *gap, int import_sid)
 	}
 	if (arg != from_ptr)
 	{
+	    // cannot happen, just in case the above has a flaw
 	    emsg(_("E1047: syntax error in import"));
 	    return NULL;
 	}

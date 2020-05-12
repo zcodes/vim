@@ -81,7 +81,20 @@ func Test_expandcmd()
   call assert_fails('call expandcmd("make <afile>")', 'E495:')
   enew
   call assert_fails('call expandcmd("make %")', 'E499:')
-  close
+  let $FOO="blue\tsky"
+  call setline(1, "$FOO")
+  call assert_equal("grep pat blue\tsky", expandcmd('grep pat <cfile>'))
+
+  " Test for expression expansion `=
+  let $FOO= "blue"
+  call assert_equal("blue sky", expandcmd("`=$FOO .. ' sky'`"))
+
+  " Test for env variable with spaces
+  let $FOO= "foo bar baz"
+  call assert_equal("e foo bar baz", expandcmd("e $FOO"))
+
+  unlet $FOO
+  close!
 endfunc
 
 " Test for expanding <sfile>, <slnum> and <sflnum> outside of sourcing a script
@@ -108,5 +121,18 @@ func Test_source_sfile()
   call delete('Xresult')
 endfunc
 
+" Test for expanding filenames multiple times in a command line
+func Test_expand_filename_multicmd()
+  edit foo
+  call setline(1, 'foo!')
+  new
+  call setline(1, 'foo!')
+  new <cword> | new <cWORD>
+  call assert_equal(4, winnr('$'))
+  call assert_equal('foo!', bufname(winbufnr(1)))
+  call assert_equal('foo', bufname(winbufnr(2)))
+  call assert_fails('e %:s/.*//', 'E500:')
+  %bwipe!
+endfunc
 
 " vim: shiftwidth=2 sts=2 expandtab

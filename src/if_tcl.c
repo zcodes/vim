@@ -280,13 +280,6 @@ tcl_enabled(int verbose)
     void
 tcl_end(void)
 {
-#ifdef DYNAMIC_TCL
-    if (hTclLib)
-    {
-	close_dll(hTclLib);
-	hTclLib = NULL;
-    }
-#endif
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -1410,7 +1403,7 @@ vimerror(Tcl_Interp *interp)
     }
     else if (did_emsg)
     {
-	Tcl_SetResult(interp, _("vim error"), TCL_STATIC);
+	Tcl_SetResult(interp, _("Vim error"), TCL_STATIC);
 	return TCL_ERROR;
     }
     return TCL_OK;

@@ -270,7 +270,6 @@ win_line(
     int		tocol = MAXCOL;		// end of inverting
     int		fromcol_prev = -2;	// start of inverting after cursor
     int		noinvcur = FALSE;	// don't invert the cursor
-    pos_T	*top, *bot;
     int		lnum_in_visual_area = FALSE;
     pos_T	pos;
     long	v;
@@ -535,6 +534,8 @@ win_line(
 	// handle Visual active in this window
 	if (VIsual_active && wp->w_buffer == curwin->w_buffer)
 	{
+	    pos_T	*top, *bot;
+
 	    if (LTOREQ_POS(curwin->w_cursor, VIsual))
 	    {
 		// Visual is after curwin->w_cursor
@@ -1140,11 +1141,11 @@ win_line(
 	    }
 
 #ifdef FEAT_LINEBREAK
-	    if (wp->w_p_brisbr && draw_state == WL_BRI - 1
+	    if (wp->w_briopt_sbr && draw_state == WL_BRI - 1
 			    && n_extra == 0 && *get_showbreak_value(wp) != NUL)
 		// draw indent after showbreak value
 		draw_state = WL_BRI;
-	    else if (wp->w_p_brisbr && draw_state == WL_SBR && n_extra == 0)
+	    else if (wp->w_briopt_sbr && draw_state == WL_SBR && n_extra == 0)
 		// After the showbreak, draw the breakindent
 		draw_state = WL_BRI - 1;
 
@@ -1176,7 +1177,7 @@ win_line(
 		    c_final = NUL;
 		    n_extra = get_breakindent_win(wp,
 				       ml_get_buf(wp->w_buffer, lnum, FALSE));
-		    if (wp->w_skipcol > 0 && wp->w_p_wrap)
+		    if (wp->w_skipcol > 0 && wp->w_p_wrap && wp->w_briopt_sbr)
 			need_showbreak = FALSE;
 		    // Correct end of highlighted area for 'breakindent',
 		    // required when 'linebreak' is also set.
@@ -3094,9 +3095,9 @@ win_line(
 #ifdef FEAT_SYN_HL
 	    if (!(cul_screenline
 # ifdef FEAT_DIFF
-			&& diff_hlf == (hlf_T)0)
+			&& diff_hlf == (hlf_T)0
 # endif
-		    )
+		    ))
 		saved_char_attr = char_attr;
 	    else
 #endif

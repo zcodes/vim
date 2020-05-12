@@ -129,6 +129,8 @@ Window	    x11_window = 0;
 Display	    *x11_display = NULL;
 #endif
 
+static int ignore_sigtstp = FALSE;
+
 #ifdef FEAT_TITLE
 static int get_x11_title(int);
 
@@ -1083,10 +1085,10 @@ deathtrap SIGDEFARG(sigarg)
 
     // No translation, it may call malloc().
 #ifdef SIGHASARG
-    sprintf((char *)IObuff, "Vim: Caught deadly signal %s\n",
+    sprintf((char *)IObuff, "Vim: Caught deadly signal %s\r\n",
 							 signal_info[i].name);
 #else
-    sprintf((char *)IObuff, "Vim: Caught deadly signal\n");
+    sprintf((char *)IObuff, "Vim: Caught deadly signal\r\n");
 #endif
 
     // Preserve files and exit.  This sets the really_exiting flag to prevent
@@ -1237,6 +1239,9 @@ restore_clipboard(void)
     void
 mch_suspend(void)
 {
+    if (ignore_sigtstp)
+	return;
+
     // BeOS does have SIGTSTP, but it doesn't work.
 #if defined(SIGTSTP) && !defined(__BEOS__)
     in_mch_suspend = TRUE;
@@ -1286,6 +1291,14 @@ mch_init(void)
     Rows = 24;
 
     out_flush();
+
+#ifdef SIGTSTP
+    // Check whether we were invoked with SIGTSTP set to be ignored. If it is
+    // that indicates the shell (or program) that launched us does not support
+    // tty job control and thus we should ignore that signal. If invoked as a
+    // restricted editor (e.g., as "rvim") SIGTSTP is always ignored.
+    ignore_sigtstp = restricted || SIG_IGN == signal(SIGTSTP, SIG_ERR);
+#endif
     set_signals();
 
 #ifdef MACOS_CONVERT
@@ -1306,17 +1319,13 @@ set_signals(void)
     signal(SIGWINCH, (RETSIGTYPE (*)())sig_winch);
 #endif
 
-    /*
-     * We want the STOP signal to work, to make mch_suspend() work.
-     * For "rvim" the STOP signal is ignored.
-     */
 #ifdef SIGTSTP
-    signal(SIGTSTP, restricted ? SIG_IGN : SIG_DFL);
+    // See mch_init() for the conditions under which we ignore SIGTSTP.
+    signal(SIGTSTP, ignore_sigtstp ? SIG_IGN : SIG_DFL);
 #endif
 #if defined(SIGCONT)
     signal(SIGCONT, sigcont_handler);
 #endif
-
     /*
      * We want to ignore breaking of PIPEs.
      */
@@ -1386,6 +1395,7 @@ catch_signals(
     int	    i;
 
     for (i = 0; signal_info[i].sig != -1; i++)
+    {
 	if (signal_info[i].deadly)
 	{
 #if defined(HAVE_SIGALTSTACK) && defined(HAVE_SIGACTION)
@@ -1420,7 +1430,17 @@ catch_signals(
 #endif
 	}
 	else if (func_other != SIG_ERR)
+	{
+	    // Deal with non-deadly signals.
+#ifdef SIGTSTP
+	    signal(signal_info[i].sig,
+		    signal_info[i].sig == SIGTSTP && ignore_sigtstp
+						       ? SIG_IGN : func_other);
+#else
 	    signal(signal_info[i].sig, func_other);
+#endif
+	}
+    }
 }
 
 #ifdef HAVE_SIGPROCMASK
@@ -1544,10 +1564,15 @@ x_error_handler(Display *dpy, XErrorEvent *error_event)
     XGetErrorText(dpy, error_event->error_code, (char *)IObuff, IOSIZE);
     STRCAT(IObuff, _("\nVim: Got X error\n"));
 
-    // We cannot print a message and continue, because no X calls are allowed
-    // here (causes my system to hang).  Silently continuing might be an
-    // alternative...
-    preserve_exit();		    // preserve files and exit
+    // In the GUI we cannot print a message and continue, because no X calls
+    // are allowed here (causes my system to hang).  Silently continuing seems
+    // like the best alternative.  Do preserve files, in case we crash.
+    ml_sync_all(FALSE, FALSE);
+
+#ifdef FEAT_GUI
+    if (!gui.in_use)
+#endif
+	msg((char *)IObuff);
 
     return 0;		// NOTREACHED
 }
@@ -2151,7 +2176,8 @@ mch_settitle(char_u *title, char_u *icon)
     if (get_x11_windis() == OK)
 	type = 1;
 #else
-# if defined(FEAT_GUI_PHOTON) || defined(FEAT_GUI_MAC) || defined(FEAT_GUI_GTK)
+# if defined(FEAT_GUI_PHOTON) || defined(FEAT_GUI_MAC) \
+    || defined(FEAT_GUI_GTK) || defined(FEAT_GUI_HAIKU)
     if (gui.in_use)
 	type = 1;
 # endif
@@ -2184,7 +2210,7 @@ mch_settitle(char_u *title, char_u *icon)
 # endif
 	    set_x11_title(title);		// x11
 #endif
-#if defined(FEAT_GUI_GTK) \
+#if defined(FEAT_GUI_GTK) || defined(FEAT_GUI_HAIKU) \
 	|| defined(FEAT_GUI_PHOTON) || defined(FEAT_GUI_MAC)
 	else
 	    gui_mch_settitle(title, icon);
@@ -3286,6 +3312,10 @@ exit_scroll(void)
     }
 }
 
+#ifdef USE_GCOV_FLUSH
+extern void __gcov_flush();
+#endif
+
     void
 mch_exit(int r)
 {
@@ -3332,6 +3362,12 @@ mch_exit(int r)
     }
     out_flush();
     ml_close_all(TRUE);		// remove all memfiles
+
+#ifdef USE_GCOV_FLUSH
+    // Flush coverage info before possibly being killed by a deadly signal.
+    __gcov_flush();
+#endif
+
     may_core_dump();
 #ifdef FEAT_GUI
     if (gui.in_use)
@@ -4159,11 +4195,6 @@ set_child_environment(
     static char	envbuf_Servername[60];
 #  endif
 # endif
-    long	colors =
-#  ifdef FEAT_GUI
-	    gui.in_use ? 256*256*256 :
-#  endif
-	    t_colors;
 
 # ifdef HAVE_SETENV
     setenv("TERM", term, 1);
@@ -4173,7 +4204,7 @@ set_child_environment(
     setenv("LINES", (char *)envbuf, 1);
     sprintf((char *)envbuf, "%ld", columns);
     setenv("COLUMNS", (char *)envbuf, 1);
-    sprintf((char *)envbuf, "%ld", colors);
+    sprintf((char *)envbuf, "%d", t_colors);
     setenv("COLORS", (char *)envbuf, 1);
 #  ifdef FEAT_TERMINAL
     if (is_terminal)
@@ -4200,7 +4231,7 @@ set_child_environment(
     vim_snprintf(envbuf_Columns, sizeof(envbuf_Columns),
 						       "COLUMNS=%ld", columns);
     putenv(envbuf_Columns);
-    vim_snprintf(envbuf_Colors, sizeof(envbuf_Colors), "COLORS=%ld", colors);
+    vim_snprintf(envbuf_Colors, sizeof(envbuf_Colors), "COLORS=%ld", t_colors);
     putenv(envbuf_Colors);
 #  ifdef FEAT_TERMINAL
     if (is_terminal)
@@ -4591,7 +4622,7 @@ mch_call_shell_fork(
     {
 	SIGSET_DECL(curset)
 
-# ifdef __BEOS__
+# if defined(__BEOS__) && USE_THREAD_FOR_INPUT_WITH_TIMEOUT
 	beos_cleanup_read_thread();
 # endif
 
@@ -5490,9 +5521,17 @@ mch_job_start(char **argv, job_T *job, jobopt_T *options, int is_terminal)
 		term = getenv("TERM");
 #endif
 	    // Use 'term' or $TERM if it starts with "xterm", otherwise fall
-	    // back to "xterm".
+	    // back to "xterm" or "xterm-color".
 	    if (term == NULL || *term == NUL || STRNCMP(term, "xterm", 5) != 0)
-		term = "xterm";
+	    {
+		if (t_colors >= 256)
+		    // TODO: should we check this name is supported?
+		    term = "xterm-256color";
+		else if (t_colors > 16)
+		    term = "xterm-color";
+		else
+		    term = "xterm";
+	    }
 	    set_child_environment(
 		    (long)options->jo_term_rows,
 		    (long)options->jo_term_cols,

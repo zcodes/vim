@@ -105,28 +105,37 @@ rettv_dict_set(typval_T *rettv, dict_T *d)
     void
 dict_free_contents(dict_T *d)
 {
+    hashtab_free_contents(&d->dv_hashtab);
+}
+
+/*
+ * Clear hashtab "ht" and dict items it contains.
+ */
+    void
+hashtab_free_contents(hashtab_T *ht)
+{
     int		todo;
     hashitem_T	*hi;
     dictitem_T	*di;
 
     // Lock the hashtab, we don't want it to resize while freeing items.
-    hash_lock(&d->dv_hashtab);
-    todo = (int)d->dv_hashtab.ht_used;
-    for (hi = d->dv_hashtab.ht_array; todo > 0; ++hi)
+    hash_lock(ht);
+    todo = (int)ht->ht_used;
+    for (hi = ht->ht_array; todo > 0; ++hi)
     {
 	if (!HASHITEM_EMPTY(hi))
 	{
 	    // Remove the item before deleting it, just in case there is
 	    // something recursive causing trouble.
 	    di = HI2DI(hi);
-	    hash_remove(&d->dv_hashtab, hi);
+	    hash_remove(ht, hi);
 	    dictitem_free(di);
 	    --todo;
 	}
     }
 
-    // The hashtab is still locked, it has to be re-initialized anyway
-    hash_clear(&d->dv_hashtab);
+    // The hashtab is still locked, it has to be re-initialized anyway.
+    hash_clear(ht);
 }
 
     static void
@@ -826,7 +835,8 @@ eval_dict(char_u **arg, typval_T *rettv, int evaluate, int literal)
 
 	if (**arg != ':')
 	{
-	    semsg(_(e_missing_dict_colon), *arg);
+	    if (evaluate)
+		semsg(_(e_missing_dict_colon), *arg);
 	    clear_tv(&tvkey);
 	    goto failret;
 	}
@@ -853,7 +863,8 @@ eval_dict(char_u **arg, typval_T *rettv, int evaluate, int literal)
 	    item = dict_find(d, key, -1);
 	    if (item != NULL)
 	    {
-		semsg(_(e_duplicate_key), key);
+		if (evaluate)
+		    semsg(_(e_duplicate_key), key);
 		clear_tv(&tvkey);
 		clear_tv(&tv);
 		goto failret;
@@ -873,7 +884,8 @@ eval_dict(char_u **arg, typval_T *rettv, int evaluate, int literal)
 	    break;
 	if (**arg != ',')
 	{
-	    semsg(_(e_missing_dict_comma), *arg);
+	    if (evaluate)
+		semsg(_(e_missing_dict_comma), *arg);
 	    goto failret;
 	}
 	*arg = skipwhite(*arg + 1);
@@ -881,7 +893,8 @@ eval_dict(char_u **arg, typval_T *rettv, int evaluate, int literal)
 
     if (**arg != '}')
     {
-	semsg(_(e_missing_dict_end), *arg);
+	if (evaluate)
+	    semsg(_(e_missing_dict_end), *arg);
 failret:
 	if (d != NULL)
 	    dict_free(d);
@@ -973,13 +986,14 @@ dict_equal(
     dictitem_T	*item2;
     int		todo;
 
-    if (d1 == NULL && d2 == NULL)
-	return TRUE;
-    if (d1 == NULL || d2 == NULL)
-	return FALSE;
     if (d1 == d2)
 	return TRUE;
     if (dict_len(d1) != dict_len(d2))
+	return FALSE;
+    if (dict_len(d1) == 0)
+	// empty and NULL dicts are considered equal
+	return TRUE;
+    if (d1 == NULL || d2 == NULL)
 	return FALSE;
 
     todo = (int)d1->dv_hashtab.ht_used;

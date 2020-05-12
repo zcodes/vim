@@ -256,6 +256,9 @@ static reg_extmatch_T *next_match_extmatch = NULL;
 #define INVALID_STATE(ssp)  ((ssp)->ga_itemsize == 0)
 #define VALID_STATE(ssp)    ((ssp)->ga_itemsize != 0)
 
+#define FOR_ALL_SYNSTATES(sb, sst) \
+    for ((sst) = (sb)->b_sst_first; (sst) != NULL; (sst) = (sst)->sst_next)
+
 /*
  * The current state (within the line) of the recognition engine.
  * When current_state.ga_itemsize is 0 the current state is invalid.
@@ -438,7 +441,7 @@ syntax_start(win_T *wp, linenr_T lnum)
     if (INVALID_STATE(&current_state) && syn_block->b_sst_array != NULL)
     {
 	// Find last valid saved state before start_lnum.
-	for (p = syn_block->b_sst_first; p != NULL; p = p->sst_next)
+	FOR_ALL_SYNSTATES(syn_block, p)
 	{
 	    if (p->sst_lnum > lnum)
 		break;
@@ -1044,7 +1047,7 @@ syn_stack_free_block(synblock_T *block)
 
     if (block->b_sst_array != NULL)
     {
-	for (p = block->b_sst_first; p != NULL; p = p->sst_next)
+	FOR_ALL_SYNSTATES(block, p)
 	    clear_syn_state(p);
 	VIM_CLEAR(block->b_sst_array);
 	block->b_sst_first = NULL;
@@ -1352,7 +1355,7 @@ store_current_state(void)
 	    else
 	    {
 		// find the entry just before this one to adjust sst_next
-		for (p = syn_block->b_sst_first; p != NULL; p = p->sst_next)
+		FOR_ALL_SYNSTATES(syn_block, p)
 		    if (p->sst_next == sp)
 			break;
 		if (p != NULL)	// just in case
@@ -2745,7 +2748,7 @@ push_current_state(int idx)
 {
     if (ga_grow(&current_state, 1) == FAIL)
 	return FAIL;
-    vim_memset(&CUR_STATE(current_state.ga_len), 0, sizeof(stateitem_T));
+    CLEAR_POINTER(&CUR_STATE(current_state.ga_len));
     CUR_STATE(current_state.ga_len).si_idx = idx;
     ++current_state.ga_len;
     return OK;
@@ -3627,7 +3630,7 @@ syn_cmd_clear(exarg_T *eap, int syncing)
     if (curwin->w_s->b_syn_topgrp != 0)
 	return;
 
-    if (ends_excmd(*arg))
+    if (ends_excmd2(eap->cmd, arg))
     {
 	/*
 	 * No argument: Clear all syntax items.
@@ -3647,7 +3650,7 @@ syn_cmd_clear(exarg_T *eap, int syncing)
 	/*
 	 * Clear the group IDs that are in the argument.
 	 */
-	while (!ends_excmd(*arg))
+	while (!ends_excmd2(eap->cmd, arg))
 	{
 	    arg_end = skiptowhite(arg);
 	    if (*arg == '@')
@@ -3838,7 +3841,7 @@ syn_cmd_list(
     }
     else
 	msg_puts_title(_("\n--- Syntax items ---"));
-    if (ends_excmd(*arg))
+    if (ends_excmd2(eap->cmd, arg))
     {
 	/*
 	 * No argument: List all group IDs and all syntax clusters.
@@ -3853,7 +3856,7 @@ syn_cmd_list(
 	/*
 	 * List the group IDs and syntax clusters that are in the argument.
 	 */
-	while (!ends_excmd(*arg) && !got_int)
+	while (!ends_excmd2(eap->cmd, arg) && !got_int)
 	{
 	    arg_end = skiptowhite(arg);
 	    if (*arg == '@')
@@ -4458,11 +4461,12 @@ get_group_name(
  */
     static char_u *
 get_syn_options(
-    char_u	    *arg,		// next argument to be checked
+    char_u	    *start,		// next argument to be checked
     syn_opt_arg_T   *opt,		// various things
     int		    *conceal_char UNUSED,
     int		    skip)		// TRUE if skipping over command
 {
+    char_u	*arg = start;
     char_u	*gname_start, *gname;
     int		syn_id;
     int		len;
@@ -4523,7 +4527,7 @@ get_syn_options(
 	    if (p[i] == NUL && (VIM_ISWHITE(arg[len])
 				    || (flagtab[fidx].argtype > 0
 					 ? arg[len] == '='
-					 : ends_excmd(arg[len]))))
+					 : ends_excmd2(start, arg + len))))
 	    {
 		if (opt->keyword
 			&& (flagtab[fidx].flags == HL_DISPLAY
@@ -4785,11 +4789,12 @@ syn_cmd_keyword(exarg_T *eap, int syncing UNUSED)
 	     */
 	    cnt = 0;
 	    p = keyword_copy;
-	    for ( ; rest != NULL && !ends_excmd(*rest); rest = skipwhite(rest))
+	    for ( ; rest != NULL && !ends_excmd2(eap->arg, rest);
+							rest = skipwhite(rest))
 	    {
 		rest = get_syn_options(rest, &syn_opt_arg, &conceal_char,
 								    eap->skip);
-		if (rest == NULL || ends_excmd(*rest))
+		if (rest == NULL || ends_excmd2(eap->arg, rest))
 		    break;
 		// Copy the keyword, removing backslashes, and add a NUL.
 		while (*rest != NUL && !VIM_ISWHITE(*rest))
@@ -4887,6 +4892,7 @@ syn_cmd_match(
     syn_opt_arg_T syn_opt_arg;
     int		sync_idx = 0;
     int		conceal_char = NUL;
+    int		orig_called_emsg = called_emsg;
 
     // Isolate the group name, check for validity
     rest = get_group_name(arg, &group_name_end);
@@ -4903,7 +4909,7 @@ syn_cmd_match(
 
     // get the pattern.
     init_syn_patterns();
-    vim_memset(&item, 0, sizeof(item));
+    CLEAR_FIELD(item);
     rest = get_syn_pattern(rest, &item);
     if (vim_regcomp_had_eol() && !(syn_opt_arg.flags & HL_EXCLUDENL))
 	syn_opt_arg.flags |= HL_HAS_EOL;
@@ -4917,7 +4923,7 @@ syn_cmd_match(
 	 * Check for trailing command and illegal trailing arguments.
 	 */
 	eap->nextcmd = check_nextcmd(rest);
-	if (!ends_excmd(*rest) || eap->skip)
+	if (!ends_excmd2(eap->cmd, rest) || eap->skip)
 	    rest = NULL;
 	else if (ga_grow(&curwin->w_s->b_syn_patterns, 1) != FAIL
 		&& (syn_id = syn_check_group(arg,
@@ -4969,7 +4975,7 @@ syn_cmd_match(
     vim_free(syn_opt_arg.cont_in_list);
     vim_free(syn_opt_arg.next_list);
 
-    if (rest == NULL)
+    if (rest == NULL && called_emsg == orig_called_emsg)
 	semsg(_(e_invarg2), arg);
 }
 
@@ -5032,11 +5038,11 @@ syn_cmd_region(
     /*
      * get the options, patterns and matchgroup.
      */
-    while (rest != NULL && !ends_excmd(*rest))
+    while (rest != NULL && !ends_excmd2(eap->cmd, rest))
     {
 	// Check for option arguments
 	rest = get_syn_options(rest, &syn_opt_arg, &conceal_char, eap->skip);
-	if (rest == NULL || ends_excmd(*rest))
+	if (rest == NULL || ends_excmd2(eap->cmd, rest))
 	    break;
 
 	// must be a pattern or matchgroup then
@@ -5476,7 +5482,7 @@ syn_add_cluster(char_u *name)
 	return 0;
     }
 
-    vim_memset(&(SYN_CLSTR(curwin->w_s)[len]), 0, sizeof(syn_cluster_T));
+    CLEAR_POINTER(&(SYN_CLSTR(curwin->w_s)[len]));
     SYN_CLSTR(curwin->w_s)[len].scl_name = name;
     SYN_CLSTR(curwin->w_s)[len].scl_name_u = vim_strsave_up(name);
     SYN_CLSTR(curwin->w_s)[len].scl_list = NULL;
@@ -5565,7 +5571,7 @@ syn_cmd_cluster(exarg_T *eap, int syncing UNUSED)
 
     if (!got_clstr)
 	emsg(_("E400: No cluster specified"));
-    if (rest == NULL || !ends_excmd(*rest))
+    if (rest == NULL || !ends_excmd2(eap->cmd, rest))
 	semsg(_(e_invarg2), arg);
 }
 
@@ -5596,7 +5602,7 @@ get_syn_pattern(char_u *arg, synpat_T *ci)
     if (arg == NULL || arg[0] == NUL || arg[1] == NUL || arg[2] == NUL)
 	return NULL;
 
-    end = skip_regexp(arg + 1, *arg, TRUE, NULL);
+    end = skip_regexp(arg + 1, *arg, TRUE);
     if (*end != *arg)			    // end delimiter not found
     {
 	semsg(_("E401: Pattern delimiter not found: %s"), arg);
@@ -5675,7 +5681,7 @@ get_syn_pattern(char_u *arg, synpat_T *ci)
 	}
     } while (idx >= 0);
 
-    if (!ends_excmd(*end) && !VIM_ISWHITE(*end))
+    if (!ends_excmd2(arg, end) && !VIM_ISWHITE(*end))
     {
 	semsg(_("E402: Garbage after pattern: %s"), arg);
 	return NULL;
@@ -5698,13 +5704,13 @@ syn_cmd_sync(exarg_T *eap, int syncing UNUSED)
     long	n;
     char_u	*cpo_save;
 
-    if (ends_excmd(*arg_start))
+    if (ends_excmd2(eap->cmd, arg_start))
     {
 	syn_cmd_list(eap, TRUE);
 	return;
     }
 
-    while (!ends_excmd(*arg_start))
+    while (!ends_excmd2(eap->cmd, arg_start))
     {
 	arg_end = skiptowhite(arg_start);
 	next_arg = skipwhite(arg_end);
@@ -5714,7 +5720,7 @@ syn_cmd_sync(exarg_T *eap, int syncing UNUSED)
 	{
 	    if (!eap->skip)
 		curwin->w_s->b_syn_sync_flags |= SF_CCOMMENT;
-	    if (!ends_excmd(*next_arg))
+	    if (!ends_excmd2(eap->cmd, next_arg))
 	    {
 		arg_end = skiptowhite(next_arg);
 		if (!eap->skip)
@@ -5773,7 +5779,7 @@ syn_cmd_sync(exarg_T *eap, int syncing UNUSED)
 		finished = TRUE;
 		break;
 	    }
-	    arg_end = skip_regexp(next_arg + 1, *next_arg, TRUE, NULL);
+	    arg_end = skip_regexp(next_arg + 1, *next_arg, TRUE);
 	    if (*arg_end != *next_arg)	    // end delimiter not found
 	    {
 		illegal = TRUE;
@@ -5883,7 +5889,7 @@ get_id_list(
 	    break;
 	}
 	p = skipwhite(p + 1);
-	if (ends_excmd(*p))
+	if (ends_excmd2(*arg, p))
 	{
 	    semsg(_("E406: Empty argument: %s"), *arg);
 	    break;
@@ -5893,7 +5899,7 @@ get_id_list(
 	 * parse the arguments after "contains"
 	 */
 	count = 0;
-	while (!ends_excmd(*p))
+	while (!ends_excmd2(*arg, p))
 	{
 	    for (end = p; *end && !VIM_ISWHITE(*end) && *end != ','; ++end)
 		;

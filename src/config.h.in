@@ -126,12 +126,6 @@
 #undef PTYRANGE0
 #undef PTYRANGE1
 
-/* Define mode for pty */
-#undef PTYMODE
-
-/* Define group for pty */
-#undef PTYGROUP
-
 /* Define as the return type of signal handlers (int or void).  */
 #undef RETSIGTYPE
 
@@ -174,6 +168,7 @@
 #undef HAVE_GETTIMEOFDAY
 #undef HAVE_GETWD
 #undef HAVE_ICONV
+#undef HAVE_INET_NTOP
 #undef HAVE_LOCALTIME_R
 #undef HAVE_LSTAT
 #undef HAVE_MEMSET
@@ -438,6 +433,9 @@
 /* Define if we have shl_load() */
 #undef HAVE_SHL_LOAD
 
+/* Define if we can use IPv6 networking. */
+#undef FEAT_IPV6
+
 /* Define if you want to include NetBeans integration. */
 #undef FEAT_NETBEANS_INTG
 
@@ -485,6 +483,12 @@
 
 /* Define if we have isnan() */
 #undef HAVE_ISNAN
+
+/* Define if we have dirfd() */
+#undef HAVE_DIRFD
+
+/* Define if we have flock() */
+#undef HAVE_FLOCK
 
 /* Define to inline symbol or empty */
 #undef inline

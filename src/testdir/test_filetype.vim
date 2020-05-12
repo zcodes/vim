@@ -79,6 +79,7 @@ let s:filename_checks = {
     \ 'bib': ['file.bib'],
     \ 'bindzone': ['named.root'],
     \ 'blank': ['file.bl'],
+    \ 'bsdl': ['file.bsd', 'file.bsdl'],
     \ 'bst': ['file.bst'],
     \ 'bzr': ['bzr_log.any'],
     \ 'c': ['enlightenment/file.cfg', 'file.qc', 'file.c'],
@@ -321,6 +322,7 @@ let s:filename_checks = {
     \ 'openroad': ['file.or'],
     \ 'ora': ['file.ora'],
     \ 'pamconf': ['/etc/pam.conf'],
+    \ 'pamenv': ['/etc/security/pam_env.conf', '/home/user/.pam_environment'],
     \ 'papp': ['file.papp', 'file.pxml', 'file.pxsl'],
     \ 'pascal': ['file.pas', 'file.dpr'],
     \ 'passwd': ['any/etc/passwd', 'any/etc/passwd-', 'any/etc/passwd.edit', 'any/etc/shadow', 'any/etc/shadow-', 'any/etc/shadow.edit', 'any/var/backups/passwd.bak', 'any/var/backups/shadow.bak'],
@@ -437,7 +439,7 @@ let s:filename_checks = {
     \ 'swiftgyb': ['file.swift.gyb'],
     \ 'sil': ['file.sil'],
     \ 'sysctl': ['/etc/sysctl.conf', '/etc/sysctl.d/file.conf'],
-    \ 'systemd': ['any/systemd/file.automount', 'any/systemd/file.mount', 'any/systemd/file.path', 'any/systemd/file.service', 'any/systemd/file.socket', 'any/systemd/file.swap', 'any/systemd/file.target', 'any/systemd/file.timer', '/etc/systemd/system/some.d/file.conf', '/etc/systemd/system/some.d/.#file'],
+    \ 'systemd': ['any/systemd/file.automount', 'any/systemd/file.mount', 'any/systemd/file.path', 'any/systemd/file.service', 'any/systemd/file.socket', 'any/systemd/file.swap', 'any/systemd/file.target', 'any/systemd/file.timer', '/etc/systemd/system/some.d/file.conf', '/etc/systemd/system/some.d/.#file', '/etc/systemd/system/.#otherfile', '/home/user/.config/systemd/user/some.d/mine.conf', '/home/user/.config/systemd/user/some.d/.#file', '/home/user/.config/systemd/user/.#otherfile'],
     \ 'systemverilog': ['file.sv', 'file.svh'],
     \ 'tags': ['tags'],
     \ 'tak': ['file.tak'],
@@ -481,7 +483,7 @@ let s:filename_checks = {
     \ 'verilog': ['file.v'],
     \ 'verilogams': ['file.va', 'file.vams'],
     \ 'vgrindefs': ['vgrindefs'],
-    \ 'vhdl': ['file.hdl', 'file.vhd', 'file.vhdl', 'file.vbe', 'file.vst', 'file.vhdl_123'],
+    \ 'vhdl': ['file.hdl', 'file.vhd', 'file.vhdl', 'file.vbe', 'file.vst', 'file.vhdl_123', 'file.vho'],
     \ 'vim': ['file.vim', 'file.vba', '.exrc', '_exrc'],
     \ 'viminfo': ['.viminfo', '_viminfo'],
     \ 'vmasm': ['file.mar'],
@@ -601,6 +603,7 @@ let s:script_checks = {
       \ 'haskell': [['#!/path/haskell']],
       \ 'cpp': [['// Standard iostream objects -*- C++ -*-'],
       \         ['// -*- C++ -*-']],
+      \ 'yaml': [['%YAML 1.2']],
       \ }
 
 func Test_script_detection()
@@ -637,8 +640,12 @@ func Test_filetype_indent_off()
   new Xtest.vim
   filetype indent on
   call assert_equal(1, g:did_indent_on)
+  call assert_equal(['filetype detection:ON  plugin:OFF  indent:ON'],
+        \ execute('filetype')->split("\n"))
   filetype indent off
   call assert_equal(0, exists('g:did_indent_on'))
+  call assert_equal(['filetype detection:ON  plugin:OFF  indent:OFF'],
+        \ execute('filetype')->split("\n"))
   close
 endfunc
 

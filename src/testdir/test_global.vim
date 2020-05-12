@@ -5,7 +5,10 @@ func Test_yank_put_clipboard()
   set clipboard=unnamed
   g/^/normal yyp
   call assert_equal(['a', 'a', 'b', 'b', 'c', 'c'], getline(1, 6))
-
+  set clipboard=unnamed,unnamedplus
+  call setline(1, ['a', 'b', 'c'])
+  g/^/normal yyp
+  call assert_equal(['a', 'a', 'b', 'b', 'c', 'c'], getline(1, 6))
   set clipboard&
   bwipe!
 endfunc
@@ -52,6 +55,18 @@ func Test_global_print()
   v/foo\|bar/p
   call assert_notequal('', v:statusmsg)
 
+  close!
+endfunc
+
+" Test for global command with newline character
+func Test_global_newline()
+  new
+  call setline(1, ['foo'])
+  exe "g/foo/s/f/h/\<NL>s/o$/w/"
+  call assert_equal('how', getline(1))
+  call setline(1, ["foo\<NL>bar"])
+  exe "g/foo/s/foo\\\<NL>bar/xyz/"
+  call assert_equal('xyz', getline(1))
   close!
 endfunc
 

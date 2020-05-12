@@ -65,9 +65,9 @@ func Test_simple_popup()
 
   " clear all popups after moving the cursor a bit, so that ruler is updated
   call term_sendkeys(buf, "axxx\<Esc>")
-  call term_wait(buf)
+  call TermWait(buf)
   call term_sendkeys(buf, "0")
-  call term_wait(buf)
+  call TermWait(buf)
   call term_sendkeys(buf, ":call popup_clear()\<CR>")
   call VerifyScreenDump(buf, 'Test_popupwin_08', {})
 
@@ -853,6 +853,9 @@ func Test_popup_invalid_arguments()
   call popup_clear()
   call assert_fails('call popup_create("text", "none")', 'E715:')
   call popup_clear()
+  call assert_fails('call popup_create(test_null_string(), {})', 'E450:')
+  call assert_fails('call popup_create(test_null_list(), {})', 'E450:')
+  call popup_clear()
 
   call assert_fails('call popup_create("text", #{col: "xxx"})', 'E475:')
   call popup_clear()
@@ -902,6 +905,8 @@ func Test_popup_invalid_arguments()
   call assert_fails('call popup_create("text", #{mask: test_null_list()})', 'E475:')
   call assert_fails('call popup_create("text", #{mapping: []})', 'E745:')
   call popup_clear()
+  call assert_fails('call popup_create("text", #{tabpage : 4})', 'E997:')
+  call popup_clear()
 endfunc
 
 func Test_win_execute_closing_curwin()
@@ -926,6 +931,7 @@ func Test_win_execute_not_allowed()
   call assert_fails('call win_execute(winid, "tabnext")', 'E994:')
   call assert_fails('call win_execute(winid, "next")', 'E994:')
   call assert_fails('call win_execute(winid, "rewind")', 'E994:')
+  call assert_fails('call win_execute(winid, "pedit filename")', 'E994:')
   call assert_fails('call win_execute(winid, "buf")', 'E994:')
   call assert_fails('call win_execute(winid, "bnext")', 'E994:')
   call assert_fails('call win_execute(winid, "bprev")', 'E994:')
@@ -1112,7 +1118,12 @@ func Test_popup_move()
   let line = join(map(range(1, 6), 'screenstring(1, v:val)'), '')
   call assert_equal('hworld', line)
 
+  call assert_fails('call popup_move(winid, [])', 'E715:')
+  call assert_fails('call popup_move(winid, test_null_dict())', 'E715:')
+
   call popup_close(winid)
+
+  call assert_equal(0, popup_move(-1, {}))
 
   bwipe!
 endfunc
@@ -1388,7 +1399,7 @@ func Test_popup_beval()
   END
   call writefile(lines, 'XtestPopupBeval')
   let buf = RunVimInTerminal('-S XtestPopupBeval', #{rows: 10})
-  call term_wait(buf, 100)
+  call TermWait(buf, 50)
   call term_sendkeys(buf, 'j')
   call term_sendkeys(buf, ":call Hover()\<CR>")
   call VerifyScreenDump(buf, 'Test_popupwin_beval_1', {})
@@ -1409,8 +1420,8 @@ func Test_popup_filter()
   call setline(1, 'some text')
 
   func MyPopupFilter(winid, c)
-    if a:c == 'e'
-      let g:eaten = 'e'
+    if a:c == 'e' || a:c == "\<F9>"
+      let g:eaten = a:c
       return 1
     endif
     if a:c == '0'
@@ -1430,6 +1441,8 @@ func Test_popup_filter()
   " e is consumed by the filter
   call feedkeys('e', 'xt')
   call assert_equal('e', g:eaten)
+  call feedkeys("\<F9>", 'xt')
+  call assert_equal("\<F9>", g:eaten)
 
   " 0 is ignored by the filter
   normal $
@@ -1440,7 +1453,7 @@ func Test_popup_filter()
 
   " x closes the popup
   call feedkeys('x', 'xt')
-  call assert_equal('e', g:eaten)
+  call assert_equal("\<F9>", g:eaten)
   call assert_equal(-1, winbufnr(winid))
 
   delfunc MyPopupFilter
@@ -2173,7 +2186,11 @@ func Test_set_get_options()
   call assert_equal(1, options.drag)
   call assert_equal('Another', options.highlight)
 
+  call assert_fails('call popup_setoptions(winid, [])', 'E715:')
+  call assert_fails('call popup_setoptions(winid, test_null_dict())', 'E715:')
+
   call popup_close(winid)
+  call assert_equal(0, popup_setoptions(winid, options.wrap))
 endfunc
 
 func Test_popupwin_garbage_collect()
@@ -2955,7 +2972,7 @@ func Test_popupmenu_info_border()
   call writefile(lines, 'XtestInfoPopup')
 
   let buf = RunVimInTerminal('-S XtestInfoPopup', #{rows: 14})
-  call term_wait(buf, 50)
+  call TermWait(buf, 25)
 
   call term_sendkeys(buf, "A\<C-X>\<C-U>")
   call VerifyScreenDump(buf, 'Test_popupwin_infopopup_1', {})
@@ -3003,7 +3020,7 @@ func Test_popupmenu_info_noborder()
   call writefile(lines, 'XtestInfoPopupNb')
 
   let buf = RunVimInTerminal('-S XtestInfoPopupNb', #{rows: 14})
-  call term_wait(buf, 50)
+  call TermWait(buf, 25)
 
   call term_sendkeys(buf, "A\<C-X>\<C-U>")
   call VerifyScreenDump(buf, 'Test_popupwin_infopopup_nb_1', {})
@@ -3021,7 +3038,7 @@ func Test_popupmenu_info_align_menu()
   call writefile(lines, 'XtestInfoPopupNb')
 
   let buf = RunVimInTerminal('-S XtestInfoPopupNb', #{rows: 14})
-  call term_wait(buf, 50)
+  call TermWait(buf, 25)
 
   call term_sendkeys(buf, "A\<C-X>\<C-U>")
   call term_sendkeys(buf, "\<C-N>")
@@ -3052,7 +3069,7 @@ func Test_popupmenu_info_hidden()
   call writefile(lines, 'XtestInfoPopupHidden')
 
   let buf = RunVimInTerminal('-S XtestInfoPopupHidden', #{rows: 14})
-  call term_wait(buf, 50)
+  call TermWait(buf, 25)
 
   call term_sendkeys(buf, "A\<C-X>\<C-U>")
   call VerifyScreenDump(buf, 'Test_popupwin_infopopup_hidden_1', {})
@@ -3110,7 +3127,7 @@ func Test_popupmenu_info_too_wide()
 
   call writefile(lines, 'XtestInfoPopupWide')
   let buf = RunVimInTerminal('-S XtestInfoPopupWide', #{rows: 8})
-  call term_wait(buf, 50)
+  call TermWait(buf, 25)
 
   call term_sendkeys(buf, "Ascr\<C-X>\<C-O>")
   call VerifyScreenDump(buf, 'Test_popupwin_infopopup_wide_1', {})
@@ -3270,5 +3287,50 @@ func Test_popupwin_bufnr()
   call popup_clear()
   bwipe!
 endfunc
+
+func Test_popupwin_filter_input_multibyte()
+  func MyPopupFilter(winid, c)
+    let g:bytes = range(a:c->strlen())->map({i -> char2nr(a:c[i])})
+    return 0
+  endfunc
+  let winid = popup_create('', #{mapping: 0, filter: 'MyPopupFilter'})
+
+  " UTF-8: E3 80 80, including K_SPECIAL(0x80)
+  call feedkeys("\u3000", 'xt')
+  call assert_equal([0xe3, 0x80, 0x80], g:bytes)
+
+  " UTF-8: E3 80 9B, including CSI(0x9B)
+  call feedkeys("\u301b", 'xt')
+  call assert_equal([0xe3, 0x80, 0x9b], g:bytes)
+
+  call popup_clear()
+  delfunc MyPopupFilter
+  unlet g:bytes
+endfunc
+
+func Test_popupwin_atcursor_far_right()
+  new
+
+  " this was getting stuck
+  set signcolumn=yes
+  call setline(1, repeat('=', &columns))
+  normal! ggg$
+  call popup_atcursor(repeat('x', 500), #{moved: 'any', border: []})
+
+  bwipe!
+  set signcolumn&
+endfunc
+
+func Test_popupwin_splitmove()
+  vsplit
+  let win2 = win_getid()
+  let popup_winid = popup_dialog('hello', {})
+  call assert_fails('call win_splitmove(popup_winid, win2)', 'E957:')
+  call assert_fails('call win_splitmove(win2, popup_winid)', 'E957:')
+
+  call popup_clear()
+  bwipe
+endfunc
+
 
 " vim: shiftwidth=2 sts=2

@@ -647,9 +647,9 @@ do_cmdline(
 # define cmd_cookie cookie
 #endif
     static int	call_depth = 0;		// recursiveness
+#ifdef FEAT_EVAL
     ESTACK_CHECK_DECLARATION
 
-#ifdef FEAT_EVAL
     // For every pair of do_cmdline()/do_one_cmd() calls, use an extra memory
     // location for storing error messages to be converted to an exception.
     // This ensures that the do_errthrow() call in do_one_cmd() does not
@@ -728,7 +728,7 @@ do_cmdline(
     if (flags & DOCMD_EXCRESET)
 	save_dbg_stuff(&debug_saved);
     else
-	vim_memset(&debug_saved, 0, sizeof(debug_saved));
+	CLEAR_FIELD(debug_saved);
 
     initial_trylevel = trylevel;
 
@@ -1295,7 +1295,7 @@ do_cmdline(
 	/*
 	 * On an interrupt or an aborting error not converted to an exception,
 	 * disable the conversion of errors to exceptions.  (Interrupts are not
-	 * converted any more, here.) This enables also the interrupt message
+	 * converted anymore, here.) This enables also the interrupt message
 	 * when force_abort is set and did_emsg unset in case of an interrupt
 	 * from a finally clause after an error.
 	 */
@@ -1346,6 +1346,18 @@ do_cmdline(
 	restore_dbg_stuff(&debug_saved);
 
     msg_list = saved_msg_list;
+
+    // Cleanup if "cs_emsg_silent_list" remains.
+    if (cstack.cs_emsg_silent_list != NULL)
+    {
+	eslist_T *elem, *temp;
+
+	for (elem = cstack.cs_emsg_silent_list; elem != NULL; elem = temp)
+	{
+	    temp = elem->next;
+	    vim_free(elem);
+	}
+    }
 #endif // FEAT_EVAL
 
     /*
@@ -1647,8 +1659,11 @@ do_one_cmd(
     int		save_reg_executing = reg_executing;
     int		ni;			// set when Not Implemented
     char_u	*cmd;
+#ifdef FEAT_EVAL
+    int		starts_with_colon;
+#endif
 
-    vim_memset(&ea, 0, sizeof(ea));
+    CLEAR_FIELD(ea);
     ea.line1 = 1;
     ea.line2 = 1;
 #ifdef FEAT_EVAL
@@ -1689,6 +1704,7 @@ do_one_cmd(
     ea.cookie = cookie;
 #ifdef FEAT_EVAL
     ea.cstack = cstack;
+    starts_with_colon = *skipwhite(ea.cmd) == ':';
 #endif
     if (parse_command_modifiers(&ea, &errormsg, FALSE) == FAIL)
 	goto doend;
@@ -1713,7 +1729,7 @@ do_one_cmd(
 	ea.cmd = skipwhite(ea.cmd + 1);
 
 #ifdef FEAT_EVAL
-    if (current_sctx.sc_version == SCRIPT_VERSION_VIM9)
+    if (current_sctx.sc_version == SCRIPT_VERSION_VIM9 && !starts_with_colon)
 	p = find_ex_command(&ea, NULL, lookup_scriptvar, NULL);
     else
 #endif
@@ -1819,7 +1835,11 @@ do_one_cmd(
      * If we find a '|' or '\n' we set ea.nextcmd.
      */
     if (*ea.cmd == NUL || *ea.cmd == '"'
-			      || (ea.nextcmd = check_nextcmd(ea.cmd)) != NULL)
+#ifdef FEAT_EVAL
+		|| (*ea.cmd == '#' && ea.cmd[1] != '{'
+				      && !starts_with_colon && in_vim9script())
+#endif
+		|| (ea.nextcmd = check_nextcmd(ea.cmd)) != NULL)
     {
 	/*
 	 * strange vi behaviour:
@@ -2353,6 +2373,7 @@ do_one_cmd(
 	    case CMD_finally:
 	    case CMD_endtry:
 	    case CMD_function:
+	    case CMD_def:
 				break;
 
 	    // Commands that handle '|' themselves.  Check: A command should
@@ -2609,7 +2630,7 @@ parse_command_modifiers(exarg_T *eap, char **errormsg, int skip_only)
 {
     char_u *p;
 
-    vim_memset(&cmdmod, 0, sizeof(cmdmod));
+    CLEAR_FIELD(cmdmod);
     eap->verbose_save = -1;
     eap->save_msg_silent = -1;
 
@@ -3048,8 +3069,10 @@ parse_cmd_address(exarg_T *eap, char **errormsg, int silent)
 	    if (!eap->skip)
 	    {
 		curwin->w_cursor.lnum = eap->line2;
-		// don't leave the cursor on an illegal line or column
-		check_cursor();
+		// Don't leave the cursor on an illegal line or column, but do
+		// accept zero as address, so 0;/PATTERN/ works correctly.
+		if (eap->line2 > 0)
+		    check_cursor();
 	    }
 	}
 	else if (*eap->cmd != ',')
@@ -3133,9 +3156,9 @@ append_command(char_u *cmd)
     char_u *
 find_ex_command(
 	exarg_T *eap,
-	int *full UNUSED,
-	int (*lookup)(char_u *, size_t, cctx_T *) UNUSED,
-	cctx_T *cctx UNUSED)
+	int	*full UNUSED,
+	void	*(*lookup)(char_u *, size_t, cctx_T *) UNUSED,
+	cctx_T	*cctx UNUSED)
 {
     int		len;
     char_u	*p;
@@ -3146,8 +3169,9 @@ find_ex_command(
      * Recognize a Vim9 script function/method call and assignment:
      * "lvar = value", "lvar(arg)", "[1, 2 3]->Func()"
      */
-    if (lookup != NULL && (p = to_name_const_end(eap->cmd)) > eap->cmd
-								  && *p != NUL)
+    p = eap->cmd;
+    if (lookup != NULL && (*p == '('
+	       || ((p = to_name_const_end(eap->cmd)) > eap->cmd && *p != NUL)))
     {
 	int oplen;
 	int heredoc;
@@ -3156,6 +3180,7 @@ find_ex_command(
 	// "varname[]" is an expression.
 	// "g:varname" is an expression.
 	// "varname->expr" is an expression.
+	// "(..." is an expression.
 	if (*p == '('
 		|| *p == '['
 		|| p[1] == ':'
@@ -3172,7 +3197,7 @@ find_ex_command(
 	    // "g:var = expr"
 	    // "var = expr"  where "var" is a local var name.
 	    if (((p - eap->cmd) > 2 && eap->cmd[1] == ':')
-		    || lookup(eap->cmd, p - eap->cmd, cctx) >= 0)
+		    || lookup(eap->cmd, p - eap->cmd, cctx) != NULL)
 	    {
 		eap->cmdidx = CMD_let;
 		return eap->cmd;
@@ -3263,6 +3288,8 @@ find_ex_command(
 	    if (ASCII_ISLOWER(c2))
 		eap->cmdidx += cmdidxs2[CharOrdLow(c1)][CharOrdLow(c2)];
 	}
+	else if (ASCII_ISUPPER(eap->cmd[0]))
+	    eap->cmdidx = CMD_Next;
 	else
 	    eap->cmdidx = CMD_bang;
 
@@ -3644,7 +3671,7 @@ get_address(
 		}
 		if (skip)	// skip "/pat/"
 		{
-		    cmd = skip_regexp(cmd, c, (int)p_magic, NULL);
+		    cmd = skip_regexp(cmd, c, (int)p_magic);
 		    if (*cmd == c)
 			++cmd;
 		}
@@ -3671,7 +3698,7 @@ get_address(
 			curwin->w_cursor.col = 0;
 		    searchcmdlen = 0;
 		    flags = silent ? 0 : SEARCH_HIS | SEARCH_MSG;
-		    if (!do_search(NULL, c, cmd, 1L, flags, NULL))
+		    if (!do_search(NULL, c, c, cmd, 1L, flags, NULL))
 		    {
 			curwin->w_cursor = pos;
 			cmd = NULL;
@@ -4412,6 +4439,10 @@ separate_nextcmd(exarg_T *eap)
 			|| p != eap->arg)
 		    && (eap->cmdidx != CMD_redir
 			|| p != eap->arg + 1 || p[-1] != '@'))
+#ifdef FEAT_EVAL
+		|| (*p == '#' && in_vim9script()
+			  && p[1] != '{' && p > eap->cmd && VIM_ISWHITE(p[-1]))
+#endif
 		|| *p == '|' || *p == '\n')
 	{
 	    /*
@@ -4742,9 +4773,33 @@ ex_blast(exarg_T *eap)
 	do_cmdline_cmd(eap->do_ecmd_cmd);
 }
 
+/*
+ * Check if "c" ends an Ex command.
+ * In Vim9 script does not check for white space before # or #{.
+ */
     int
 ends_excmd(int c)
 {
+#ifdef FEAT_EVAL
+    if (c == '#')
+	return in_vim9script();
+#endif
+    return (c == NUL || c == '|' || c == '"' || c == '\n');
+}
+
+/*
+ * Like ends_excmd() but checks that a # in Vim9 script either has "cmd" equal
+ * to "cmd_start" or has a white space character before it.
+ */
+    int
+ends_excmd2(char_u *cmd_start UNUSED, char_u *cmd)
+{
+    int c = *cmd;
+
+#ifdef FEAT_EVAL
+    if (c == '#' && cmd[1] != '{' && (cmd == cmd_start || VIM_ISWHITE(cmd[-1])))
+	return in_vim9script();
+#endif
     return (c == NUL || c == '|' || c == '"' || c == '\n');
 }
 
@@ -5612,7 +5667,7 @@ handle_drop_internal(void)
      * Move to the first file.
      */
     // Fake up a minimal "next" command for do_argfile()
-    vim_memset(&ea, 0, sizeof(ea));
+    CLEAR_FIELD(ea);
     ea.cmd = (char_u *)"next";
     do_argfile(&ea, 0);
 
@@ -5694,7 +5749,7 @@ handle_drop(
 handle_any_postponed_drop(void)
 {
     if (!drop_busy && drop_filev != NULL
-		     && !text_locked() && !curbuf_locked() && !updating_screen)
+	     && !text_locked() && !curbuf_locked() && !updating_screen)
 	handle_drop_internal();
 }
 #endif
@@ -5879,7 +5934,7 @@ tabpage_new(void)
 {
     exarg_T	ea;
 
-    vim_memset(&ea, 0, sizeof(ea));
+    CLEAR_FIELD(ea);
     ea.cmdidx = CMD_tabnew;
     ea.cmd = (char_u *)"tabn";
     ea.arg = (char_u *)"";
@@ -6104,7 +6159,7 @@ ex_open(exarg_T *eap)
     {
 	// ":open /pattern/": put cursor in column found with pattern
 	++eap->arg;
-	p = skip_regexp(eap->arg, '/', p_magic, NULL);
+	p = skip_regexp(eap->arg, '/', p_magic);
 	*p = NUL;
 	regmatch.regprog = vim_regcomp(eap->arg, p_magic ? RE_MAGIC : 0);
 	if (regmatch.regprog != NULL)
@@ -7697,6 +7752,11 @@ ex_startinsert(exarg_T *eap)
 	    curwin->w_cursor.lnum = 1;
 	set_cursor_for_append_to_line();
     }
+#ifdef FEAT_TERMINAL
+    // Ignore this when running in an active terminal.
+    if (term_job_running(curbuf->b_term))
+	return;
+#endif
 
     // Ignore the command when already in Insert mode.  Inserting an
     // expression register that invokes a function can do this.
@@ -7838,14 +7898,14 @@ ex_findpat(exarg_T *eap)
     {
 	whole = FALSE;
 	++eap->arg;
-	p = skip_regexp(eap->arg, '/', p_magic, NULL);
+	p = skip_regexp(eap->arg, '/', p_magic);
 	if (*p)
 	{
 	    *p++ = NUL;
 	    p = skipwhite(p);
 
 	    // Check for trailing illegal characters
-	    if (!ends_excmd(*p))
+	    if (!ends_excmd2(eap->arg, p))
 		eap->errmsg = e_trailing;
 	    else
 		eap->nextcmd = check_nextcmd(p);
@@ -7878,6 +7938,9 @@ ex_ptag(exarg_T *eap)
 ex_pedit(exarg_T *eap)
 {
     win_T	*curwin_save = curwin;
+
+    if (ERROR_IF_ANY_POPUP_WINDOW)
+	return;
 
     // Open the preview window or popup and make it the current window.
     g_do_tagpreview = p_pvh;

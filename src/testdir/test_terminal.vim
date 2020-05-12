@@ -5,6 +5,7 @@ CheckFeature terminal
 
 source shared.vim
 source screendump.vim
+source mouse.vim
 
 let s:python = PythonProg()
 let $PROMPT_COMMAND=''
@@ -17,6 +18,7 @@ func Run_shell_in_terminal(options)
   else
     let buf = term_start(&shell, a:options)
   endif
+  let g:test_is_flaky = 1
 
   let termlist = term_list()
   call assert_equal(1, len(termlist))
@@ -35,25 +37,16 @@ func Test_terminal_basic()
   au TerminalOpen * let b:done = 'yes'
   let buf = Run_shell_in_terminal({})
 
-  if has("unix")
-    call assert_match('^/dev/', job_info(g:job).tty_out)
-    call assert_match('^/dev/', term_gettty(''))
-  else
-    " ConPTY works on anonymous pipe.
-    if !has('conpty')
-      call assert_match('^\\\\.\\pipe\\', job_info(g:job).tty_out)
-      call assert_match('^\\\\.\\pipe\\', ''->term_gettty())
-    endif
-  endif
   call assert_equal('t', mode())
   call assert_equal('yes', b:done)
   call assert_match('%aR[^\n]*running]', execute('ls'))
   call assert_match('%aR[^\n]*running]', execute('ls R'))
   call assert_notmatch('%[^\n]*running]', execute('ls F'))
   call assert_notmatch('%[^\n]*running]', execute('ls ?'))
+  call assert_fails('set modifiable', 'E946:')
 
   call StopShellInTerminal(buf)
-  call term_wait(buf)
+  call TermWait(buf)
   call assert_equal('n', mode())
   call assert_match('%aF[^\n]*finished]', execute('ls'))
   call assert_match('%aF[^\n]*finished]', execute('ls F'))
@@ -88,7 +81,7 @@ endfunc
 func Test_terminal_make_change()
   let buf = Run_shell_in_terminal({})
   call StopShellInTerminal(buf)
-  call term_wait(buf)
+  call TermWait(buf)
 
   setlocal modifiable
   exe "normal Axxx\<Esc>"
@@ -126,10 +119,10 @@ endfunc
 
 func Test_terminal_split_quit()
   let buf = Run_shell_in_terminal({})
-  call term_wait(buf)
+  call TermWait(buf)
   split
   quit!
-  call term_wait(buf)
+  call TermWait(buf)
   sleep 50m
   call assert_equal('run', job_status(g:job))
 
@@ -234,7 +227,7 @@ func Test_terminal_scrape_123()
   " Nothing happens with invalid buffer number
   call term_wait(1234)
 
-  call term_wait(buf)
+  call TermWait(buf)
   " On MS-Windows we first get a startup message of two lines, wait for the
   " "cls" to happen, after that we have one line with three characters.
   call WaitForAssert({-> assert_equal(3, len(term_scrape(buf, 1)))})
@@ -243,7 +236,7 @@ func Test_terminal_scrape_123()
   " Must still work after the job ended.
   let job = term_getjob(buf)
   call WaitForAssert({-> assert_equal("dead", job_status(job))})
-  call term_wait(buf)
+  call TermWait(buf)
   call Check_123(buf)
 
   exe buf . 'bwipe'
@@ -279,7 +272,7 @@ func Test_terminal_scrape_multibyte()
 
   let job = term_getjob(buf)
   call WaitForAssert({-> assert_equal("dead", job_status(job))})
-  call term_wait(buf)
+  call TermWait(buf)
 
   exe buf . 'bwipe'
   call delete('Xtext')
@@ -296,14 +289,17 @@ func Test_terminal_scroll()
 
   let job = term_getjob(buf)
   call WaitForAssert({-> assert_equal("dead", job_status(job))})
-  call term_wait(buf)
-  if has('win32')
-    " TODO: this should not be needed
-    sleep 100m
-  endif
+  call TermWait(buf)
 
-  let scrolled = buf->term_getscrolled()
-  call assert_equal(scrolled, term_getscrolled(buf))
+  " wait until the scrolling stops
+  while 1
+    let scrolled = buf->term_getscrolled()
+    sleep 20m
+    if scrolled == buf->term_getscrolled()
+      break
+    endif
+  endwhile
+
   call assert_equal('1', getline(1))
   call assert_equal('1', term_getline(buf, 1 - scrolled))
   call assert_equal('49', getline(49))
@@ -331,7 +327,7 @@ func Test_terminal_scrollback()
   call assert_inrange(91, 100, lines)
 
   call StopShellInTerminal(buf)
-  call term_wait(buf)
+  call TermWait(buf)
   exe buf . 'bwipe'
   set termwinscroll&
   call delete('Xtext')
@@ -352,23 +348,29 @@ func Test_terminal_postponed_scrollback()
 	\ ], 'XTest_postponed')
   let buf = RunVimInTerminal('-S XTest_postponed', {})
   " Check that the Xtext lines are displayed and in Terminal-Normal mode
-  call VerifyScreenDump(buf, 'Test_terminal_01', {})
+  call VerifyScreenDump(buf, 'Test_terminal_scrollback_1', {})
 
   silent !echo 'one more line' >>Xtext
   " Screen will not change, move cursor to get a different dump
   call term_sendkeys(buf, "k")
-  call VerifyScreenDump(buf, 'Test_terminal_02', {})
+  call VerifyScreenDump(buf, 'Test_terminal_scrollback_2', {})
 
   " Back to Terminal-Job mode, text will scroll and show the extra line.
   call term_sendkeys(buf, "a")
-  call VerifyScreenDump(buf, 'Test_terminal_03', {})
+  call VerifyScreenDump(buf, 'Test_terminal_scrollback_3', {})
 
-  call term_wait(buf)
+  " stop "tail -f"
   call term_sendkeys(buf, "\<C-C>")
-  call term_wait(buf)
+  call TermWait(buf, 25)
+  " stop shell
   call term_sendkeys(buf, "exit\<CR>")
-  call term_wait(buf)
-  call term_sendkeys(buf, ":q\<CR>")
+  call TermWait(buf, 50)
+  " close terminal window
+  let tsk_ret = term_sendkeys(buf, ":q\<CR>")
+
+  " check type of term_sendkeys() return value
+  echo type(tsk_ret)
+
   call StopVimInTerminal(buf)
   call delete('XTest_postponed')
   call delete('Xtext')
@@ -622,7 +624,7 @@ func s:test_environment(name, value)
   else
     call term_sendkeys(buf, "echo $" . a:name . "\r")
   endif
-  call term_wait(buf)
+  call TermWait(buf)
   call StopShellInTerminal(buf)
   call WaitForAssert({-> assert_equal(a:value, getline(2))})
 
@@ -639,7 +641,7 @@ func Test_terminal_env()
   else
     call term_sendkeys(buf, "echo $TESTENV\r")
   endif
-  eval buf->term_wait()
+  eval buf->TermWait()
   call StopShellInTerminal(buf)
   call WaitForAssert({-> assert_equal('correct', getline(2))})
 
@@ -655,10 +657,14 @@ endfunction
 
 func Test_terminal_noblock()
   let buf = term_start(&shell)
+  let wait_time = 5000
+  let letters = 'abcdefghijklmnopqrstuvwxyz'
   if has('bsd') || has('mac') || has('sun')
     " The shell or something else has a problem dealing with more than 1000
-    " characters at the same time.
+    " characters at the same time.  It's very slow too.
     let len = 1000
+    let wait_time = 15000
+    let letters = 'abcdefghijklm'
   " NPFS is used in Windows, nonblocking mode does not work properly.
   elseif has('win32')
     let len = 1
@@ -666,7 +672,8 @@ func Test_terminal_noblock()
     let len = 5000
   endif
 
-  for c in ['a','b','c','d','e','f','g','h','i','j','k']
+  " Send a lot of text lines, should be buffered properly.
+  for c in split(letters, '\zs')
     call term_sendkeys(buf, 'echo ' . repeat(c, len) . "\<cr>")
   endfor
   call term_sendkeys(buf, "echo done\<cr>")
@@ -674,7 +681,7 @@ func Test_terminal_noblock()
   " On MS-Windows there is an extra empty line below "done".  Find "done" in
   " the last-but-one or the last-but-two line.
   let lnum = term_getsize(buf)[0] - 1
-  call WaitFor({-> term_getline(buf, lnum) =~ "done" || term_getline(buf, lnum - 1) =~ "done"}, 10000)
+  call WaitForAssert({-> assert_match('done', term_getline(buf, lnum - 1) .. '//' .. term_getline(buf, lnum))}, wait_time)
   let line = term_getline(buf, lnum)
   if line !~ 'done'
     let line = term_getline(buf, lnum - 1)
@@ -683,7 +690,7 @@ func Test_terminal_noblock()
 
   let g:job = term_getjob(buf)
   call StopShellInTerminal(buf)
-  call term_wait(buf)
+  call TermWait(buf)
   unlet g:job
   bwipe
 endfunc
@@ -709,10 +716,10 @@ func Test_terminal_write_stdin()
 endfunc
 
 func Test_terminal_eof_arg()
-  CheckExecutable python
+  call CheckPython(s:python)
 
   call setline(1, ['print("hello")'])
-  1term ++eof=exit(123) python
+  exe '1term ++eof=exit(123) ' .. s:python
   " MS-Windows echoes the input, Unix doesn't.
   if has('win32')
     call WaitFor({-> getline('$') =~ 'exit(123)'})
@@ -727,22 +734,22 @@ endfunc
 
 func Test_terminal_eof_arg_win32_ctrl_z()
   CheckMSWindows
-  CheckExecutable python
+  call CheckPython(s:python)
 
   call setline(1, ['print("hello")'])
-  1term ++eof=<C-Z> python
+  exe '1term ++eof=<C-Z> ' .. s:python
   call WaitForAssert({-> assert_match('\^Z', getline(line('$') - 1))})
   call assert_match('\^Z', getline(line('$') - 1))
   %bwipe!
 endfunc
 
 func Test_terminal_duplicate_eof_arg()
-  CheckExecutable python
+  call CheckPython(s:python)
 
   " Check the last specified ++eof arg is used and should not memory leak.
   new
   call setline(1, ['print("hello")'])
-  1term ++eof=<C-Z> ++eof=exit(123) python
+  exe '1term ++eof=<C-Z> ++eof=exit(123) ' .. s:python
   " MS-Windows echoes the input, Unix doesn't.
   if has('win32')
     call WaitFor({-> getline('$') =~ 'exit(123)'})
@@ -781,7 +788,8 @@ func Test_terminal_special_chars()
   call writefile(['x'], 'Xdir with spaces/quoted"file')
   term ls Xdir\ with\ spaces/quoted\"file
   call WaitForAssert({-> assert_match('quoted"file', term_getline('', 1))})
-  call term_wait('')
+  " make sure the job has finished
+  call WaitForAssert({-> assert_match('finish', term_getstatus(bufnr()))})
 
   call delete('Xdir with spaces', 'rf')
   bwipe
@@ -807,7 +815,7 @@ endfunc
 func Test_terminal_redir_file()
   let cmd = Get_cat_123_cmd()
   let buf = term_start(cmd, {'out_io': 'file', 'out_name': 'Xfile'})
-  call term_wait(buf)
+  call TermWait(buf)
   " ConPTY may precede escape sequence. There are things that are not so.
   if !has('conpty')
     call WaitForAssert({-> assert_notequal(0, len(readfile("Xfile")))})
@@ -821,7 +829,7 @@ func Test_terminal_redir_file()
   if has('unix')
     call writefile(['one line'], 'Xfile')
     let buf = term_start('cat', {'in_io': 'file', 'in_name': 'Xfile'})
-    call term_wait(buf)
+    call TermWait(buf)
     call WaitForAssert({-> assert_equal('one line', term_getline(buf, 1))})
     let g:job = term_getjob(buf)
     call WaitForAssert({-> assert_equal('dead', job_status(g:job))})
@@ -854,7 +862,7 @@ func TerminalTmap(remap)
 
   call term_sendkeys(buf, "\r")
   call StopShellInTerminal(buf)
-  call term_wait(buf)
+  call TermWait(buf)
 
   tunmap 123
   tunmap 456
@@ -872,7 +880,7 @@ func Test_terminal_wall()
   let buf = Run_shell_in_terminal({})
   wall
   call StopShellInTerminal(buf)
-  call term_wait(buf)
+  call TermWait(buf)
   exe buf . 'bwipe'
   unlet g:job
 endfunc
@@ -881,13 +889,12 @@ func Test_terminal_wqall()
   let buf = Run_shell_in_terminal({})
   call assert_fails('wqall', 'E948')
   call StopShellInTerminal(buf)
-  call term_wait(buf)
+  call TermWait(buf)
   exe buf . 'bwipe'
   unlet g:job
 endfunc
 
 func Test_terminal_composing_unicode()
-  CheckNotBSD
   let save_enc = &encoding
   set encoding=utf-8
 
@@ -902,7 +909,7 @@ func Test_terminal_composing_unicode()
   enew
   let buf = term_start(cmd, {'curwin': bufnr('')})
   let g:job = term_getjob(buf)
-  call term_wait(buf, 50)
+  call WaitFor({-> term_getline(buf, 1) !=# ''}, 1000)
 
   if has('win32')
     call assert_equal('cmd', job_info(g:job).cmd[0])
@@ -912,10 +919,11 @@ func Test_terminal_composing_unicode()
 
   " ascii + composing
   let txt = "a\u0308bc"
-  call term_sendkeys(buf, "echo " . txt . "\r")
-  call term_wait(buf, 50)
+  call term_sendkeys(buf, "echo " . txt)
+  call TermWait(buf, 25)
   call assert_match("echo " . txt, term_getline(buf, lnum[0]))
-  call assert_equal(txt, term_getline(buf, lnum[0] + 1))
+  call term_sendkeys(buf, "\<cr>")
+  call WaitForAssert({-> assert_equal(txt, term_getline(buf, lnum[0] + 1))}, 1000)
   let l = term_scrape(buf, lnum[0] + 1)
   call assert_equal("a\u0308", l[0].chars)
   call assert_equal("b", l[1].chars)
@@ -923,10 +931,11 @@ func Test_terminal_composing_unicode()
 
   " multibyte + composing
   let txt = "\u304b\u3099\u304e\u304f\u3099\u3052\u3053\u3099"
-  call term_sendkeys(buf, "echo " . txt . "\r")
-  call term_wait(buf, 50)
+  call term_sendkeys(buf, "echo " . txt)
+  call TermWait(buf, 25)
   call assert_match("echo " . txt, term_getline(buf, lnum[1]))
-  call assert_equal(txt, term_getline(buf, lnum[1] + 1))
+  call term_sendkeys(buf, "\<cr>")
+  call WaitForAssert({-> assert_equal(txt, term_getline(buf, lnum[1] + 1))}, 1000)
   let l = term_scrape(buf, lnum[1] + 1)
   call assert_equal("\u304b\u3099", l[0].chars)
   call assert_equal("\u304e", l[1].chars)
@@ -936,10 +945,11 @@ func Test_terminal_composing_unicode()
 
   " \u00a0 + composing
   let txt = "abc\u00a0\u0308"
-  call term_sendkeys(buf, "echo " . txt . "\r")
-  call term_wait(buf, 50)
+  call term_sendkeys(buf, "echo " . txt)
+  call TermWait(buf, 25)
   call assert_match("echo " . txt, term_getline(buf, lnum[2]))
-  call assert_equal(txt, term_getline(buf, lnum[2] + 1))
+  call term_sendkeys(buf, "\<cr>")
+  call WaitForAssert({-> assert_equal(txt, term_getline(buf, lnum[2] + 1))}, 1000)
   let l = term_scrape(buf, lnum[2] + 1)
   call assert_equal("\u00a0\u0308", l[3].chars)
 
@@ -985,6 +995,28 @@ func Test_terminal_term_start_empty_command()
   call assert_fails(cmd, 'E474')
   let cmd = "call term_start(0, {'curwin' : 1, 'term_finish' : 'close'})"
   call assert_fails(cmd, 'E474')
+  let cmd = "call term_start('', {'term_name' : []})"
+  call assert_fails(cmd, 'E475')
+  let cmd = "call term_start('', {'term_finish' : 'axby'})"
+  call assert_fails(cmd, 'E475')
+  let cmd = "call term_start('', {'eof_chars' : []})"
+  call assert_fails(cmd, 'E475:')
+  let cmd = "call term_start('', {'term_kill' : []})"
+  call assert_fails(cmd, 'E475:')
+  let cmd = "call term_start('', {'tty_type' : []})"
+  call assert_fails(cmd, 'E475:')
+  let cmd = "call term_start('', {'tty_type' : 'abc'})"
+  call assert_fails(cmd, 'E475:')
+  let cmd = "call term_start('', {'term_highlight' : []})"
+  call assert_fails(cmd, 'E475:')
+  if has('gui')
+    let cmd = "call term_start('', {'ansi_colors' : 'abc'})"
+    call assert_fails(cmd, 'E475:')
+    let cmd = "call term_start('', {'ansi_colors' : [[]]})"
+    call assert_fails(cmd, 'E730:')
+    let cmd = "call term_start('', {'ansi_colors' : repeat(['blue'], 18)})"
+    call assert_fails(cmd, 'E475:')
+  endif
 endfunc
 
 func Test_terminal_response_to_control_sequence()
@@ -1175,6 +1207,26 @@ func Test_terminal_dumpwrite_composing()
   let &encoding = save_enc
 endfunc
 
+" Tests for failures in the term_dumpwrite() function
+func Test_terminal_dumpwrite_errors()
+  CheckRunVimInTerminal
+  call assert_fails("call term_dumpwrite({}, 'Xtest.dump')", 'E728:')
+  let buf = RunVimInTerminal('', {})
+  call term_wait(buf)
+  call assert_fails("call term_dumpwrite(buf, 'Xtest.dump', '')", 'E715:')
+  call assert_fails("call term_dumpwrite(buf, [])", 'E730:')
+  call writefile([], 'Xtest.dump')
+  call assert_fails("call term_dumpwrite(buf, 'Xtest.dump')", 'E953:')
+  call delete('Xtest.dump')
+  call assert_fails("call term_dumpwrite(buf, '')", 'E482:')
+  call assert_fails("call term_dumpwrite(buf, test_null_string())", 'E482:')
+  call StopVimInTerminal(buf)
+  call term_wait(buf)
+  call assert_fails("call term_dumpwrite(buf, 'Xtest.dump')", 'E958:')
+  call assert_fails('call term_sendkeys([], ":q\<CR>")', 'E745:')
+  call assert_equal(0, term_sendkeys(buf, ":q\<CR>"))
+endfunc
+
 " just testing basic functionality.
 func Test_terminal_dumpload()
   let curbuf = winbufnr('')
@@ -1200,6 +1252,8 @@ func Test_terminal_dumpload()
   let closedbuf = winbufnr('')
   quit
   call assert_fails("call term_dumpload('dumps/Test_popup_command_01.dump', {'bufnr': closedbuf})", 'E475:')
+  call assert_fails('call term_dumpload([])', 'E474:')
+  call assert_fails('call term_dumpload("xabcy.dump")', 'E485:')
 
   quit
 endfunc
@@ -1227,6 +1281,12 @@ func Test_terminal_dumpdiff()
   call Check_dump01(42)
   call assert_equal('           bbbbbbbbbbbbbbbbbb ', getline(26)[0:29])
   quit
+
+  call assert_fails('call term_dumpdiff("X1.dump", [])', 'E474:')
+  call assert_fails('call term_dumpdiff("X1.dump", "X2.dump")', 'E485:')
+  call writefile([], 'X1.dump')
+  call assert_fails('call term_dumpdiff("X1.dump", "X2.dump")', 'E485:')
+  call delete('X1.dump')
 endfunc
 
 func Test_terminal_dumpdiff_swap()
@@ -1269,6 +1329,7 @@ func Test_terminal_dumpdiff_options()
   call assert_equal(1, winnr('$'))
   call term_dumpdiff('dumps/Test_popup_command_01.dump', 'dumps/Test_popup_command_02.dump', {'curwin': 1})
   call assert_equal(1, winnr('$'))
+  call assert_fails("call term_dumpdiff('dumps/Test_popup_command_01.dump', 'dumps/Test_popup_command_02.dump', {'bufnr': -1})", 'E475:')
   bwipe
 
   set laststatus&
@@ -1470,6 +1531,8 @@ func Test_terminal_api_call()
   call assert_equal(['hello', 123], g:called_arg2)
   call StopVimInTerminal(buf)
 
+  call assert_fails("call term_start('ls', {'term_api' : []})", 'E475:')
+
   unlet! g:called_bufnum2
   unlet! g:called_arg2
 
@@ -1539,9 +1602,8 @@ func Test_terminal_api_call_fail_delete()
 endfunc
 
 func Test_terminal_ansicolors_default()
-  if !exists('*term_getansicolors')
-    throw 'Skipped: term_getansicolors() not supported'
-  endif
+  CheckFunction term_getansicolors
+
   let colors = [
 	\ '#000000', '#e00000',
 	\ '#00e000', '#e0e000',
@@ -1556,7 +1618,7 @@ func Test_terminal_ansicolors_default()
   let buf = Run_shell_in_terminal({})
   call assert_equal(colors, term_getansicolors(buf))
   call StopShellInTerminal(buf)
-  call term_wait(buf)
+  call TermWait(buf)
 
   exe buf . 'bwipe'
 endfunc
@@ -1574,14 +1636,13 @@ let s:test_colors = [
 
 func Test_terminal_ansicolors_global()
   CheckFeature termguicolors
-  if !exists('*term_getansicolors')
-    throw 'Skipped: term_getansicolors() not supported'
-  endif
+  CheckFunction term_getansicolors
+
   let g:terminal_ansi_colors = reverse(copy(s:test_colors))
   let buf = Run_shell_in_terminal({})
   call assert_equal(g:terminal_ansi_colors, term_getansicolors(buf))
   call StopShellInTerminal(buf)
-  call term_wait(buf)
+  call TermWait(buf)
 
   exe buf . 'bwipe'
   unlet g:terminal_ansi_colors
@@ -1589,9 +1650,8 @@ endfunc
 
 func Test_terminal_ansicolors_func()
   CheckFeature termguicolors
-  if !exists('*term_getansicolors')
-    throw 'Skipped: term_getansicolors() not supported'
-  endif
+  CheckFunction term_getansicolors
+
   let g:terminal_ansi_colors = reverse(copy(s:test_colors))
   let buf = Run_shell_in_terminal({'ansi_colors': s:test_colors})
   call assert_equal(s:test_colors, term_getansicolors(buf))
@@ -1615,7 +1675,7 @@ func Test_terminal_ansicolors_func()
   call assert_fails('call term_setansicolors(buf, colors)', 'E474:')
 
   call StopShellInTerminal(buf)
-  call term_wait(buf)
+  call TermWait(buf)
   exe buf . 'bwipe'
 endfunc
 
@@ -1711,7 +1771,7 @@ func Test_terminal_termwinsize_option_zero()
   let win = bufwinid(buf)
   call assert_equal([winheight(win), winwidth(win)], term_getsize(buf))
   call StopShellInTerminal(buf)
-  call term_wait(buf)
+  call TermWait(buf)
   exe buf . 'bwipe'
 
   set termwinsize=7x0
@@ -1719,7 +1779,7 @@ func Test_terminal_termwinsize_option_zero()
   let win = bufwinid(buf)
   call assert_equal([7, winwidth(win)], term_getsize(buf))
   call StopShellInTerminal(buf)
-  call term_wait(buf)
+  call TermWait(buf)
   exe buf . 'bwipe'
 
   set termwinsize=0x33
@@ -1727,7 +1787,7 @@ func Test_terminal_termwinsize_option_zero()
   let win = bufwinid(buf)
   call assert_equal([winheight(win), 33], term_getsize(buf))
   call StopShellInTerminal(buf)
-  call term_wait(buf)
+  call TermWait(buf)
   exe buf . 'bwipe'
 
   set termwinsize=
@@ -1757,7 +1817,7 @@ func Test_terminal_termwinsize_minimum()
   call assert_equal(30, winwidth(win))
 
   call StopShellInTerminal(buf)
-  call term_wait(buf)
+  call TermWait(buf)
   exe buf . 'bwipe'
 
   set termwinsize=0*0
@@ -1765,7 +1825,7 @@ func Test_terminal_termwinsize_minimum()
   let win = bufwinid(buf)
   call assert_equal([winheight(win), winwidth(win)], term_getsize(buf))
   call StopShellInTerminal(buf)
-  call term_wait(buf)
+  call TermWait(buf)
   exe buf . 'bwipe'
 
   set termwinsize=
@@ -1907,7 +1967,7 @@ func Test_zz1_terminal_in_gui()
   call assert_equal(1, winnr('$'))
   let buf = Run_shell_in_terminal({'term_finish': 'close'})
   call StopShellInTerminal(buf)
-  call term_wait(buf)
+  call TermWait(buf)
 
   " closing window wipes out the terminal buffer a with finished job
   call WaitForAssert({-> assert_equal(1, winnr('$'))})
@@ -1994,7 +2054,7 @@ func Test_terminal_normal_mode()
   END
   call writefile(lines, 'XtermNormal')
   let buf = RunVimInTerminal('-S XtermNormal', {'rows': 8})
-  call term_wait(buf)
+  call TermWait(buf)
 
   call term_sendkeys(buf, "\<C-W>N")
   call term_sendkeys(buf, ":set number cursorline culopt=both\r")
@@ -2145,6 +2205,49 @@ func Test_term_gettitle()
   exe term . 'bwipe!'
 endfunc
 
+func Test_term_gettty()
+  let buf = Run_shell_in_terminal({})
+  let gettty = term_gettty(buf)
+
+  if has('unix') && executable('tty')
+    " Find tty using the tty shell command.
+    call WaitForAssert({-> assert_notequal('', term_getline(buf, 1))})
+    call term_sendkeys(buf, "tty\r")
+    call WaitForAssert({-> assert_notequal('', term_getline(buf, 3))})
+    let tty = term_getline(buf, 2)
+    call assert_equal(tty, gettty)
+  endif
+
+  let gettty0 = term_gettty(buf, 0)
+  let gettty1 = term_gettty(buf, 1)
+
+  call assert_equal(gettty, gettty0)
+  call assert_equal(job_info(g:job).tty_out, gettty0)
+  call assert_equal(job_info(g:job).tty_in,  gettty1)
+
+  if has('unix')
+    " For unix, term_gettty(..., 0) and term_gettty(..., 1)
+    " are identical according to :help term_gettty()
+    call assert_equal(gettty0, gettty1)
+    call assert_match('^/dev/', gettty)
+  else
+    " ConPTY works on anonymous pipe.
+    if !has('conpty')
+      call assert_match('^\\\\.\\pipe\\', gettty0)
+      call assert_match('^\\\\.\\pipe\\', gettty1)
+    endif
+  endif
+
+  call assert_fails('call term_gettty(buf, 2)', 'E475:')
+  call assert_fails('call term_gettty(buf, -1)', 'E475:')
+
+  call assert_equal('', term_gettty(buf + 1))
+
+  call StopShellInTerminal(buf)
+  call TermWait(buf)
+  exe buf . 'bwipe'
+endfunc
+
 " When drawing the statusline the cursor position may not have been updated
 " yet.
 " 1. create a terminal, make it show 2 lines
@@ -2181,7 +2284,7 @@ func Test_terminal_getwinpos()
 	\ 'echo getwinpos()',
 	\ ], 'XTest_getwinpos')
   let buf = RunVimInTerminal('-S XTest_getwinpos', {'cols': 60})
-  call term_wait(buf)
+  call TermWait(buf)
 
   " Find the output of getwinpos() in the bottom line.
   let rows = term_getsize(buf)[0]
@@ -2204,7 +2307,7 @@ func Test_terminal_getwinpos()
   call assert_inrange(xroot + 2, xroot + xoff, xpos)
   call assert_inrange(yroot + 2, yroot + yoff, ypos)
 
-  call term_wait(buf)
+  call TermWait(buf)
   call term_sendkeys(buf, ":q\<CR>")
   call StopVimInTerminal(buf)
   call delete('XTest_getwinpos')
@@ -2322,6 +2425,10 @@ func Test_terminal_api_arg()
   unlet! g:called_arg
 endfunc
 
+func Test_terminal_invalid_arg()
+  call assert_fails('terminal ++xyz', 'E181:')
+endfunc
+
 func Test_terminal_in_popup()
   CheckRunVimInTerminal
 
@@ -2337,30 +2444,38 @@ func Test_terminal_in_popup()
 	\ 'call setline(1, range(20))',
 	\ 'hi PopTerm ctermbg=grey',
 	\ 'func OpenTerm(setColor)',
-	\ "  let buf = term_start('" .. cmd .. " Xtext', #{hidden: 1, term_finish: 'close'})",
-	\ '  let s:winid = popup_create(buf, #{minwidth: 45, minheight: 7, border: [], drag: 1, resize: 1})',
+	\ "  set noruler",
+	\ "  let s:buf = term_start('" .. cmd .. " Xtext', #{hidden: 1, term_finish: 'close'})",
+	\ '  let g:winid = popup_create(s:buf, #{minwidth: 45, minheight: 7, border: [], drag: 1, resize: 1})',
 	\ '  if a:setColor',
-	\ '    call win_execute(s:winid, "set wincolor=PopTerm")',
+	\ '    call win_execute(g:winid, "set wincolor=PopTerm")',
 	\ '  endif',
 	\ 'endfunc',
-	\ 'call OpenTerm(0)',
 	\ 'func HidePopup()',
-	\ '  call popup_hide(s:winid)',
+	\ '  call popup_hide(g:winid)',
 	\ 'endfunc',
-	\ 'sleep 10m',
-	\ 'redraw',
-	\ 'echo getwinvar(s:winid, "&buftype") win_gettype(s:winid)',
+	\ 'func ClosePopup()',
+	\ '  call popup_close(g:winid)',
+	\ 'endfunc',
+	\ 'func ReopenPopup()',
+	\ '  call popup_create(s:buf, #{minwidth: 40, minheight: 6, border: []})',
+	\ 'endfunc',
 	\ ]
   call writefile(lines, 'XtermPopup')
   let buf = RunVimInTerminal('-S XtermPopup', #{rows: 15})
-  call term_wait(buf, 100)
+  call TermWait(buf, 100)
+  call term_sendkeys(buf, ":call OpenTerm(0)\<CR>")
+  call TermWait(buf, 100)
   call term_sendkeys(buf, ":\<CR>")
+  call TermWait(buf, 100)
+  call term_sendkeys(buf, "\<C-W>:echo getwinvar(g:winid, \"&buftype\") win_gettype(g:winid)\<CR>")
   call VerifyScreenDump(buf, 'Test_terminal_popup_1', {})
 
   call term_sendkeys(buf, ":q\<CR>")
   call VerifyScreenDump(buf, 'Test_terminal_popup_2', {})
  
   call term_sendkeys(buf, ":call OpenTerm(1)\<CR>")
+  call TermWait(buf, 150)
   call term_sendkeys(buf, ":set hlsearch\<CR>")
   call term_sendkeys(buf, "/edit\<CR>")
   call VerifyScreenDump(buf, 'Test_terminal_popup_3', {})
@@ -2368,13 +2483,115 @@ func Test_terminal_in_popup()
   call term_sendkeys(buf, "\<C-W>:call HidePopup()\<CR>")
   call VerifyScreenDump(buf, 'Test_terminal_popup_4', {})
   call term_sendkeys(buf, "\<CR>")
-  call term_wait(buf, 100)
+  call TermWait(buf, 50)
 
+  call term_sendkeys(buf, "\<C-W>:call ClosePopup()\<CR>")
+  call VerifyScreenDump(buf, 'Test_terminal_popup_5', {})
+
+  call term_sendkeys(buf, "\<C-W>:call ReopenPopup()\<CR>")
+  call VerifyScreenDump(buf, 'Test_terminal_popup_6', {})
+
+  " Go to terminal-Normal mode and visually select text.
+  call term_sendkeys(buf, "\<C-W>Ngg/in\<CR>vww")
+  call VerifyScreenDump(buf, 'Test_terminal_popup_7', {})
+
+  " Back to job mode, redraws
+  call term_sendkeys(buf, "A")
+  call VerifyScreenDump(buf, 'Test_terminal_popup_8', {})
+
+  call TermWait(buf, 50)
   call term_sendkeys(buf, ":q\<CR>")
-  call term_wait(buf, 100)  " wait for terminal to vanish
+  call TermWait(buf, 100)  " wait for terminal to vanish
 
   call StopVimInTerminal(buf)
+  call delete('Xtext')
   call delete('XtermPopup')
+endfunc
+
+" Check a terminal in popup window uses the default mininum size.
+func Test_terminal_in_popup_min_size()
+  CheckRunVimInTerminal
+
+  let text =<< trim END
+    another text
+    to show
+    in a popup window
+  END
+  call writefile(text, 'Xtext')
+  let lines = [
+	\ 'set t_u7=',
+	\ 'call setline(1, range(20))',
+	\ 'func OpenTerm()',
+	\ "  let s:buf = term_start('cat Xtext', #{hidden: 1})",
+	\ '  let g:winid = popup_create(s:buf, #{ border: []})',
+	\ 'endfunc',
+	\ ]
+  call writefile(lines, 'XtermPopup')
+  let buf = RunVimInTerminal('-S XtermPopup', #{rows: 15})
+  call TermWait(buf, 100)
+  call term_sendkeys(buf, ":set noruler\<CR>")
+  call term_sendkeys(buf, ":call OpenTerm()\<CR>")
+  call TermWait(buf, 50)
+  call term_sendkeys(buf, ":\<CR>")
+  call VerifyScreenDump(buf, 'Test_terminal_popup_m1', {})
+
+  call TermWait(buf, 50)
+  call term_sendkeys(buf, ":q\<CR>")
+  call TermWait(buf, 50)  " wait for terminal to vanish
+  call StopVimInTerminal(buf)
+  call delete('Xtext')
+  call delete('XtermPopup')
+endfunc
+
+" Check a terminal in popup window with different colors
+func Terminal_in_popup_colored(group_name, highlight_cmd, highlight_opt)
+  CheckRunVimInTerminal
+  CheckUnix
+
+  let lines = [
+	\ 'set t_u7=',
+	\ 'call setline(1, range(20))',
+	\ 'func OpenTerm()',
+	\ "  let s:buf = term_start('cat', #{hidden: 1, "
+	\ .. a:highlight_opt .. "})",
+	\ '  let g:winid = popup_create(s:buf, #{ border: []})',
+	\ 'endfunc',
+	\ a:highlight_cmd,
+	\ ]
+  call writefile(lines, 'XtermPopup')
+  let buf = RunVimInTerminal('-S XtermPopup', #{rows: 15})
+  call TermWait(buf, 100)
+  call term_sendkeys(buf, ":set noruler\<CR>")
+  call term_sendkeys(buf, ":call OpenTerm()\<CR>")
+  call TermWait(buf, 50)
+  call term_sendkeys(buf, "hello\<CR>")
+  call VerifyScreenDump(buf, 'Test_terminal_popup_' .. a:group_name, {})
+
+  call term_sendkeys(buf, "\<C-D>")
+  call TermWait(buf, 50)
+  call term_sendkeys(buf, ":q\<CR>")
+  call TermWait(buf, 50)  " wait for terminal to vanish
+  call StopVimInTerminal(buf)
+  call delete('XtermPopup')
+endfunc
+
+func Test_terminal_in_popup_colored_Terminal()
+  call Terminal_in_popup_colored("Terminal", "highlight Terminal ctermfg=blue ctermbg=yellow", "")
+endfunc
+
+func Test_terminal_in_popup_colored_group()
+  call Terminal_in_popup_colored("MyTermCol", "highlight MyTermCol ctermfg=darkgreen ctermbg=lightblue", "term_highlight: 'MyTermCol',")
+endfunc
+
+func Test_double_popup_terminal()
+  let buf1 = term_start(&shell, #{hidden: 1})
+  let win1 = popup_create(buf1, {})
+  let buf2 = term_start(&shell, #{hidden: 1})
+  let win2 = popup_create(buf2, {})
+  call popup_close(win1)
+  call popup_close(win2)
+  exe buf1 .. 'bwipe!'
+  exe buf2 .. 'bwipe!'
 endfunc
 
 func Test_issue_5607()
@@ -2391,3 +2608,273 @@ func Test_issue_5607()
     bw!
   endtry
 endfunc
+
+func Test_hidden_terminal()
+  let buf = term_start(&shell, #{hidden: 1})
+  call assert_equal('', bufname('^$'))
+  call StopShellInTerminal(buf)
+endfunc
+
+func Test_term_nasty_callback()
+  CheckExecutable sh
+  func OpenTerms()
+    set hidden
+    let g:buf0 = term_start('sh', #{hidden: 1})
+    call popup_create(g:buf0, {})
+    let g:buf1 = term_start('sh', #{hidden: 1, term_finish: 'close'})
+    call popup_create(g:buf1, {})
+    let g:buf2 = term_start(['sh', '-c'], #{curwin: 1, exit_cb: function('TermExit')})
+    call TermWait(g:buf2, 50)
+    call popup_close(win_getid())
+  endfunc
+  func TermExit(...)
+    let altbuf = bufnr('#')
+    call term_sendkeys(altbuf, "exit\<CR>")
+    call TermWait(altbuf)
+    call popup_close(win_getid())
+  endfunc
+  call OpenTerms()
+
+  call term_sendkeys(g:buf0, "exit\<CR>")
+  call TermWait(g:buf0, 50)
+  exe g:buf0 .. 'bwipe!'
+  set hidden&
+endfunc
+
+func Test_term_and_startinsert()
+  CheckRunVimInTerminal
+  CheckUnix
+
+  let lines =<< trim EOL
+     put='some text'
+     term
+     startinsert
+  EOL
+  call writefile(lines, 'XTest_startinsert')
+  let buf = RunVimInTerminal('-S XTest_startinsert', {})
+
+  call term_sendkeys(buf, "exit\r")
+  call WaitForAssert({-> assert_equal("some text", term_getline(buf, 1))})
+  call term_sendkeys(buf, "0l")
+  call term_sendkeys(buf, "A<\<Esc>")
+  call WaitForAssert({-> assert_equal("some text<", term_getline(buf, 1))})
+
+  call StopVimInTerminal(buf)
+  call delete('XTest_startinsert')
+endfunc
+
+" Test for passing invalid arguments to terminal functions
+func Test_term_func_invalid_arg()
+  call assert_fails('let b = term_getaltscreen([])', 'E745:')
+  call assert_fails('let p = term_getansicolors([])', 'E745:')
+  call assert_fails('let a = term_getattr(1, [])', 'E730:')
+  call assert_fails('let c = term_getcursor([])', 'E745:')
+  call assert_fails('let l = term_getline([], 1)', 'E745:')
+  call assert_fails('let l = term_getscrolled([])', 'E745:')
+  call assert_fails('let s = term_getsize([])', 'E745:')
+  call assert_fails('let s = term_getstatus([])', 'E745:')
+  call assert_fails('let s = term_scrape([], 1)', 'E745:')
+  call assert_fails('call term_sendkeys([], "a")', 'E745:')
+  call assert_fails('call term_setansicolors([], [])', 'E745:')
+  call assert_fails('call term_setapi([], "")', 'E745:')
+  call assert_fails('call term_setrestore([], "")', 'E745:')
+  call assert_fails('call term_setkill([], "")', 'E745:')
+endfunc
+
+" Test for sending various special keycodes to a terminal
+func Test_term_keycode_translation()
+  CheckRunVimInTerminal
+
+  let buf = RunVimInTerminal('', {})
+  call term_sendkeys(buf, ":set nocompatible\<CR>")
+
+  let keys = ["\<F1>", "\<F2>", "\<F3>", "\<F4>", "\<F5>", "\<F6>", "\<F7>",
+        \ "\<F8>", "\<F9>", "\<F10>", "\<F11>", "\<F12>", "\<Home>",
+        \ "\<S-Home>", "\<C-Home>", "\<End>", "\<S-End>", "\<C-End>",
+	\ "\<Ins>", "\<Del>", "\<Left>", "\<S-Left>", "\<C-Left>", "\<Right>",
+        \ "\<S-Right>", "\<C-Right>", "\<Up>", "\<S-Up>", "\<Down>",
+        \ "\<S-Down>"]
+  let output = ['<F1>', '<F2>', '<F3>', '<F4>', '<F5>', '<F6>', '<F7>',
+        \ '<F8>', '<F9>', '<F10>', '<F11>', '<F12>', '<Home>', '<S-Home>',
+        \ '<C-Home>', '<End>', '<S-End>', '<C-End>', '<Insert>', '<Del>',
+        \ '<Left>', '<S-Left>', '<C-Left>', '<Right>', '<S-Right>',
+        \ '<C-Right>', '<Up>', '<S-Up>', '<Down>', '<S-Down>',
+        \ '0123456789', "\t\t.+-*/"]
+
+  for k in keys
+    call term_sendkeys(buf, "i\<C-K>" .. k .. "\<CR>\<C-\>\<C-N>")
+  endfor
+  call term_sendkeys(buf, "i\<K0>\<K1>\<K2>\<K3>\<K4>\<K5>\<K6>\<K7>")
+  call term_sendkeys(buf, "\<K8>\<K9>\<kEnter>\<kPoint>\<kPlus>")
+  call term_sendkeys(buf, "\<kMinus>\<kMultiply>\<kDivide>\<C-\>\<C-N>")
+  call term_sendkeys(buf, "\<Home>\<Ins>\<Tab>\<S-Tab>\<C-\>\<C-N>")
+
+  call term_sendkeys(buf, ":write Xkeycodes\<CR>")
+  call term_wait(buf)
+  call StopVimInTerminal(buf)
+  call assert_equal(output, readfile('Xkeycodes'))
+  call delete('Xkeycodes')
+endfunc
+
+" Test for using the mouse in a terminal
+func Test_term_mouse()
+  CheckNotGui
+  CheckRunVimInTerminal
+
+  let save_mouse = &mouse
+  let save_term = &term
+  let save_ttymouse = &ttymouse
+  let save_clipboard = &clipboard
+  call test_override('no_query_mouse', 1)
+  set mouse=a term=xterm ttymouse=sgr mousetime=200 clipboard=
+
+  let lines =<< trim END
+    one two three four five
+    red green yellow red blue
+    vim emacs sublime nano
+  END
+  call writefile(lines, 'Xtest_mouse')
+
+  let buf = RunVimInTerminal('Xtest_mouse -n', {})
+  call term_sendkeys(buf, ":set nocompatible\<CR>")
+  call term_sendkeys(buf, ":set mouse=a term=xterm ttymouse=sgr\<CR>")
+  call term_sendkeys(buf, ":set clipboard=\<CR>")
+  call term_sendkeys(buf, ":set mousemodel=extend\<CR>")
+  call term_wait(buf)
+  redraw!
+
+  " Test for <LeftMouse> click/release
+  call test_setmouse(2, 5)
+  call feedkeys("\<LeftMouse>\<LeftRelease>", 'xt')
+  call test_setmouse(3, 8)
+  call term_sendkeys(buf, "\<LeftMouse>\<LeftRelease>")
+  call term_wait(buf, 50)
+  call term_sendkeys(buf, ":call writefile([json_encode(getpos('.'))], 'Xbuf')\<CR>")
+  call term_wait(buf, 50)
+  let pos = json_decode(readfile('Xbuf')[0])
+  call assert_equal([3, 8], pos[1:2])
+
+  " Test for selecting text using mouse
+  call delete('Xbuf')
+  call test_setmouse(2, 11)
+  call term_sendkeys(buf, "\<LeftMouse>")
+  call test_setmouse(2, 16)
+  call term_sendkeys(buf, "\<LeftRelease>y")
+  call term_wait(buf, 50)
+  call term_sendkeys(buf, ":call writefile([@\"], 'Xbuf')\<CR>")
+  call term_wait(buf, 50)
+  call assert_equal('yellow', readfile('Xbuf')[0])
+
+  " Test for selecting text using doubleclick
+  call delete('Xbuf')
+  call test_setmouse(1, 11)
+  call term_sendkeys(buf, "\<LeftMouse>\<LeftRelease>\<LeftMouse>")
+  call test_setmouse(1, 17)
+  call term_sendkeys(buf, "\<LeftRelease>y")
+  call term_wait(buf, 50)
+  call term_sendkeys(buf, ":call writefile([@\"], 'Xbuf')\<CR>")
+  call term_wait(buf, 50)
+  call assert_equal('three four', readfile('Xbuf')[0])
+
+  " Test for selecting a line using triple click
+  call delete('Xbuf')
+  call test_setmouse(3, 2)
+  call term_sendkeys(buf, "\<LeftMouse>\<LeftRelease>\<LeftMouse>\<LeftRelease>\<LeftMouse>\<LeftRelease>y")
+  call term_wait(buf, 50)
+  call term_sendkeys(buf, ":call writefile([@\"], 'Xbuf')\<CR>")
+  call term_wait(buf, 50)
+  call assert_equal("vim emacs sublime nano\n", readfile('Xbuf')[0])
+
+  " Test for selecting a block using qudraple click
+  call delete('Xbuf')
+  call test_setmouse(1, 11)
+  call term_sendkeys(buf, "\<LeftMouse>\<LeftRelease>\<LeftMouse>\<LeftRelease>\<LeftMouse>\<LeftRelease>\<LeftMouse>")
+  call test_setmouse(3, 13)
+  call term_sendkeys(buf, "\<LeftRelease>y")
+  call term_wait(buf, 50)
+  call term_sendkeys(buf, ":call writefile([@\"], 'Xbuf')\<CR>")
+  call term_wait(buf, 50)
+  call assert_equal("ree\nyel\nsub", readfile('Xbuf')[0])
+
+  " Test for extending a selection using right click
+  call delete('Xbuf')
+  call test_setmouse(2, 9)
+  call term_sendkeys(buf, "\<LeftMouse>\<LeftRelease>")
+  call test_setmouse(2, 16)
+  call term_sendkeys(buf, "\<RightMouse>\<RightRelease>y")
+  call term_wait(buf, 50)
+  call term_sendkeys(buf, ":call writefile([@\"], 'Xbuf')\<CR>")
+  call term_wait(buf, 50)
+  call assert_equal("n yellow", readfile('Xbuf')[0])
+
+  " Test for pasting text using middle click
+  call delete('Xbuf')
+  call term_sendkeys(buf, ":let @r='bright '\<CR>")
+  call test_setmouse(2, 22)
+  call term_sendkeys(buf, "\"r\<MiddleMouse>\<MiddleRelease>")
+  call term_wait(buf, 50)
+  call term_sendkeys(buf, ":call writefile([getline(2)], 'Xbuf')\<CR>")
+  call term_wait(buf, 50)
+  call assert_equal("red bright blue", readfile('Xbuf')[0][-15:])
+
+  " cleanup
+  call term_wait(buf)
+  call StopVimInTerminal(buf)
+  let &mouse = save_mouse
+  let &term = save_term
+  let &ttymouse = save_ttymouse
+  let &clipboard = save_clipboard
+  set mousetime&
+  call test_override('no_query_mouse', 0)
+  call delete('Xtest_mouse')
+  call delete('Xbuf')
+endfunc
+
+" Test for modeless selection in a terminal
+func Test_term_modeless_selection()
+  CheckUnix
+  CheckNotGui
+  CheckRunVimInTerminal
+  CheckFeature clipboard_working
+
+  let save_mouse = &mouse
+  let save_term = &term
+  let save_ttymouse = &ttymouse
+  call test_override('no_query_mouse', 1)
+  set mouse=a term=xterm ttymouse=sgr mousetime=200
+  set clipboard=autoselectml
+
+  let lines =<< trim END
+    one two three four five
+    red green yellow red blue
+    vim emacs sublime nano
+  END
+  call writefile(lines, 'Xtest_modeless')
+
+  let buf = RunVimInTerminal('Xtest_modeless -n', {})
+  call term_sendkeys(buf, ":set nocompatible\<CR>")
+  call term_sendkeys(buf, ":set mouse=\<CR>")
+  call term_wait(buf)
+  redraw!
+
+  " Test for copying a modeless selection to clipboard
+  let @* = 'clean'
+  " communicating with X server may take a little time
+  sleep 100m
+  call feedkeys(MouseLeftClickCode(2, 3), 'x')
+  call feedkeys(MouseLeftDragCode(2, 11), 'x')
+  call feedkeys(MouseLeftReleaseCode(2, 11), 'x')
+  call assert_equal("d green y", @*)
+
+  " cleanup
+  call term_wait(buf)
+  call StopVimInTerminal(buf)
+  let &mouse = save_mouse
+  let &term = save_term
+  let &ttymouse = save_ttymouse
+  set mousetime& clipboard&
+  call test_override('no_query_mouse', 0)
+  call delete('Xtest_modeless')
+endfunc
+
+" vim: shiftwidth=2 sts=2 expandtab

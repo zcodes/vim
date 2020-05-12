@@ -446,7 +446,8 @@ gui_init_check(void)
     gui.menu_width = 0;
 # endif
 #endif
-#if defined(FEAT_TOOLBAR) && (defined(FEAT_GUI_MOTIF) || defined(FEAT_GUI_ATHENA))
+#if defined(FEAT_TOOLBAR) && (defined(FEAT_GUI_MOTIF) || defined(FEAT_GUI_ATHENA) \
+	|| defined(FEAT_GUI_HAIKU))
     gui.toolbar_height = 0;
 #endif
 #if defined(FEAT_FOOTER) && defined(FEAT_GUI_MOTIF)
@@ -512,6 +513,9 @@ gui_init(void)
 	 */
 	set_option_value((char_u *)"paste", 0L, NULL, 0);
 
+	// Set t_Co to the number of colors: RGB.
+	set_color_count(256 * 256 * 256);
+
 	/*
 	 * Set up system-wide default menus.
 	 */
@@ -541,7 +545,7 @@ gui_init(void)
 	    if (STRCMP(use_gvimrc, "NONE") != 0
 		    && STRCMP(use_gvimrc, "NORC") != 0
 		    && do_source(use_gvimrc, FALSE, DOSO_NONE, NULL) != OK)
-		semsg(_("E230: Cannot read from \"%s\""), use_gvimrc, NULL);
+		semsg(_("E230: Cannot read from \"%s\""), use_gvimrc);
 	}
 	else
 	{
@@ -1371,15 +1375,23 @@ gui_position_components(int total_width UNUSED)
 	text_area_y += gui.tabline_height;
 #endif
 
-#if defined(FEAT_TOOLBAR) && (defined(FEAT_GUI_MOTIF) || defined(FEAT_GUI_ATHENA))
+#if defined(FEAT_TOOLBAR) && (defined(FEAT_GUI_MOTIF) || defined(FEAT_GUI_ATHENA) \
+	|| defined(FEAT_GUI_HAIKU))
     if (vim_strchr(p_go, GO_TOOLBAR) != NULL)
     {
-# ifdef FEAT_GUI_ATHENA
+# if defined(FEAT_GUI_ATHENA) || defined(FEAT_GUI_HAIKU)
 	gui_mch_set_toolbar_pos(0, text_area_y,
 				gui.menu_width, gui.toolbar_height);
 # endif
 	text_area_y += gui.toolbar_height;
     }
+#endif
+
+# if defined(FEAT_GUI_TABLINE) && defined(FEAT_GUI_HAIKU)
+    gui_mch_set_tabline_pos(0, text_area_y,
+    gui.menu_width, gui.tabline_height);
+    if (gui_has_tabline())
+	text_area_y += gui.tabline_height;
 #endif
 
     text_area_width = gui.num_cols * gui.char_width + gui.border_offset * 2;
@@ -1453,7 +1465,7 @@ gui_get_base_height(void)
 #  endif
 # endif
 # if defined(FEAT_GUI_TABLINE) && (defined(FEAT_GUI_MSWIN) \
-	|| defined(FEAT_GUI_MOTIF))
+	|| defined(FEAT_GUI_MOTIF) || defined(FEAT_GUI_HAIKU))
     if (gui_has_tabline())
 	base_height += gui.tabline_height;
 # endif
@@ -1496,6 +1508,10 @@ again:
     new_pixel_height = 0;
     busy = TRUE;
 
+#ifdef FEAT_GUI_HAIKU
+    vim_lock_screen();
+#endif
+
     // Flush pending output before redrawing
     out_flush();
 
@@ -1517,6 +1533,10 @@ again:
     if (gui.num_rows != screen_Rows || gui.num_cols != screen_Columns
 	    || gui.num_rows != Rows || gui.num_cols != Columns)
 	shell_resized();
+
+#ifdef FEAT_GUI_HAIKU
+    vim_unlock_screen();
+#endif
 
     gui_update_scrollbars(TRUE);
     gui_update_cursor(FALSE, TRUE);
@@ -2613,18 +2633,19 @@ gui_outstr_nowrap(
 
 /*
  * Un-draw the cursor.	Actually this just redraws the character at the given
- * position.  The character just before it too, for when it was in bold.
+ * position.
  */
     void
 gui_undraw_cursor(void)
 {
     if (gui.cursor_is_valid)
     {
-	if (gui_redraw_block(gui.cursor_row, gui.cursor_col,
-			      gui.cursor_row, gui.cursor_col, GUI_MON_NOCLEAR)
-		&& gui.cursor_col > 0)
-	    (void)gui_redraw_block(gui.cursor_row, gui.cursor_col - 1,
-			 gui.cursor_row, gui.cursor_col - 1, GUI_MON_NOCLEAR);
+	// Redraw the character just before too, if there is one, because with
+	// some fonts and characters there can be a one pixel overlap.
+	gui_redraw_block(gui.cursor_row,
+		      gui.cursor_col > 0 ? gui.cursor_col - 1 : gui.cursor_col,
+		      gui.cursor_row, gui.cursor_col, GUI_MON_NOCLEAR);
+
 	// Cursor_is_valid is reset when the cursor is undrawn, also reset it
 	// here in case it wasn't needed to undraw it.
 	gui.cursor_is_valid = FALSE;
@@ -2645,7 +2666,7 @@ gui_redraw(
     row2 = Y_2_ROW(y + h - 1);
     col2 = X_2_COL(x + w - 1);
 
-    (void)gui_redraw_block(row1, col1, row2, col2, GUI_MON_NOCLEAR);
+    gui_redraw_block(row1, col1, row2, col2, GUI_MON_NOCLEAR);
 
     /*
      * We may need to redraw the cursor, but don't take it upon us to change
@@ -2661,10 +2682,8 @@ gui_redraw(
 /*
  * Draw a rectangular block of characters, from row1 to row2 (inclusive) and
  * from col1 to col2 (inclusive).
- * Return TRUE when the character before the first drawn character has
- * different attributes (may have to be redrawn too).
  */
-    int
+    void
 gui_redraw_block(
     int		row1,
     int		col1,
@@ -2678,12 +2697,11 @@ gui_redraw_block(
     sattr_T	first_attr;
     int		idx, len;
     int		back, nback;
-    int		retval = FALSE;
     int		orig_col1, orig_col2;
 
     // Don't try to update when ScreenLines is not valid
     if (!screen_cleared || ScreenLines == NULL)
-	return retval;
+	return;
 
     // Don't try to draw outside the shell!
     // Check everything, strange values may be caused by a big border width
@@ -2745,8 +2763,6 @@ gui_redraw_block(
 	    if (ScreenAttrs[off - 1 - back] != ScreenAttrs[off]
 		    || ScreenLines[off - 1 - back] == ' ')
 		break;
-	retval = (col1 > 0 && ScreenAttrs[off - 1] != 0 && back == 0
-					      && ScreenLines[off - 1] != ' ');
 
 	// Break it up in strings of characters with the same attributes.
 	// Print UTF-8 characters individually.
@@ -2828,8 +2844,6 @@ gui_redraw_block(
     gui.row = old_row;
     gui.col = old_col;
     gui.highlight_mask = (int)old_hl_mask;
-
-    return retval;
 }
 
     static void
@@ -4178,7 +4192,7 @@ gui_update_scrollbars(
     // avoid that moving components around generates events
     ++hold_gui_events;
 
-    for (wp = firstwin; wp != NULL; wp = W_NEXT(wp))
+    FOR_ALL_WINDOWS(wp)
     {
 	if (wp->w_buffer == NULL)	// just in case
 	    continue;
@@ -4254,9 +4268,10 @@ gui_update_scrollbars(
 		y += gui.menu_height;
 #endif
 
-#if defined(FEAT_TOOLBAR) && (defined(FEAT_GUI_MSWIN) || defined(FEAT_GUI_ATHENA))
+#if defined(FEAT_TOOLBAR) && (defined(FEAT_GUI_MSWIN) || defined(FEAT_GUI_ATHENA) \
+	|| defined(FEAT_GUI_HAIKU))
 	    if (vim_strchr(p_go, GO_TOOLBAR) != NULL)
-# ifdef FEAT_GUI_ATHENA
+# if defined(FEAT_GUI_ATHENA) || defined(FEAT_GUI_HAIKU)
 		y += gui.toolbar_height;
 # else
 #  ifdef FEAT_GUI_MSWIN
@@ -4265,7 +4280,7 @@ gui_update_scrollbars(
 # endif
 #endif
 
-#if defined(FEAT_GUI_TABLINE) && defined(FEAT_GUI_MSWIN)
+#if defined(FEAT_GUI_TABLINE) && defined(FEAT_GUI_MSWIN) || defined(FEAT_GUI_HAIKU)
 	    if (gui_has_tabline())
 		y += gui.tabline_height;
 #endif
@@ -5021,7 +5036,7 @@ ex_gui(exarg_T *eap)
 	// of the argument ending up after the shell prompt.
 	msg_clr_eos_force();
 #ifdef GUI_MAY_SPAWN
-	if (!ends_excmd(*eap->arg))
+	if (!ends_excmd2(eap->cmd, eap->arg))
 	    gui_start(eap->arg);
 	else
 #endif
@@ -5030,15 +5045,16 @@ ex_gui(exarg_T *eap)
 	channel_gui_register_all();
 #endif
     }
-    if (!ends_excmd(*eap->arg))
+    if (!ends_excmd2(eap->cmd, eap->arg))
 	ex_next(eap);
 }
 
 #if ((defined(FEAT_GUI_X11) || defined(FEAT_GUI_GTK) \
-	    || defined(FEAT_GUI_MSWIN) || defined(FEAT_GUI_PHOTON)) \
+	    || defined(FEAT_GUI_MSWIN) || defined(FEAT_GUI_PHOTON) \
+	    || defined(FEAT_GUI_HAIKU)) \
 	    && defined(FEAT_TOOLBAR)) || defined(PROTO)
 /*
- * This is shared between Athena, Motif and GTK.
+ * This is shared between Athena, Haiku, Motif, and GTK.
  */
 
 /*
@@ -5091,7 +5107,8 @@ gui_find_iconfile(char_u *name, char_u *buffer, char *ext)
 # endif
 #endif
 
-#if defined(FEAT_GUI_GTK) || defined(FEAT_GUI_X11) || defined(PROTO)
+#if defined(FEAT_GUI_GTK) || defined(FEAT_GUI_X11)|| defined(FEAT_GUI_HAIKU) \
+	|| defined(PROTO)
     void
 display_errors(void)
 {
@@ -5374,7 +5391,7 @@ gui_do_findrepl(
 	i = msg_scroll;
 	if (down)
 	{
-	    (void)do_search(NULL, '/', ga.ga_data, 1L, searchflags, NULL);
+	    (void)do_search(NULL, '/', '/', ga.ga_data, 1L, searchflags, NULL);
 	}
 	else
 	{
@@ -5382,7 +5399,7 @@ gui_do_findrepl(
 	    // direction
 	    p = vim_strsave_escaped(ga.ga_data, (char_u *)"?");
 	    if (p != NULL)
-	        (void)do_search(NULL, '?', p, 1L, searchflags, NULL);
+	        (void)do_search(NULL, '?', '?', p, 1L, searchflags, NULL);
 	    vim_free(p);
 	}
 

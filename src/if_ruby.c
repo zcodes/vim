@@ -99,6 +99,12 @@
 # define rb_ary_detransient rb_ary_detransient_stub
 #endif
 
+// On macOS pre-installed Ruby defines "SIZEOF_TIME_T" as "SIZEOF_LONG" so it
+// conflicts with the definition in config.h then causes macro-redifned warning.
+#ifdef SIZEOF_TIME_T
+# undef SIZEOF_TIME_T
+#endif
+
 #include <ruby.h>
 #if RUBY_VERSION >= 19
 # include <ruby/encoding.h>
@@ -209,6 +215,14 @@ static int ruby_convert_to_vim_value(VALUE val, typval_T *rettv);
 /*
  * Wrapper defines
  */
+// Ruby 2.7 actually expands the following symbols as macro.
+# if RUBY_VERSION >= 27
+#  undef rb_define_global_function
+#  undef rb_define_method
+#  undef rb_define_module_function
+#  undef rb_define_singleton_method
+# endif
+
 # define rb_assoc_new			dll_rb_assoc_new
 # define rb_cObject			(*dll_rb_cObject)
 # define rb_class_new_instance		dll_rb_class_new_instance
@@ -728,19 +742,6 @@ static struct
 };
 
 /*
- * Free ruby.dll
- */
-    static void
-end_dynamic_ruby(void)
-{
-    if (hinstRuby)
-    {
-	close_dll(hinstRuby);
-	hinstRuby = NULL;
-    }
-}
-
-/*
  * Load library and get all pointers.
  * Parameter 'libname' provides name of DLL.
  * Return OK or FAIL.
@@ -789,9 +790,6 @@ ruby_enabled(int verbose)
     void
 ruby_end(void)
 {
-#ifdef DYNAMIC_RUBY
-    end_dynamic_ruby();
-#endif
 }
 
     void
@@ -1155,7 +1153,7 @@ vim_to_ruby(typval_T *tv)
 
 	if (list != NULL)
 	{
-	    for (curr = list->lv_first; curr != NULL; curr = curr->li_next)
+	    FOR_ALL_LIST_ITEMS(list, curr)
 		rb_ary_push(result, vim_to_ruby(&curr->li_tv));
 	}
     }
@@ -1228,7 +1226,7 @@ static const rb_data_type_t buffer_type = {
     "vim_buffer",
     {0, 0, buffer_dsize,
 # if RUBY_VERSION >= 27
-	0, 0
+	0, {0}
 # else
 	{0, 0}
 # endif
@@ -1508,7 +1506,7 @@ static const rb_data_type_t window_type = {
     "vim_window",
     {0, 0, window_dsize,
 # if RUBY_VERSION >= 27
-	0, 0
+	0, {0}
 # else
 	{0, 0}
 # endif

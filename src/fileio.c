@@ -261,11 +261,21 @@ readfile(
 	{
 	    if (apply_autocmds_exarg(EVENT_BUFREADCMD, NULL, sfname,
 							  FALSE, curbuf, eap))
+	    {
+		int status = OK;
 #ifdef FEAT_EVAL
-		return aborting() ? FAIL : OK;
-#else
-		return OK;
+		if (aborting())
+		    status = FAIL;
 #endif
+		// The BufReadCmd code usually uses ":read" to get the text and
+		// perhaps ":file" to change the buffer name. But we should
+		// consider this to work like ":edit", thus reset the
+		// BF_NOTEDITED flag.  Then ":write" will work to overwrite the
+		// same file.
+		if (status == OK)
+		    curbuf->b_flags &= ~BF_NOTEDITED;
+		return status;
+	    }
 	}
 	else if (apply_autocmds_exarg(EVENT_FILEREADCMD, sfname, sfname,
 							    FALSE, NULL, eap))
@@ -3019,14 +3029,14 @@ msg_add_lines(
 	*p++ = ' ';
     if (shortmess(SHM_LINES))
 	vim_snprintf((char *)p, IOSIZE - (p - IObuff),
-		"%ldL, %lldC", lnum, (long_long_T)nchars);
+		"%ldL, %lldC", lnum, (varnumber_T)nchars);
     else
     {
 	sprintf((char *)p, NGETTEXT("%ld line, ", "%ld lines, ", lnum), lnum);
 	p += STRLEN(p);
 	vim_snprintf((char *)p, IOSIZE - (p - IObuff),
 		NGETTEXT("%lld character", "%lld characters", nchars),
-		(long_long_T)nchars);
+		(varnumber_T)nchars);
     }
 }
 
@@ -3370,6 +3380,7 @@ shorten_fnames(int force)
 #if (defined(FEAT_DND) && defined(FEAT_GUI_GTK)) \
 	|| defined(FEAT_GUI_MSWIN) \
 	|| defined(FEAT_GUI_MAC) \
+	|| defined(FEAT_GUI_HAIKU) \
 	|| defined(PROTO)
 /*
  * Shorten all filenames in "fnames[count]" by current directory.
@@ -4425,130 +4436,133 @@ readdir_core(
     void	*context,
     int		(*checkitem)(void *context, char_u *name))
 {
-    int			failed = FALSE;
-# ifdef MSWIN
-    char_u		*buf, *p;
-    int			ok;
-    HANDLE		hFind = INVALID_HANDLE_VALUE;
-    WIN32_FIND_DATAW    wfb;
-    WCHAR		*wn = NULL;	// UTF-16 name, NULL when not used.
-# endif
+    int		failed = FALSE;
+    char_u	*p;
 
     ga_init2(gap, (int)sizeof(char *), 20);
 
 # ifdef MSWIN
-    buf = alloc(MAXPATHL);
-    if (buf == NULL)
-	return FAIL;
-    STRNCPY(buf, path, MAXPATHL-5);
-    p = buf + STRLEN(buf);
-    MB_PTR_BACK(buf, p);
-    if (*p == '\\' || *p == '/')
-	*p = NUL;
-    STRCAT(buf, "\\*");
+    {
+	char_u		*buf;
+	int		ok;
+	HANDLE		hFind = INVALID_HANDLE_VALUE;
+	WIN32_FIND_DATAW    wfb;
+	WCHAR		*wn = NULL;	// UTF-16 name, NULL when not used.
 
-    wn = enc_to_utf16(buf, NULL);
-    if (wn != NULL)
-	hFind = FindFirstFileW(wn, &wfb);
-    ok = (hFind != INVALID_HANDLE_VALUE);
-    if (!ok)
-    {
-	failed = TRUE;
-	smsg(_(e_notopen), path);
-    }
-    else
-    {
-	while (ok)
+	buf = alloc(MAXPATHL);
+	if (buf == NULL)
+	    return FAIL;
+	STRNCPY(buf, path, MAXPATHL-5);
+	p = buf + STRLEN(buf);
+	MB_PTR_BACK(buf, p);
+	if (*p == '\\' || *p == '/')
+	    *p = NUL;
+	STRCAT(buf, "\\*");
+
+	wn = enc_to_utf16(buf, NULL);
+	if (wn != NULL)
+	    hFind = FindFirstFileW(wn, &wfb);
+	ok = (hFind != INVALID_HANDLE_VALUE);
+	if (!ok)
 	{
-	    int	ignore;
-
-	    p = utf16_to_enc(wfb.cFileName, NULL);   // p is allocated here
-	    if (p == NULL)
-		break;  // out of memory
-
-	    ignore = p[0] == '.' && (p[1] == NUL
-					      || (p[1] == '.' && p[2] == NUL));
-	    if (!ignore && checkitem != NULL)
-	    {
-		int r = checkitem(context, p);
-
-		if (r < 0)
-		{
-		    vim_free(p);
-		    break;
-		}
-		if (r == 0)
-		    ignore = TRUE;
-	    }
-
-	    if (!ignore)
-	    {
-		if (ga_grow(gap, 1) == OK)
-		    ((char_u**)gap->ga_data)[gap->ga_len++] = vim_strsave(p);
-		else
-		{
-		    failed = TRUE;
-		    vim_free(p);
-		    break;
-		}
-	    }
-
-	    vim_free(p);
-	    ok = FindNextFileW(hFind, &wfb);
+	    failed = TRUE;
+	    smsg(_(e_notopen), path);
 	}
-	FindClose(hFind);
-    }
+	else
+	{
+	    while (ok)
+	    {
+		int	ignore;
 
-    vim_free(buf);
-    vim_free(wn);
+		p = utf16_to_enc(wfb.cFileName, NULL);   // p is allocated here
+		if (p == NULL)
+		    break;  // out of memory
+
+		ignore = p[0] == '.' && (p[1] == NUL
+						  || (p[1] == '.' && p[2] == NUL));
+		if (!ignore && checkitem != NULL)
+		{
+		    int r = checkitem(context, p);
+
+		    if (r < 0)
+		    {
+			vim_free(p);
+			break;
+		    }
+		    if (r == 0)
+			ignore = TRUE;
+		}
+
+		if (!ignore)
+		{
+		    if (ga_grow(gap, 1) == OK)
+			((char_u**)gap->ga_data)[gap->ga_len++] = vim_strsave(p);
+		    else
+		    {
+			failed = TRUE;
+			vim_free(p);
+			break;
+		    }
+		}
+
+		vim_free(p);
+		ok = FindNextFileW(hFind, &wfb);
+	    }
+	    FindClose(hFind);
+	}
+
+	vim_free(buf);
+	vim_free(wn);
+    }
 # else
-    DIR		*dirp;
-    struct dirent *dp;
-    char_u	*p;
+    {
+	DIR			*dirp;
+	struct dirent	*dp;
 
-    dirp = opendir((char *)path);
-    if (dirp == NULL)
-    {
-	failed = TRUE;
-	smsg(_(e_notopen), path);
-    }
-    else
-    {
-	for (;;)
+	dirp = opendir((char *)path);
+	if (dirp == NULL)
 	{
-	    int	ignore;
-
-	    dp = readdir(dirp);
-	    if (dp == NULL)
-		break;
-	    p = (char_u *)dp->d_name;
-
-	    ignore = p[0] == '.' &&
-		    (p[1] == NUL ||
-		     (p[1] == '.' && p[2] == NUL));
-	    if (!ignore && checkitem != NULL)
+	    failed = TRUE;
+	    smsg(_(e_notopen), path);
+	}
+	else
+	{
+	    for (;;)
 	    {
-		int r = checkitem(context, p);
+		int	ignore;
 
-		if (r < 0)
+		dp = readdir(dirp);
+		if (dp == NULL)
 		    break;
-		if (r == 0)
-		    ignore = TRUE;
-	    }
+		p = (char_u *)dp->d_name;
 
-	    if (!ignore)
-	    {
-		if (ga_grow(gap, 1) == OK)
-		    ((char_u**)gap->ga_data)[gap->ga_len++] = vim_strsave(p);
-		else
+		ignore = p[0] == '.' &&
+			(p[1] == NUL ||
+			 (p[1] == '.' && p[2] == NUL));
+		if (!ignore && checkitem != NULL)
 		{
-		    failed = TRUE;
-		    break;
+		    int r = checkitem(context, p);
+
+		    if (r < 0)
+			break;
+		    if (r == 0)
+			ignore = TRUE;
+		}
+
+		if (!ignore)
+		{
+		    if (ga_grow(gap, 1) == OK)
+			((char_u**)gap->ga_data)[gap->ga_len++] = vim_strsave(p);
+		    else
+		    {
+			failed = TRUE;
+			break;
+		    }
 		}
 	    }
-	}
 
-	closedir(dirp);
+	    closedir(dirp);
+	}
     }
 # endif
 
@@ -4609,6 +4623,42 @@ delete_recursive(char_u *name)
 #if defined(TEMPDIRNAMES) || defined(PROTO)
 static long	temp_count = 0;		// Temp filename counter.
 
+# if defined(UNIX) && defined(HAVE_FLOCK) && defined(HAVE_DIRFD)
+/*
+ * Open temporary directory and take file lock to prevent
+ * to be auto-cleaned.
+ */
+   static void
+vim_opentempdir(void)
+{
+    DIR *dp = NULL;
+
+    if (vim_tempdir_dp != NULL)
+	return;
+
+    dp = opendir((const char*)vim_tempdir);
+
+    if (dp != NULL)
+    {
+	vim_tempdir_dp = dp;
+	flock(dirfd(vim_tempdir_dp), LOCK_SH);
+    }
+}
+
+/*
+ * Close temporary directory - it automatically release file lock.
+ */
+   static void
+vim_closetempdir(void)
+{
+    if (vim_tempdir_dp != NULL)
+    {
+	closedir(vim_tempdir_dp);
+	vim_tempdir_dp = NULL;
+    }
+}
+# endif
+
 /*
  * Delete the temp directory and all files it contains.
  */
@@ -4617,6 +4667,9 @@ vim_deltempdir(void)
 {
     if (vim_tempdir != NULL)
     {
+# if defined(UNIX) && defined(HAVE_FLOCK) && defined(HAVE_DIRFD)
+	vim_closetempdir();
+# endif
 	// remove the trailing path separator
 	gettail(vim_tempdir)[-1] = NUL;
 	delete_recursive(vim_tempdir);
@@ -4641,6 +4694,9 @@ vim_settempdir(char_u *tempdir)
 	    STRCPY(buf, tempdir);
 	add_pathsep(buf);
 	vim_tempdir = vim_strsave(buf);
+# if defined(UNIX) && defined(HAVE_FLOCK) && defined(HAVE_DIRFD)
+	vim_opentempdir();
+# endif
 	vim_free(buf);
     }
 }

@@ -764,6 +764,7 @@ f_test_refcount(typval_T *argvars, typval_T *rettv)
     switch (argvars[0].v_type)
     {
 	case VAR_UNKNOWN:
+	case VAR_ANY:
 	case VAR_VOID:
 	case VAR_NUMBER:
 	case VAR_BOOL:
@@ -788,7 +789,7 @@ f_test_refcount(typval_T *argvars, typval_T *rettv)
 	    {
 		ufunc_T *fp;
 
-		fp = find_func(argvars[0].vval.v_string, NULL);
+		fp = find_func(argvars[0].vval.v_string, FALSE, NULL);
 		if (fp != NULL)
 		    retval = fp->uf_refcount;
 	    }
@@ -883,6 +884,13 @@ f_test_null_list(typval_T *argvars UNUSED, typval_T *rettv)
 }
 
     void
+f_test_null_function(typval_T *argvars UNUSED, typval_T *rettv)
+{
+    rettv->v_type = VAR_FUNC;
+    rettv->vval.v_string = NULL;
+}
+
+    void
 f_test_null_partial(typval_T *argvars UNUSED, typval_T *rettv)
 {
     rettv->v_type = VAR_PARTIAL;
@@ -894,6 +902,18 @@ f_test_null_string(typval_T *argvars UNUSED, typval_T *rettv)
 {
     rettv->v_type = VAR_STRING;
     rettv->vval.v_string = NULL;
+}
+
+    void
+f_test_unknown(typval_T *argvars UNUSED, typval_T *rettv)
+{
+    rettv->v_type = VAR_UNKNOWN;
+}
+
+    void
+f_test_void(typval_T *argvars UNUSED, typval_T *rettv)
+{
+    rettv->v_type = VAR_VOID;
 }
 
 #ifdef FEAT_GUI
