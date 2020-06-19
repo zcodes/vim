@@ -12,7 +12,7 @@
 /*
  * os_unix.c -- code for all flavors of Unix (BSD, SYSV, SVR4, POSIX, ...)
  *	     Also for OS/2, using the excellent EMX package!!!
- *	     Also for BeOS and Atari MiNT.
+ *	     Also for Atari MiNT.
  *
  * A lot of this file was originally written by Juergen Weigert and later
  * changed beyond recognition.
@@ -41,11 +41,6 @@ static int selinux_enabled = -1;
 # ifndef SMACK_LABEL_LEN
 #  define SMACK_LABEL_LEN 1024
 # endif
-#endif
-
-#ifdef __BEOS__
-# undef select
-# define select	beos_select
 #endif
 
 #ifdef __CYGWIN__
@@ -150,7 +145,7 @@ typedef int waitstatus;
 #endif
 static int  WaitForChar(long msec, int *interrupted, int ignore_input);
 static int  WaitForCharOrMouse(long msec, int *interrupted, int ignore_input);
-#if defined(__BEOS__) || defined(VMS)
+#ifdef VMS
 int  RealWaitForChar(int, long, int *, int *interrupted);
 #else
 static int  RealWaitForChar(int, long, int *, int *interrupted);
@@ -168,6 +163,9 @@ static RETSIGTYPE sig_winch SIGPROTOARG;
 #endif
 #if defined(SIGINT)
 static RETSIGTYPE catch_sigint SIGPROTOARG;
+#endif
+#if defined(SIGUSR1)
+static RETSIGTYPE catch_sigusr1 SIGPROTOARG;
 #endif
 #if defined(SIGPWR)
 static RETSIGTYPE catch_sigpwr SIGPROTOARG;
@@ -215,7 +213,8 @@ static volatile sig_atomic_t in_mch_delay = FALSE; // sleeping in mch_delay()
 static int dont_check_job_ended = 0;
 #endif
 
-static int curr_tmode = TMODE_COOK;	// contains current terminal mode
+// Current terminal mode from mch_settmode().  Can differ from cur_tmode.
+static tmode_T mch_cur_tmode = TMODE_COOK;
 
 #ifdef USE_XSMP
 typedef struct
@@ -301,7 +300,7 @@ static struct signalinfo
     {SIGXFSZ,	    "XFSZ",	TRUE},
 #endif
 #ifdef SIGUSR1
-    {SIGUSR1,	    "USR1",	TRUE},
+    {SIGUSR1,	    "USR1",	FALSE},
 #endif
 #if defined(SIGUSR2) && !defined(FEAT_SYSMOUSE)
     // Used for sysmouse handling
@@ -581,7 +580,7 @@ mch_total_mem(int special UNUSED)
     void
 mch_delay(long msec, int ignoreinput)
 {
-    int		old_tmode;
+    tmode_T	old_tmode;
 #ifdef FEAT_MZSCHEME
     long	total = msec; // remember original value
 #endif
@@ -591,9 +590,10 @@ mch_delay(long msec, int ignoreinput)
 	// Go to cooked mode without echo, to allow SIGINT interrupting us
 	// here.  But we don't want QUIT to kill us (CTRL-\ used in a
 	// shell may produce SIGQUIT).
+	// Only do this if sleeping for more than half a second.
 	in_mch_delay = TRUE;
-	old_tmode = curr_tmode;
-	if (curr_tmode == TMODE_RAW)
+	old_tmode = mch_cur_tmode;
+	if (mch_cur_tmode == TMODE_RAW && msec > 500)
 	    settmode(TMODE_SLEEP);
 
 	/*
@@ -650,7 +650,8 @@ mch_delay(long msec, int ignoreinput)
 	while (total > 0);
 #endif
 
-	settmode(old_tmode);
+	if (msec > 500)
+	    settmode(old_tmode);
 	in_mch_delay = FALSE;
     }
     else
@@ -835,6 +836,17 @@ catch_sigint SIGDEFARG(sigarg)
     // this is not required on all systems, but it doesn't hurt anybody
     signal(SIGINT, (RETSIGTYPE (*)())catch_sigint);
     got_int = TRUE;
+    SIGRETURN;
+}
+#endif
+
+#if defined(SIGUSR1)
+    static RETSIGTYPE
+catch_sigusr1 SIGDEFARG(sigarg)
+{
+    // this is not required on all systems, but it doesn't hurt anybody
+    signal(SIGUSR1, (RETSIGTYPE (*)())catch_sigusr1);
+    got_sigusr1 = TRUE;
     SIGRETURN;
 }
 #endif
@@ -1242,8 +1254,7 @@ mch_suspend(void)
     if (ignore_sigtstp)
 	return;
 
-    // BeOS does have SIGTSTP, but it doesn't work.
-#if defined(SIGTSTP) && !defined(__BEOS__)
+#if defined(SIGTSTP)
     in_mch_suspend = TRUE;
 
     out_flush();	    // needed to make cursor visible on some systems
@@ -1326,15 +1337,22 @@ set_signals(void)
 #if defined(SIGCONT)
     signal(SIGCONT, sigcont_handler);
 #endif
+#ifdef SIGPIPE
     /*
      * We want to ignore breaking of PIPEs.
      */
-#ifdef SIGPIPE
     signal(SIGPIPE, SIG_IGN);
 #endif
 
 #ifdef SIGINT
     catch_int_signal();
+#endif
+
+#ifdef SIGUSR1
+    /*
+     * Call user's handler on SIGUSR1
+     */
+    signal(SIGUSR1, (RETSIGTYPE (*)())catch_sigusr1);
 #endif
 
     /*
@@ -1344,11 +1362,11 @@ set_signals(void)
     signal(SIGALRM, SIG_IGN);
 #endif
 
+#ifdef SIGPWR
     /*
      * Catch SIGPWR (power failure?) to preserve the swap files, so that no
      * work will be lost.
      */
-#ifdef SIGPWR
     signal(SIGPWR, (RETSIGTYPE (*)())catch_sigpwr);
 #endif
 
@@ -3461,7 +3479,7 @@ mch_tcgetattr(int fd, void *term)
 }
 
     void
-mch_settmode(int tmode)
+mch_settmode(tmode_T tmode)
 {
     static int first = TRUE;
 
@@ -3483,10 +3501,9 @@ mch_settmode(int tmode)
     tnew = told;
     if (tmode == TMODE_RAW)
     {
-	/*
-	 * ~ICRNL enables typing ^V^M
-	 */
-	tnew.c_iflag &= ~ICRNL;
+	// ~ICRNL enables typing ^V^M
+	// ~IXON disables CTRL-S stopping output, so that it can be mapped.
+	tnew.c_iflag &= ~(ICRNL | IXON);
 	tnew.c_lflag &= ~(ICANON | ECHO | ISIG | ECHOE
 # if defined(IEXTEN) && !defined(__MINT__)
 		    | IEXTEN	    // IEXTEN enables typing ^V on SOLARIS
@@ -3558,7 +3575,7 @@ mch_settmode(int tmode)
 	ttybnew.sg_flags &= ~(ECHO);
     ioctl(read_cmd_fd, TIOCSETN, &ttybnew);
 #endif
-    curr_tmode = tmode;
+    mch_cur_tmode = tmode;
 }
 
 /*
@@ -4455,7 +4472,7 @@ mch_call_shell_system(
     char	*ifn = NULL;
     char	*ofn = NULL;
 #endif
-    int		tmode = cur_tmode;
+    tmode_T	tmode = cur_tmode;
     char_u	*newcmd;	// only needed for unix
     int		x;
 
@@ -4521,7 +4538,11 @@ mch_call_shell_system(
     }
 
     if (tmode == TMODE_RAW)
+    {
+	// The shell may have messed with the mode, always set it.
+	cur_tmode = TMODE_UNKNOWN;
 	settmode(TMODE_RAW);	// set to raw mode
+    }
 # ifdef FEAT_TITLE
     resettitle();
 # endif
@@ -4545,7 +4566,7 @@ mch_call_shell_fork(
     char_u	*cmd,
     int		options)	// SHELL_*, see vim.h
 {
-    int		tmode = cur_tmode;
+    tmode_T	tmode = cur_tmode;
     pid_t	pid;
     pid_t	wpid = 0;
     pid_t	wait_pid = 0;
@@ -4571,6 +4592,9 @@ mch_call_shell_fork(
     out_flush();
     if (options & SHELL_COOKED)
 	settmode(TMODE_COOK);		// set to normal mode
+    if (tmode == TMODE_RAW)
+	// The shell may have messed with the mode, always set it later.
+	cur_tmode = TMODE_UNKNOWN;
 
     if (unix_build_argv(cmd, &argv, &tofree1, &tofree2) == FAIL)
 	goto error;
@@ -4621,11 +4645,6 @@ mch_call_shell_fork(
     if (!pipe_error)			// pty or pipe opened or not used
     {
 	SIGSET_DECL(curset)
-
-# if defined(__BEOS__) && USE_THREAD_FOR_INPUT_WITH_TIMEOUT
-	beos_cleanup_read_thread();
-# endif
-
 	BLOCK_SIGNALS(&curset);
 	pid = fork();	// maybe we should use vfork()
 	if (pid == -1)
@@ -5932,7 +5951,7 @@ mch_create_pty_channel(job_T *job, jobopt_T *options)
     void
 mch_breakcheck(int force)
 {
-    if ((curr_tmode == TMODE_RAW || force)
+    if ((mch_cur_tmode == TMODE_RAW || force)
 			       && RealWaitForChar(read_cmd_fd, 0L, NULL, NULL))
 	fill_input_buf(FALSE);
 }
@@ -6065,11 +6084,7 @@ WaitForCharOrMouse(long msec, int *interrupted, int ignore_input)
  * "interrupted" (if not NULL) is set to TRUE when no character is available
  * but something else needs to be done.
  */
-#if defined(__BEOS__)
-    int
-#else
     static int
-#endif
 RealWaitForChar(int fd, long msec, int *check_for_gpm UNUSED, int *interrupted)
 {
     int		ret;

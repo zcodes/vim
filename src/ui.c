@@ -523,8 +523,14 @@ ui_char_avail(void)
  * cancel the delay if a key is hit.
  */
     void
-ui_delay(long msec, int ignoreinput)
+ui_delay(long msec_arg, int ignoreinput)
 {
+    long msec = msec_arg;
+
+#ifdef FEAT_EVAL
+    if (ui_delay_for_testing > 0)
+	msec = ui_delay_for_testing;
+#endif
 #ifdef FEAT_JOB_CHANNEL
     ch_log(NULL, "ui_delay(%ld)", msec);
 #endif
@@ -554,7 +560,7 @@ ui_suspend(void)
     mch_suspend();
 }
 
-#if !defined(UNIX) || !defined(SIGTSTP) || defined(PROTO) || defined(__BEOS__)
+#if !defined(UNIX) || !defined(SIGTSTP) || defined(PROTO)
 /*
  * When the OS can't really suspend, call this function to start a shell.
  * This is never called in the GUI.
@@ -912,17 +918,6 @@ fill_input_buf(int exit_on_error UNUSED)
      * If we can't get any, and there isn't any in the buffer, we give up and
      * exit Vim.
      */
-# ifdef __BEOS__
-    /*
-     * On the BeBox version (for now), all input is secretly performed within
-     * beos_select() which is called from RealWaitForChar().
-     */
-    while (!vim_is_input_buf_full() && RealWaitForChar(read_cmd_fd, 0, NULL))
-	    ;
-    len = inbufcount;
-    inbufcount = 0;
-# else
-
     if (rest != NULL)
     {
 	// Use remainder of previous call, starts with an invalid character
@@ -981,7 +976,6 @@ fill_input_buf(int exit_on_error UNUSED)
 	if (!exit_on_error)
 	    return;
     }
-# endif
     if (len <= 0 && !got_int)
 	read_error_exit();
     if (len > 0)

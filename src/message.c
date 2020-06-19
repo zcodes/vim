@@ -1258,7 +1258,7 @@ wait_return(int redraw)
 	{
 	    // Put the character back in the typeahead buffer.  Don't use the
 	    // stuff buffer, because lmaps wouldn't work.
-	    ins_char_typebuf(c);
+	    ins_char_typebuf(vgetc_char, vgetc_mod_mask);
 	    do_redraw = TRUE;	    // need a redraw even though there is
 				    // typeahead
 	}
@@ -1752,7 +1752,7 @@ str2special(
 	// For multi-byte characters check for an illegal byte.
 	if (has_mbyte && MB_BYTE2LEN(*str) > len)
 	{
-	    transchar_nonprint(buf, c);
+	    transchar_nonprint(curbuf, buf, c);
 	    *sp = str + 1;
 	    return buf;
 	}
@@ -3712,7 +3712,7 @@ do_dialog(
 		if (c == ':' && ex_cmd)
 		{
 		    retval = dfltbutton;
-		    ins_char_typebuf(':');
+		    ins_char_typebuf(':', 0);
 		    break;
 		}
 

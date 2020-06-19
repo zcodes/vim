@@ -85,6 +85,7 @@ NEW_TESTS = \
 	test_charsearch_utf8 \
 	test_checkpath \
 	test_cindent \
+	test_cjk_linebreak \
 	test_clientserver \
 	test_close_count \
 	test_cmdline \
@@ -93,6 +94,7 @@ NEW_TESTS = \
 	test_compiler \
 	test_conceal \
 	test_const \
+	test_cpoptions \
 	test_crypt \
 	test_cscope \
 	test_cursor_func \
@@ -134,11 +136,13 @@ NEW_TESTS = \
 	test_find_complete \
 	test_findfile \
 	test_fixeol \
+	test_flatten \
 	test_float_func \
 	test_fnameescape \
 	test_fnamemodify \
 	test_fold \
 	test_functions \
+	test_function_lists \
 	test_ga \
 	test_getcwd \
 	test_getvar \
@@ -332,6 +336,7 @@ NEW_TESTS_RES = \
 	test_charsearch.res \
 	test_checkpath.res \
 	test_cindent.res \
+	test_cjk_linebreak.res \
 	test_clientserver.res \
 	test_close_count.res \
 	test_cmdline.res \
@@ -339,6 +344,7 @@ NEW_TESTS_RES = \
 	test_comparators.res \
 	test_conceal.res \
 	test_const.res \
+	test_cpoptions.res \
 	test_crypt.res \
 	test_cscope.res \
 	test_cursor_func.res \
@@ -370,10 +376,12 @@ NEW_TESTS_RES = \
 	test_find_complete.res \
 	test_findfile.res \
 	test_fixeol.res \
+	test_flatten.res \
 	test_float_func.res \
 	test_fnameescape.res \
 	test_fold.res \
 	test_functions.res \
+	test_function_lists.res \
 	test_getcwd.res \
 	test_getvar.res \
 	test_gf.res \

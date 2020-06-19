@@ -1,4 +1,4 @@
-*vim9.txt*	For Vim version 8.2.  Last change: 2020 May 06
+*vim9.txt*	For Vim version 8.2.  Last change: 2020 Jun 14
 
 
 		  VIM REFERENCE MANUAL	  by Bram Moolenaar
@@ -41,9 +41,10 @@ A secondary goal is to avoid Vim-specific constructs and get closer to
 commonly used programming languages, such as JavaScript, TypeScript and Java.
 
 The performance improvements can only be achieved by not being 100% backwards
-compatible.  For example, in a function the arguments are not available in the
-"a:" dictionary, because creating that dictionary adds quite a lot of
-overhead.  Other differences are more subtle, such as how errors are handled.
+compatible.  For example, making function arguments available in the
+"a:" dictionary adds quite a lot of overhead.  In a Vim9 function this
+dictionary is not available.  Other differences are more subtle, such as how
+errors are handled.
 
 The Vim9 script syntax and semantics are used in:
 - a function defined with the `:def` command
@@ -79,12 +80,16 @@ Vim9 functions ~
 A function defined with `:def` is compiled.  Execution is many times faster,
 often 10x to 100x times.
 
-Many errors are already found when compiling, before the function is called.
+Many errors are already found when compiling, before the function is executed.
 The syntax is strict, to enforce code that is easy to read and understand.
 
-`:def` has no extra arguments like `:function` does: "range", "abort", "dict"
-or "closure".  A `:def` function always aborts on an error, does not get a
-range passed and cannot be a "dict" function.
+Compilation is done when the function is first called, or when the
+`:defcompile` command is encountered in the script where the function was
+defined.
+
+`:def` has no options like `:function` does: "range", "abort", "dict" or
+"closure".  A `:def` function always aborts on an error, does not get a range
+passed and cannot be a "dict" function.
 
 The argument types and return type need to be specified.  The "any" type can
 be used, type checking will then be done at runtime, like with legacy
@@ -101,7 +106,7 @@ list type, similar to Typescript.  For example, a list of numbers: >
 
 
 Functions and variables are script-local by default ~
-
+							*vim9-scopes*
 When using `:function` or `:def` to specify a new function at the script level
 in a Vim9 script, the function is local to the script, as if "s:" was
 prefixed.  Using the "s:" prefix is optional.
@@ -118,8 +123,8 @@ search for the function in this order:
 - Local to the current scope and outer scopes up to the function scope.
 - Local to the current script file.
 - Imported functions, see `:import`.
-In all cases the function must be defined before used.  To make a call cycle a
-global function needs to be used. (TODO: can we fix this?)
+In all cases the function must be defined before used.  That is when it is
+first called or when `:defcompile` causes the call to be compiled.
 
 The result is that functions and variables without a namespace can always be
 found in the script, either defined there or imported.  Global functions and
@@ -127,58 +132,11 @@ variables could be defined anywhere (good luck finding where!).
 
 Global functions can be still be defined and deleted at nearly any time.  In
 Vim9 script script-local functions are defined once when the script is sourced
-and cannot be deleted.
-
-
-Four phases when loading a Vim9 script ~
-
-In legacy script the functions are created when encountered, but parsed only
-when used.  This allows for defining functions in any order and having them
-call each other: >
-	func One()
-	   call Two()
-	endfunc
-	func Two()
-	   if cond
-	      call One()  " recursive call
-	   endif
-	endfunc
-	call One()
-
-In Vim9 script the functions are compiled.  If using the same functions as the
-above example it is not possible to compile function One without knowing that
-function Two exists. Or this would require a runtime check, which is slow and
-does not allow for compile time type checking.
-
-When sourcing a Vim9 script this happens in four phases:
-1. Cleanup: If the script was sourced before all script-local variables,
-   imports and functions are deleted.
-2. Discovery: The script is read and encountered functions, imports and
-   variables are recognized.  The type is parsed.  Variable initializers that
-   are a constant are evaluated, this can give the type of the variable.
-3. Compilation: Functions are compiled.  The script-local functions, imports
-   and variables from the discovery phase are recognized and types are
-   checked.
-4. Execution: the commands in the script are executed. Functions are skipped
-   over.  Variable initializers are evaluated, unless they are a constant.
-
-The result is that items defined at the script level can be used anywhere in
-the script. This allows for putting the main function at the top: >
-	def Main()
-	  SubOne()
-	  SubTwo()
-	enddef
-	def SubOne()
-	  ...
-	def SubTwo()
-	  ...
-
-Note that script-local variables should either have a type defined or have a
-constant initializer.  Otherwise an error is given for the type being unknown.
+and cannot be deleted or replaced.
 
 
 Variable declarations with :let and :const ~
-
+							*vim9-declaration*
 Local variables need to be declared with `:let`.  Local constants need to be
 declared with `:const`.  We refer to both as "variables".
 
@@ -209,8 +167,8 @@ The declaration must be done earlier: >
 	endif
 	echo inner
 
-To intentionally use a variable that won't be available later, a block can be
-used: >
+To intentionally avoid a variable being available later, a block can be used:
+>
 	{
 	   let temp = 'temp'
 	   ...
@@ -430,11 +388,17 @@ THIS IS STILL UNDER DEVELOPMENT - ANYTHING CAN BREAK - ANYTHING CAN CHANGE
 			The second and third form are optional arguments.
 			When the caller omits an argument the {value} is used.
 
+			The function will be compiled into instructions when
+			called, or when `:defcompile` is used.  Syntax and
+			type errors will be produced at that time.
+
 			NOTE: It is possible to nest `:def` inside another
 			`:def`, but it is not possible to nest `:def` inside
 			`:function`, for backwards compatibility.
 
-			[!] is used as with `:function`.
+			[!] is used as with `:function`.  Note that in Vim9
+			script script-local functions cannot be deleted or
+			redefined later in the same script.
 
 							*:enddef*
 :enddef			End of a function defined with `:def`.
@@ -442,9 +406,14 @@ THIS IS STILL UNDER DEVELOPMENT - ANYTHING CAN BREAK - ANYTHING CAN CHANGE
 
 If the script the function is defined in is Vim9 script, then script-local
 variables can be accessed without the "s:" prefix.  They must be defined
-before the function.  If the script the function is defined in is legacy
-script, then script-local variables must be accessed with the "s:" prefix.
+before the function is compiled.  If the script the function is defined in is
+legacy script, then script-local variables must be accessed with the "s:"
+prefix.
 
+						*:defc* *:defcompile*
+:defc[ompile]		Compile functions defined in the current script that
+			were not compiled yet.
+			This will report errors found during the compilation.
 
 						*:disa* *:disassemble*
 :disa[ssemble] {func}	Show the instructions generated for {func}.
@@ -591,6 +560,9 @@ be exported.
 Alternatively, an export statement can be used to export several already
 defined (otherwise script-local) items: >
 	export {EXPORTED_CONST, someValue, MyFunc, MyClass}
+<
+							*E1042*
+`:export` can only be used in Vim9 script, at the script level.
 
 
 Import ~
@@ -665,8 +637,8 @@ actually needed.  A recommended mechanism:
 
 Import in legacy Vim script ~
 
-If an `import` statement is used in legacy Vim script, for identifier the
-script-local "s:" namespace will be used, even when "s:" is not specified.
+If an `import` statement is used in legacy Vim script, the script-local "s:"
+namespace will be used for the imported item, even when "s:" is not specified.
 
 
 ==============================================================================
@@ -709,12 +681,37 @@ widely used.  The type names are what was used in Vim before, with some
 additions such as "void" and "bool".
 
 
-JavaScript/TypeScript syntax and semantics ~
+Compiling functions early ~
+
+Functions are compiled when called or when `:defcompile` is used.  Why not
+compile them early, so that syntax and type errors are reported early?
+
+The functions can't be compiled right away when encountered, because there may
+be forward references to functions defined later.  Consider defining functions
+A, B and C, where A calls B, B calls C, and C calls A again.  It's impossible
+to reorder the functions to avoid forward references.
+
+An alternative would be to first scan through the file to locate items and
+figure out their type, so that forward refeferences are found, and only then
+execute the script and compile the functions.  This means the script has to be
+parsed twice, which is slower, and some conditions at the script level, such
+as checking if a feature is supported, are hard to use.  An attempt was made
+to see if it works, but it turned out to be impossible to make work nicely.
+
+It would be possible to compile all the functions at the end of the script.
+The drawback is that if a function never gets called, the overhead of
+compiling it counts anyway.  Since startup speed is very important, in most
+cases it's better to do it later and accept that syntax and type errors are
+only reported then.  In case these errors should be found early, e.g. when
+testing, the `:defcompile` command will help out.
+
+
+TypeScript syntax and semantics ~
 
 Script writers have complained that the Vim script syntax is unexpectedly
 different from what they are used to.  To reduce this complaint popular
-languages will be used as an example.  At the same time, we do not want to
-abandon the well-known parts of legacy Vim script.
+languages are used as an example.  At the same time, we do not want to abandon
+the well-known parts of legacy Vim script.
 
 Since Vim already uses `:let` and `:const` and optional type checking is
 desirable, the JavaScript/TypeScript syntax fits best for variable
@@ -731,7 +728,7 @@ are doing.  Some details are unexpected and can be fixed.  For example how the
 	...
 	return result || 0	" returns 1
 
-Vim9 script works like JavaScript, keep the value: >
+Vim9 script works like JavaScript/Typescript, keep the value: >
 	let result = 44
 	...
 	return result || 0	" returns 44
@@ -762,6 +759,16 @@ that works like one would expect:
 - Once an import has been used, it can be cached and loading it again can be
   avoided.
 - The Vim-specific use of "s:" to make things script-local can be dropped.
+
+When sourcing a Vim9 script from a legacy script, only the items defined
+globally can be used, not the exported items.  Alternatives considered:
+- All the exported items become available as script-local items.  This makes
+  it uncontrollable what items get defined.
+- Use the exported items and make them global.  Disadvantage is that it's then
+  not possible to avoid name clashes in the global namespace.
+- Completely disallow sourcing a Vim9 script, require using `:import`.  That
+  makes it difficult to use scripts for testing, or sourcing them from the
+  command line to try them out.
 
 
 Classes ~

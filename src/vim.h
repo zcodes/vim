@@ -220,10 +220,6 @@
 # include <clib/exec_protos.h>
 #endif
 
-#ifdef __BEOS__
-# include "os_beos.h"
-#endif
-
 #ifdef __HAIKU__
 # include "os_haiku.h"
 # define __ARGS(x)  x
@@ -316,11 +312,12 @@
 #define NUMBUFLEN 65
 
 // flags for vim_str2nr()
-#define STR2NR_BIN 0x01
-#define STR2NR_OCT 0x02
-#define STR2NR_HEX 0x04
-#define STR2NR_ALL (STR2NR_BIN + STR2NR_OCT + STR2NR_HEX)
-#define STR2NR_NO_OCT (STR2NR_BIN + STR2NR_HEX)
+#define STR2NR_BIN  0x01
+#define STR2NR_OCT  0x02
+#define STR2NR_HEX  0x04
+#define STR2NR_OOCT 0x08    // Octal with prefix "0o": 0o777
+#define STR2NR_ALL (STR2NR_BIN + STR2NR_OCT + STR2NR_HEX + STR2NR_OOCT)
+#define STR2NR_NO_OCT (STR2NR_BIN + STR2NR_HEX + STR2NR_OOCT)
 
 #define STR2NR_FORCE 0x80   // only when ONE of the above is used
 
@@ -1319,6 +1316,7 @@ enum auto_event
     EVENT_SESSIONLOADPOST,	// after loading a session file
     EVENT_SHELLCMDPOST,		// after ":!cmd"
     EVENT_SHELLFILTERPOST,	// after ":1,2!cmd", ":w !cmd", ":r !cmd".
+    EVENT_SIGUSR1,		// after the SIGUSR1 signal
     EVENT_SOURCECMD,		// sourcing a Vim script using command
     EVENT_SOURCEPRE,		// before sourcing a Vim script
     EVENT_SOURCEPOST,		// after sourcing a Vim script
@@ -1600,6 +1598,11 @@ void *vim_memset(void *, int, size_t);
 # else
 #  define STRICMP(d, s)	    vim_stricmp((char *)(d), (char *)(s))
 # endif
+#endif
+#ifdef HAVE_STRCOLL
+# define STRCOLL(d, s)     strcoll((char *)(d), (char *)(s))
+#else
+# define STRCOLL(d, s)     strcmp((char *)(d), (char *)(s))
 #endif
 
 // Like strcpy() but allows overlapped source and destination.
@@ -1898,7 +1901,7 @@ typedef int sock_T;
 #define VALID_PATH		1
 #define VALID_HEAD		2
 
-// Defines for Vim variables.  These must match vimvars[] in eval.c!
+// Defines for Vim variables.  These must match vimvars[] in evalvars.c!
 #define VV_COUNT	0
 #define VV_COUNT1	1
 #define VV_PREVCOUNT	2
@@ -1994,7 +1997,8 @@ typedef int sock_T;
 #define VV_VERSIONLONG	92
 #define VV_ECHOSPACE	93
 #define VV_ARGV		94
-#define VV_LEN		95	// number of v: vars
+#define VV_COLLATE      95
+#define VV_LEN		96	// number of v: vars
 
 // used for v_number in VAR_BOOL and VAR_SPECIAL
 #define VVAL_FALSE	0L	// VAR_BOOL
@@ -2133,7 +2137,6 @@ typedef enum {
 // Flags for assignment functions.
 #define LET_IS_CONST	1   // ":const"
 #define LET_NO_COMMAND	2   // "var = expr" without ":let" or ":const"
-#define LET_REDEFINE	4   // variable can be redefined later
 
 #include "ex_cmds.h"	    // Ex command defines
 #include "spell.h"	    // spell checking stuff
@@ -2661,5 +2664,21 @@ long elapsed(DWORD start_tick);
 #define REPTERM_DO_LT		2
 #define REPTERM_SPECIAL		4
 #define REPTERM_NO_SIMPLIFY	8
+
+// Flags for expression evaluation.
+#define EVAL_EVALUATE	    1	    // when missing don't actually evaluate
+#define EVAL_CONSTANT	    2	    // when not a constant return FAIL
+
+// Flags for find_special_key()
+#define FSK_KEYCODE	0x01	// prefer key code, e.g. K_DEL instead of DEL
+#define FSK_KEEP_X_KEY	0x02	// don't translate xHome to Home key
+#define FSK_IN_STRING	0x04	// TRUE in string, double quote is escaped
+#define FSK_SIMPLIFY	0x08	// simplify <C-H> and <A-x>
+
+// Flags for the readdirex function, how to sort the result
+#define READDIR_SORT_NONE	0  // do not sort
+#define READDIR_SORT_BYTE	1  // sort by byte order (strcmp), default
+#define READDIR_SORT_IC		2  // sort ignoring case (strcasecmp)
+#define READDIR_SORT_COLLATE	3  // sort according to collation (strcoll)
 
 #endif // VIM__H

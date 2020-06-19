@@ -1579,7 +1579,7 @@ ins_compl_bs(void)
 	ins_compl_restart();
 
     vim_free(compl_leader);
-    compl_leader = vim_strnsave(line + compl_col, (int)(p - line) - compl_col);
+    compl_leader = vim_strnsave(line + compl_col, (p - line) - compl_col);
     if (compl_leader != NULL)
     {
 	ins_compl_new_leader();
@@ -1706,7 +1706,7 @@ ins_compl_addleader(int c)
     {
 	vim_free(compl_leader);
 	compl_leader = vim_strnsave(ml_get_curline() + compl_col,
-				     (int)(curwin->w_cursor.col - compl_col));
+					     curwin->w_cursor.col - compl_col);
 	if (compl_leader != NULL)
 	    ins_compl_new_leader();
     }
@@ -2334,7 +2334,7 @@ ins_compl_add_list(list_T *list)
     int		dir = compl_direction;
 
     // Go through the List with matches and add each of them.
-    range_list_materialize(list);
+    CHECK_LIST_MATERIALIZE(list);
     FOR_ALL_LIST_ITEMS(list, li)
     {
 	if (ins_compl_add_tv(&li->li_tv, dir) == OK)
@@ -2519,7 +2519,7 @@ get_complete_info(list_T *what_list, dict_T *retdict)
     else
     {
 	what_flag = 0;
-	range_list_materialize(what_list);
+	CHECK_LIST_MATERIALIZE(what_list);
 	FOR_ALL_LIST_ITEMS(what_list, item)
 	{
 	    char_u *what = tv_get_string(&item->li_tv);

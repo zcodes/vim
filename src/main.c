@@ -407,6 +407,10 @@ main
     init_highlight(TRUE, FALSE); // set the default highlight groups
     TIME_MSG("init highlight");
 
+#if defined(FEAT_TERMRESPONSE)
+    init_term_props(TRUE);
+#endif
+
 #ifdef FEAT_EVAL
     // Set the break level after the terminal is initialized.
     debug_break_level = params.use_debug_break_level;
@@ -793,7 +797,7 @@ vim_main2(void)
 
 #if defined(FEAT_TERMRESPONSE)
     // Must be done before redrawing, puts a few characters on the screen.
-    may_req_ambiguous_char_width();
+    check_terminal_behavior();
 #endif
 
     RedrawingDisabled = 0;
@@ -826,12 +830,7 @@ vim_main2(void)
     // done after the clipboard is available and all initial commands that may
     // modify the 'clipboard' setting have run; i.e. just before entering the
     // main loop.
-    {
-	int default_regname = 0;
-
-	adjust_clip_reg(&default_regname);
-	set_reg_var(default_regname);
-    }
+    reset_reg_var();
 #endif
 
 #if defined(FEAT_DIFF)
@@ -1576,6 +1575,7 @@ getout(int exitval)
 	tabpage_T	*next_tp;
 	buf_T		*buf;
 	win_T		*wp;
+	int		unblock = 0;
 
 	// Trigger BufWinLeave for all windows, but only once per buffer.
 	for (tp = first_tabpage; tp != NULL; tp = next_tp)
@@ -1617,7 +1617,17 @@ getout(int exitval)
 		    // autocmd deleted the buffer
 		    break;
 	    }
+
+	// deathtrap() blocks autocommands, but we do want to trigger
+	// VimLeavePre.
+	if (is_autocmd_blocked())
+	{
+	    unblock_autocmds();
+	    ++unblock;
+	}
 	apply_autocmds(EVENT_VIMLEAVEPRE, NULL, NULL, FALSE, curbuf);
+	if (unblock)
+	    block_autocmds();
     }
 
 #ifdef FEAT_VIMINFO
@@ -3600,7 +3610,7 @@ usage(void)
 #  endif
 # endif
     main_msg(_("-display <display>\tRun Vim on <display>"));
-    main_msg(_("-iconic\t\tStart vim iconified"));
+    main_msg(_("-iconic\t\tStart Vim iconified"));
     main_msg(_("-background <color>\tUse <color> for the background (also: -bg)"));
     main_msg(_("-foreground <color>\tUse <color> for normal text (also: -fg)"));
     main_msg(_("-font <font>\t\tUse <font> for normal text (also: -fn)"));

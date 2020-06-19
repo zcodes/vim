@@ -58,30 +58,6 @@ func Test_cd_minus()
   call delete('Xresult')
 endfunc
 
-func Test_cd_with_cpo_chdir()
-  e Xfoo
-  call setline(1, 'foo')
-  let path = getcwd()
-  set cpo+=.
-
-  " :cd should fail when buffer is modified and 'cpo' contains dot.
-  call assert_fails('cd ..', 'E747:')
-  call assert_equal(path, getcwd())
-
-  " :cd with exclamation mark should succeed.
-  cd! ..
-  call assert_notequal(path, getcwd())
-
-  " :cd should succeed when buffer has been written.
-  w!
-  exe 'cd ' .. fnameescape(path)
-  call assert_equal(path, getcwd())
-
-  call delete('Xfoo')
-  set cpo&
-  bw!
-endfunc
-
 " Test for chdir()
 func Test_chdir_func()
   let topdir = getcwd()
@@ -97,16 +73,19 @@ func Test_chdir_func()
   lcd z
 
   tabfirst
+  call assert_match('^\[global\] .*/Xdir$', trim(execute('verbose pwd')))
   call chdir('..')
   call assert_equal('y', fnamemodify(getcwd(1, 2), ':t'))
   call assert_equal('z', fnamemodify(3->getcwd(2), ':t'))
   tabnext | wincmd t
+  call assert_match('^\[tabpage\] .*/y$', trim(execute('verbose pwd')))
   eval '..'->chdir()
   call assert_equal('Xdir', fnamemodify(getcwd(1, 2), ':t'))
   call assert_equal('Xdir', fnamemodify(getcwd(2, 2), ':t'))
   call assert_equal('z', fnamemodify(getcwd(3, 2), ':t'))
   call assert_equal('testdir', fnamemodify(getcwd(1, 1), ':t'))
   3wincmd w
+  call assert_match('^\[window\] .*/z$', trim(execute('verbose pwd')))
   call chdir('..')
   call assert_equal('Xdir', fnamemodify(getcwd(1, 2), ':t'))
   call assert_equal('Xdir', fnamemodify(getcwd(2, 2), ':t'))
@@ -120,6 +99,69 @@ func Test_chdir_func()
   " Should not crash
   call chdir(d)
   call assert_equal('', chdir([]))
+
+  only | tabonly
+  call chdir(topdir)
+  call delete('Xdir', 'rf')
+endfunc
+
+" Test for changing to the previous directory '-'
+func Test_prev_dir()
+  let topdir = getcwd()
+  call mkdir('Xdir/a/b/c', 'p')
+
+  " Create a few tabpages and windows with different directories
+  new | only
+  tabnew | new
+  tabnew
+  tabfirst
+  cd Xdir
+  tabnext | wincmd t
+  tcd a
+  wincmd w
+  lcd b
+  tabnext
+  tcd a/b/c
+
+  " Change to the previous directory twice in all the windows.
+  tabfirst
+  cd - | cd -
+  tabnext | wincmd t
+  tcd - | tcd -
+  wincmd w
+  lcd - | lcd -
+  tabnext
+  tcd - | tcd -
+
+  " Check the directory of all the windows
+  tabfirst
+  call assert_equal('Xdir', fnamemodify(getcwd(), ':t'))
+  tabnext | wincmd t
+  call assert_equal('a', fnamemodify(getcwd(), ':t'))
+  wincmd w
+  call assert_equal('b', fnamemodify(getcwd(), ':t'))
+  tabnext
+  call assert_equal('c', fnamemodify(getcwd(), ':t'))
+
+  " Change to the previous directory using chdir()
+  tabfirst
+  call chdir("-") | call chdir("-")
+  tabnext | wincmd t
+  call chdir("-") | call chdir("-")
+  wincmd w
+  call chdir("-") | call chdir("-")
+  tabnext
+  call chdir("-") | call chdir("-")
+
+  " Check the directory of all the windows
+  tabfirst
+  call assert_equal('Xdir', fnamemodify(getcwd(), ':t'))
+  tabnext | wincmd t
+  call assert_equal('a', fnamemodify(getcwd(), ':t'))
+  wincmd w
+  call assert_equal('b', fnamemodify(getcwd(), ':t'))
+  tabnext
+  call assert_equal('c', fnamemodify(getcwd(), ':t'))
 
   only | tabonly
   call chdir(topdir)

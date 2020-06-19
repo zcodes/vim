@@ -131,12 +131,16 @@ fill_assert_error(
     garray_T	*gap,
     typval_T	*opt_msg_tv,
     char_u      *exp_str,
-    typval_T	*exp_tv,
-    typval_T	*got_tv,
+    typval_T	*exp_tv_arg,
+    typval_T	*got_tv_arg,
     assert_type_T atype)
 {
     char_u	numbuf[NUMBUFLEN];
     char_u	*tofree;
+    typval_T	*exp_tv = exp_tv_arg;
+    typval_T	*got_tv = got_tv_arg;
+    int		did_copy = FALSE;
+    int		omitted = 0;
 
     if (opt_msg_tv->v_type != VAR_UNKNOWN)
     {
@@ -153,6 +157,62 @@ fill_assert_error(
 	ga_concat(gap, (char_u *)"Expected ");
     if (exp_str == NULL)
     {
+	// When comparing dictionaries, drop the items that are equal, so that
+	// it's a lot easier to see what differs.
+	if (atype != ASSERT_NOTEQUAL
+		&& exp_tv->v_type == VAR_DICT && got_tv->v_type == VAR_DICT
+		&& exp_tv->vval.v_dict != NULL && got_tv->vval.v_dict != NULL)
+	{
+	    dict_T	*exp_d = exp_tv->vval.v_dict;
+	    dict_T	*got_d = got_tv->vval.v_dict;
+	    hashitem_T	*hi;
+	    dictitem_T	*item2;
+	    int		todo;
+
+	    did_copy = TRUE;
+	    exp_tv->vval.v_dict = dict_alloc();
+	    got_tv->vval.v_dict = dict_alloc();
+	    if (exp_tv->vval.v_dict == NULL || got_tv->vval.v_dict == NULL)
+		return;
+
+	    todo = (int)exp_d->dv_hashtab.ht_used;
+	    for (hi = exp_d->dv_hashtab.ht_array; todo > 0; ++hi)
+	    {
+		if (!HASHITEM_EMPTY(hi))
+		{
+		    item2 = dict_find(got_d, hi->hi_key, -1);
+		    if (item2 == NULL || !tv_equal(&HI2DI(hi)->di_tv,
+						  &item2->di_tv, FALSE, FALSE))
+		    {
+			// item of exp_d not present in got_d or values differ.
+			dict_add_tv(exp_tv->vval.v_dict,
+					(char *)hi->hi_key, &HI2DI(hi)->di_tv);
+			if (item2 != NULL)
+			    dict_add_tv(got_tv->vval.v_dict,
+					    (char *)hi->hi_key, &item2->di_tv);
+		    }
+		    else
+			++omitted;
+		    --todo;
+		}
+	    }
+
+	    // Add items only present in got_d.
+	    todo = (int)got_d->dv_hashtab.ht_used;
+	    for (hi = got_d->dv_hashtab.ht_array; todo > 0; ++hi)
+	    {
+		if (!HASHITEM_EMPTY(hi))
+		{
+		    item2 = dict_find(exp_d, hi->hi_key, -1);
+		    if (item2 == NULL)
+			// item of got_d not present in exp_d
+			dict_add_tv(got_tv->vval.v_dict,
+					(char *)hi->hi_key, &HI2DI(hi)->di_tv);
+		    --todo;
+		}
+	    }
+	}
+
 	ga_concat_shorten_esc(gap, tv2string(exp_tv, &tofree, numbuf, 0));
 	vim_free(tofree);
     }
@@ -168,6 +228,21 @@ fill_assert_error(
 	    ga_concat(gap, (char_u *)" but got ");
 	ga_concat_shorten_esc(gap, tv2string(got_tv, &tofree, numbuf, 0));
 	vim_free(tofree);
+
+	if (omitted != 0)
+	{
+	    char buf[100];
+
+	    vim_snprintf(buf, 100, " - %d equal item%s omitted",
+					     omitted, omitted == 1 ? "" : "s");
+	    ga_concat(gap, (char_u *)buf);
+	}
+    }
+
+    if (did_copy)
+    {
+	clear_tv(exp_tv);
+	clear_tv(got_tv);
     }
 }
 
@@ -309,6 +384,9 @@ assert_equalfile(typval_T *argvars)
     garray_T	ga;
     FILE	*fd1;
     FILE	*fd2;
+    char	line1[200];
+    char	line2[200];
+    int		lineidx = 0;
 
     if (fname1 == NULL || fname2 == NULL)
 	return 0;
@@ -329,8 +407,9 @@ assert_equalfile(typval_T *argvars)
 	}
 	else
 	{
-	    int c1, c2;
-	    long count = 0;
+	    int	    c1, c2;
+	    long    count = 0;
+	    long    linecount = 1;
 
 	    for (;;)
 	    {
@@ -347,13 +426,31 @@ assert_equalfile(typval_T *argvars)
 		    STRCPY(IObuff, "second file is shorter");
 		    break;
 		}
-		else if (c1 != c2)
+		else
 		{
-		    vim_snprintf((char *)IObuff, IOSIZE,
-					      "difference at byte %ld", count);
-		    break;
+		    line1[lineidx] = c1;
+		    line2[lineidx] = c2;
+		    ++lineidx;
+		    if (c1 != c2)
+		    {
+			vim_snprintf((char *)IObuff, IOSIZE,
+					    "difference at byte %ld, line %ld",
+							     count, linecount);
+			break;
+		    }
 		}
 		++count;
+		if (c1 == NL)
+		{
+		    ++linecount;
+		    lineidx = 0;
+		}
+		else if (lineidx + 2 == (int)sizeof(line1))
+		{
+		    mch_memmove(line1, line1 + 100, lineidx - 100);
+		    mch_memmove(line2, line2 + 100, lineidx - 100);
+		    lineidx -= 100;
+		}
 	    }
 	    fclose(fd1);
 	    fclose(fd2);
@@ -362,7 +459,29 @@ assert_equalfile(typval_T *argvars)
     if (IObuff[0] != NUL)
     {
 	prepare_assert_error(&ga);
+	if (argvars[2].v_type != VAR_UNKNOWN)
+	{
+	    char_u	numbuf[NUMBUFLEN];
+	    char_u	*tofree;
+
+	    ga_concat(&ga, echo_string(&argvars[2], &tofree, numbuf, 0));
+	    vim_free(tofree);
+	    ga_concat(&ga, (char_u *)": ");
+	}
 	ga_concat(&ga, IObuff);
+	if (lineidx > 0)
+	{
+	    line1[lineidx] = NUL;
+	    line2[lineidx] = NUL;
+	    ga_concat(&ga, (char_u *)" after \"");
+	    ga_concat(&ga, (char_u *)line1);
+	    if (STRCMP(line1, line2) != 0)
+	    {
+		ga_concat(&ga, (char_u *)"\" vs \"");
+		ga_concat(&ga, (char_u *)line2);
+	    }
+	    ga_concat(&ga, (char_u *)"\"");
+	}
 	assert_error(&ga);
 	ga_clear(&ga);
 	return 1;
@@ -371,7 +490,7 @@ assert_equalfile(typval_T *argvars)
 }
 
 /*
- * "assert_equalfile(fname-one, fname-two)" function
+ * "assert_equalfile(fname-one, fname-two[, msg])" function
  */
     void
 f_assert_equalfile(typval_T *argvars, typval_T *rettv)
@@ -735,6 +854,10 @@ f_test_override(typval_T *argvars, typval_T *rettv UNUSED)
 	    no_query_mouse_for_testing = val;
 	else if (STRCMP(name, (char_u *)"no_wait_return") == 0)
 	    no_wait_return = val;
+	else if (STRCMP(name, (char_u *)"ui_delay") == 0)
+	    ui_delay_for_testing = val;
+	else if (STRCMP(name, (char_u *)"term_props") == 0)
+	    reset_term_props_on_termresponse = val;
 	else if (STRCMP(name, (char_u *)"ALL") == 0)
 	{
 	    disable_char_avail_for_testing = FALSE;
@@ -742,6 +865,8 @@ f_test_override(typval_T *argvars, typval_T *rettv UNUSED)
 	    ignore_redraw_flag_for_testing = FALSE;
 	    nfa_fail_for_testing = FALSE;
 	    no_query_mouse_for_testing = FALSE;
+	    ui_delay_for_testing = 0;
+	    reset_term_props_on_termresponse = FALSE;
 	    if (save_starting >= 0)
 	    {
 		starting = save_starting;

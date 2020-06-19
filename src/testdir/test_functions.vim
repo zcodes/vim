@@ -189,6 +189,10 @@ func Test_str2nr()
   call assert_equal(65, str2nr('0101', 8))
   call assert_equal(-65, str2nr('-101', 8))
   call assert_equal(-65, str2nr('-0101', 8))
+  call assert_equal(65, str2nr('0o101', 8))
+  call assert_equal(65, str2nr('0O0101', 8))
+  call assert_equal(-65, str2nr('-0O101', 8))
+  call assert_equal(-65, str2nr('-0o0101', 8))
 
   call assert_equal(11259375, str2nr('abcdef', 16))
   call assert_equal(11259375, str2nr('ABCDEF', 16))
@@ -207,6 +211,7 @@ func Test_str2nr()
 
   call assert_equal(0, str2nr('0x10'))
   call assert_equal(0, str2nr('0b10'))
+  call assert_equal(0, str2nr('0o10'))
   call assert_equal(1, str2nr('12', 2))
   call assert_equal(1, str2nr('18', 8))
   call assert_equal(1, str2nr('1g', 16))
@@ -274,6 +279,10 @@ func Test_strptime()
   let $TZ = 'UTC'
 
   call assert_equal(1484653763, strptime('%Y-%m-%d %T', '2017-01-17 11:49:23'))
+
+  " Force DST and check that it's considered
+  let $TZ = 'WINTER0SUMMER,J1,J365'
+  call assert_equal(1484653763 - 3600, strptime('%Y-%m-%d %T', '2017-01-17 11:49:23'))
 
   call assert_fails('call strptime()', 'E119:')
   call assert_fails('call strptime("xxx")', 'E119:')
@@ -454,6 +463,12 @@ func Test_simplify()
   call assert_equal('/',           simplify('/.'))
   call assert_equal('/',           simplify('/..'))
   call assert_equal('/...',        simplify('/...'))
+  call assert_equal('//path',      simplify('//path'))
+  if has('unix')
+    call assert_equal('/path',       simplify('///path'))
+    call assert_equal('/path',       simplify('////path'))
+  endif
+
   call assert_equal('./dir/file',  './dir/file'->simplify())
   call assert_equal('./dir/file',  simplify('.///dir//file'))
   call assert_equal('./dir/file',  simplify('./dir/./file'))
@@ -1187,6 +1202,30 @@ func Test_Executable()
     call assert_equal(0, executable('notepad.exe.exe'))
     call assert_equal(0, executable('shell32.dll'))
     call assert_equal(0, executable('win.ini'))
+
+    " get "notepad" path and remove the leading drive and sep. (ex. 'C:\')
+    let notepadcmd = exepath('notepad.exe')
+    let driveroot = notepadcmd[:2]
+    let notepadcmd = notepadcmd[3:]
+    new
+    " check that the relative path works in /
+    execute 'lcd' driveroot
+    call assert_equal(1, executable(notepadcmd))
+    call assert_equal(driveroot .. notepadcmd, notepadcmd->exepath())
+    bwipe
+
+    " create "notepad.bat"
+    call mkdir('Xdir')
+    let notepadbat = fnamemodify('Xdir/notepad.bat', ':p')
+    call writefile([], notepadbat)
+    new
+    " check that the path and the pathext order is valid
+    lcd Xdir
+    let [pathext, $PATHEXT] = [$PATHEXT, '.com;.exe;.bat;.cmd']
+    call assert_equal(notepadbat, exepath('notepad'))
+    let $PATHEXT = pathext
+    bwipe
+    eval 'Xdir'->delete('rf')
   elseif has('unix')
     call assert_equal(1, 'cat'->executable())
     call assert_equal(0, executable('nodogshere'))
@@ -1322,6 +1361,7 @@ endfunc
 
 " Test for the inputdialog() function
 func Test_inputdialog()
+  set timeout timeoutlen=10
   if has('gui_running')
     call assert_fails('let v=inputdialog([], "xx")', 'E730:')
     call assert_fails('let v=inputdialog("Q", [])', 'E730:')
@@ -1331,6 +1371,7 @@ func Test_inputdialog()
     call feedkeys(":let v=inputdialog('Q:', 'xx', 'yy')\<CR>\<Esc>", 'xt')
     call assert_equal('yy', v)
   endif
+  set timeout& timeoutlen&
 endfunc
 
 " Test for inputlist()
@@ -1341,6 +1382,18 @@ func Test_inputlist()
   call assert_equal(2, c)
   call feedkeys(":let c = inputlist(['Select color:', '1. red', '2. green', '3. blue'])\<cr>3\<cr>", 'tx')
   call assert_equal(3, c)
+
+  " CR to cancel
+  call feedkeys(":let c = inputlist(['Select color:', '1. red', '2. green', '3. blue'])\<cr>\<cr>", 'tx')
+  call assert_equal(0, c)
+
+  " Esc to cancel
+  call feedkeys(":let c = inputlist(['Select color:', '1. red', '2. green', '3. blue'])\<cr>\<Esc>", 'tx')
+  call assert_equal(0, c)
+
+  " q to cancel
+  call feedkeys(":let c = inputlist(['Select color:', '1. red', '2. green', '3. blue'])\<cr>q", 'tx')
+  call assert_equal(0, c)
 
   " Use backspace to delete characters in the prompt
   call feedkeys(":let c = inputlist(['Select color:', '1. red', '2. green', '3. blue'])\<cr>1\<BS>3\<BS>2\<cr>", 'tx')
@@ -1472,6 +1525,13 @@ func Test_trim()
   call assert_equal("", trim("", ""))
   call assert_equal("a", trim("a", ""))
   call assert_equal("", trim("", "a"))
+
+  call assert_equal("vim", trim("  vim  ", " ", 0))
+  call assert_equal("vim  ", trim("  vim  ", " ", 1))
+  call assert_equal("  vim", trim("  vim  ", " ", 2))
+  call assert_fails('eval trim("  vim  ", " ", [])', 'E745:')
+  call assert_fails('eval trim("  vim  ", " ", -1)', 'E475:')
+  call assert_fails('eval trim("  vim  ", " ", 3)', 'E475:')
 
   let chars = join(map(range(1, 0x20) + [0xa0], {n -> n->nr2char()}), '')
   call assert_equal("x", trim(chars . "x" . chars))
@@ -1766,11 +1826,10 @@ endfunc
 
 func Test_platform_name()
   " The system matches at most only one name.
-  let names = ['amiga', 'beos', 'bsd', 'hpux', 'linux', 'mac', 'qnx', 'sun', 'vms', 'win32', 'win32unix']
+  let names = ['amiga', 'bsd', 'hpux', 'linux', 'mac', 'qnx', 'sun', 'vms', 'win32', 'win32unix']
   call assert_inrange(0, 1, len(filter(copy(names), 'has(v:val)')))
 
   " Is Unix?
-  call assert_equal(has('beos'), has('beos') && has('unix'))
   call assert_equal(has('bsd'), has('bsd') && has('unix'))
   call assert_equal(has('hpux'), has('hpux') && has('unix'))
   call assert_equal(has('linux'), has('linux') && has('unix'))
@@ -1782,7 +1841,6 @@ func Test_platform_name()
 
   if has('unix') && executable('uname')
     let uname = system('uname')
-    call assert_equal(uname =~? 'BeOS', has('beos'))
     " GNU userland on BSD kernels (e.g., GNU/kFreeBSD) don't have BSD defined
     call assert_equal(uname =~? '\%(GNU/k\w\+\)\@<!BSD\|DragonFly', has('bsd'))
     call assert_equal(uname =~? 'HP-UX', has('hpux'))
@@ -1805,7 +1863,7 @@ func Test_readdir()
   call assert_equal(['bar.txt', 'dir', 'foo.txt'], sort(files))
 
   " Only results containing "f"
-  let files = 'Xdir'->readdir({ x -> stridx(x, 'f') !=- 1 })
+  let files = 'Xdir'->readdir({ x -> stridx(x, 'f') != -1 })
   call assert_equal(['foo.txt'], sort(files))
 
   " Only .txt files
@@ -1826,6 +1884,156 @@ func Test_readdir()
   call sort(files)->assert_equal(['bar.txt', 'dir', 'foo.txt'])
 
   eval 'Xdir'->delete('rf')
+endfunc
+
+func Test_readdirex()
+  call mkdir('Xdir')
+  call writefile(['foo'], 'Xdir/foo.txt')
+  call writefile(['barbar'], 'Xdir/bar.txt')
+  call mkdir('Xdir/dir')
+
+  " All results
+  let files = readdirex('Xdir')->map({-> v:val.name})
+  call assert_equal(['bar.txt', 'dir', 'foo.txt'], sort(files))
+  let sizes = readdirex('Xdir')->map({-> v:val.size})
+  call assert_equal([0, 4, 7], sort(sizes))
+
+  " Only results containing "f"
+  let files = 'Xdir'->readdirex({ e -> stridx(e.name, 'f') != -1 })
+			  \ ->map({-> v:val.name})
+  call assert_equal(['foo.txt'], sort(files))
+
+  " Only .txt files
+  let files = readdirex('Xdir', { e -> e.name =~ '.txt$' })
+			  \ ->map({-> v:val.name})
+  call assert_equal(['bar.txt', 'foo.txt'], sort(files))
+
+  " Only .txt files with string
+  let files = readdirex('Xdir', 'v:val.name =~ ".txt$"')
+			  \ ->map({-> v:val.name})
+  call assert_equal(['bar.txt', 'foo.txt'], sort(files))
+
+  " Limit to 1 result.
+  let l = []
+  let files = readdirex('Xdir', {e -> len(add(l, e.name)) == 2 ? -1 : 1})
+			  \ ->map({-> v:val.name})
+  call assert_equal(1, len(files))
+
+  " Nested readdirex() must not crash
+  let files = readdirex('Xdir', 'readdirex("Xdir", "1") != []')
+			  \ ->map({-> v:val.name})
+  call sort(files)->assert_equal(['bar.txt', 'dir', 'foo.txt'])
+
+  " report broken link correctly
+  if has("unix")
+    call writefile([], 'Xdir/abc.txt')
+    call system("ln -s Xdir/abc.txt Xdir/link")
+    call delete('Xdir/abc.txt')
+    let files = readdirex('Xdir', 'readdirex("Xdir", "1") != []')
+			  \ ->map({-> v:val.name .. '_' .. v:val.type})
+    call sort(files)->assert_equal(
+        \ ['bar.txt_file', 'dir_dir', 'foo.txt_file', 'link_link'])
+  endif
+  eval 'Xdir'->delete('rf')
+endfunc
+
+func Test_readdirex_sort()
+  CheckUnix
+  " Skip tests on Mac OS X and Cygwin (does not allow several files with different casing)
+  if has("osxdarwin") || has("osx") || has("macunix") || has("win32unix")
+    throw 'Skipped: Test_readdirex_sort on systems that do not allow this using the default filesystem'
+  endif
+  let _collate = v:collate
+  call mkdir('Xdir2')
+  call writefile(['1'], 'Xdir2/README.txt')
+  call writefile(['2'], 'Xdir2/Readme.txt')
+  call writefile(['3'], 'Xdir2/readme.txt')
+
+  " 1) default
+  let files = readdirex('Xdir2')->map({-> v:val.name})
+  let default = copy(files)
+  call assert_equal(['README.txt', 'Readme.txt', 'readme.txt'], files, 'sort using default')
+
+  " 2) no sorting
+  let files = readdirex('Xdir2', 1, #{sort: 'none'})->map({-> v:val.name})
+  let unsorted = copy(files)
+  call assert_equal(['README.txt', 'Readme.txt', 'readme.txt'], sort(files), 'unsorted')
+  call assert_fails("call readdirex('Xdir2', 1, #{slort: 'none'})", 'E857: Dictionary key "sort" required')
+
+  " 3) sort by case (same as default)
+  let files = readdirex('Xdir2', 1, #{sort: 'case'})->map({-> v:val.name})
+  call assert_equal(default, files, 'sort by case')
+
+  " 4) sort by ignoring case
+  let files = readdirex('Xdir2', 1, #{sort: 'icase'})->map({-> v:val.name})
+  call assert_equal(unsorted->sort('i'), files, 'sort by icase')
+
+  " 5) Default Collation
+  let collate = v:collate
+  lang collate C
+  let files = readdirex('Xdir2', 1, #{sort: 'collate'})->map({-> v:val.name})
+  call assert_equal(['README.txt', 'Readme.txt', 'readme.txt'], files, 'sort by C collation')
+
+  " 6) Collation de_DE
+  " Switch locale, this may not work on the CI system, if the locale isn't
+  " available
+  try
+    lang collate de_DE
+    let files = readdirex('Xdir2', 1, #{sort: 'collate'})->map({-> v:val.name})
+    call assert_equal(['readme.txt', 'Readme.txt', 'README.txt'], files, 'sort by de_DE collation')
+  catch
+    throw 'Skipped: de_DE collation is not available'
+
+  finally
+    exe 'lang collate' collate
+    eval 'Xdir2'->delete('rf')
+  endtry
+endfunc
+
+func Test_readdir_sort()
+  " some more cases for testing sorting for readdirex
+  let dir = 'Xdir3'
+  call mkdir(dir)
+  call writefile(['1'], dir .. '/README.txt')
+  call writefile(['2'], dir .. '/Readm.txt')
+  call writefile(['3'], dir .. '/read.txt')
+  call writefile(['4'], dir .. '/Z.txt')
+  call writefile(['5'], dir .. '/a.txt')
+  call writefile(['6'], dir .. '/b.txt')
+
+  " 1) default
+  let files = readdir(dir)
+  let default = copy(files)
+  call assert_equal(default->sort(), files, 'sort using default')
+
+  " 2) sort by case (same as default)
+  let files = readdir(dir, '1', #{sort: 'case'})
+  call assert_equal(default, files, 'sort using default')
+
+  " 3) sort by ignoring case
+  let files = readdir(dir, '1', #{sort: 'icase'})
+  call assert_equal(default->sort('i'), files, 'sort by ignoring case')
+
+  " 4) collation
+  let collate = v:collate
+  lang collate C
+  let files = readdir(dir, 1, #{sort: 'collate'})
+  call assert_equal(default->sort(), files, 'sort by C collation')
+  exe "lang collate" collate
+
+  " 5) Errors
+  call assert_fails('call readdir(dir, 1, 1)', 'E715')
+  call assert_fails('call readdir(dir, 1, #{sorta: 1})')
+  call assert_fails('call readdirex(dir, 1, #{sorta: 1})')
+
+  " 6) ignore other values in dict
+  let files = readdir(dir, '1', #{sort: 'c'})
+  call assert_equal(default, files, 'sort using default2')
+
+  " Cleanup
+  exe "lang collate" collate
+
+  eval dir->delete('rf')
 endfunc
 
 func Test_delete_rf()
@@ -2278,6 +2486,9 @@ func Test_nr2char()
   set encoding=utf8
   call assert_equal('a', nr2char(97, 1))
   call assert_equal('a', nr2char(97, 0))
+
+  call assert_equal("\x80\xfc\b\xf4\x80\xfeX\x80\xfeX\x80\xfeX", eval('"\<M-' .. nr2char(0x100000) .. '>"'))
+  call assert_equal("\x80\xfc\b\xfd\x80\xfeX\x80\xfeX\x80\xfeX\x80\xfeX\x80\xfeX", eval('"\<M-' .. nr2char(0x40000000) .. '>"'))
 endfunc
 
 " Test for screenattr(), screenchar() and screenchars() functions

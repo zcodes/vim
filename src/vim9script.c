@@ -17,7 +17,7 @@
 
 #include "vim9.h"
 
-static char e_needs_vim9[] = N_("E1042: import/export can only be used in vim9script");
+static char e_needs_vim9[] = N_("E1042: export can only be used in vim9script");
 
     int
 in_vim9script(void)
@@ -32,17 +32,14 @@ in_vim9script(void)
     void
 ex_vim9script(exarg_T *eap)
 {
-    scriptitem_T    *si = SCRIPT_ITEM(current_sctx.sc_sid);
-    garray_T	    *gap;
-    garray_T	    func_ga;
-    int		    idx;
-    ufunc_T	    *ufunc;
+    scriptitem_T    *si;
 
     if (!getline_equal(eap->getline, eap->cookie, getsourceline))
     {
 	emsg(_("E1038: vim9script can only be used in a script"));
 	return;
     }
+    si = SCRIPT_ITEM(current_sctx.sc_sid);
     if (si->sn_had_command)
     {
 	emsg(_("E1039: vim9script must be the first command in a script"));
@@ -51,103 +48,12 @@ ex_vim9script(exarg_T *eap)
     current_sctx.sc_version = SCRIPT_VERSION_VIM9;
     si->sn_version = SCRIPT_VERSION_VIM9;
     si->sn_had_command = TRUE;
-    ga_init2(&func_ga, sizeof(ufunc_T *), 20);
 
     if (STRCMP(p_cpo, CPO_VIM) != 0)
     {
 	si->sn_save_cpo = p_cpo;
 	p_cpo = vim_strsave((char_u *)CPO_VIM);
     }
-
-    // Make a pass through the script to find:
-    // - function declarations
-    // - variable and constant declarations
-    // - imports
-    // The types are recognized, so that they can be used when compiling a
-    // function.
-    gap = source_get_line_ga(eap->cookie);
-    for (;;)
-    {
-	char_u	    *line;
-	char_u	    *p;
-
-	if (ga_grow(gap, 1) == FAIL)
-	    return;
-	line = eap->getline(':', eap->cookie, 0, TRUE);
-	if (line == NULL)
-	    break;
-	((char_u **)(gap->ga_data))[gap->ga_len++] = line;
-	line = skipwhite(line);
-	p = line;
-	if (checkforcmd(&p, "function", 2) || checkforcmd(&p, "def", 3))
-	{
-	    int		    lnum_start = SOURCING_LNUM - 1;
-
-	    // Handle :function and :def by calling def_function().
-	    // It will read upto the matching :endded or :endfunction.
-	    eap->cmdidx = *line == 'f' ? CMD_function : CMD_def;
-	    eap->cmd = line;
-	    eap->arg = p;
-	    eap->forceit = FALSE;
-	    ufunc = def_function(eap, NULL, NULL, FALSE);
-
-	    if (ufunc != NULL && *line == 'd' && ga_grow(&func_ga, 1) == OK)
-	    {
-		// Add the function to the list of :def functions, so that it
-		// can be referenced by index.  It's compiled below.
-		add_def_function(ufunc);
-		((ufunc_T **)(func_ga.ga_data))[func_ga.ga_len++] = ufunc;
-	    }
-
-	    // Store empty lines in place of the function, we don't need to
-	    // process it again.
-	    vim_free(((char_u **)(gap->ga_data))[--gap->ga_len]);
-	    if (ga_grow(gap, SOURCING_LNUM - lnum_start) == OK)
-		while (lnum_start < SOURCING_LNUM)
-		{
-		    // getsourceline() will skip over NULL lines.
-		    ((char_u **)(gap->ga_data))[gap->ga_len++] = NULL;
-		    ++lnum_start;
-		}
-	}
-	else if (checkforcmd(&p, "let", 3) || checkforcmd(&p, "const", 4))
-	{
-	    eap->cmd = line;
-	    eap->arg = p;
-	    eap->forceit = FALSE;
-	    eap->cmdidx = *line == 'l' ? CMD_let: CMD_const;
-
-	    // The command will be executed again, it's OK to redefine the
-	    // variable then.
-	    ex_let_const(eap, TRUE);
-	}
-	else if (checkforcmd(&p, "import", 3))
-	{
-	    eap->arg = p;
-	    ex_import(eap);
-
-	    // Store empty line, we don't need to process the command again.
-	    vim_free(((char_u **)(gap->ga_data))[--gap->ga_len]);
-	    ((char_u **)(gap->ga_data))[gap->ga_len++] = NULL;
-	}
-	else if (checkforcmd(&p, "finish", 4))
-	{
-	    // TODO: this should not happen below "if false".
-	    // Use "if cond | finish | endif as a workaround.
-	    break;
-	}
-    }
-
-    // Compile the :def functions.
-    for (idx = 0; idx < func_ga.ga_len; ++idx)
-    {
-	ufunc = ((ufunc_T **)(func_ga.ga_data))[idx];
-	compile_def_function(ufunc, FALSE, NULL);
-    }
-    ga_clear(&func_ga);
-
-    // Return to process the commands at the script level.
-    source_use_line_ga(eap->cookie);
 }
 
 /*
@@ -236,16 +142,17 @@ free_imports(int sid)
     void
 ex_import(exarg_T *eap)
 {
-    if (current_sctx.sc_version != SCRIPT_VERSION_VIM9)
-	emsg(_(e_needs_vim9));
-    else
-    {
-	char_u *cmd_end = handle_import(eap->arg, NULL,
-						    current_sctx.sc_sid, NULL);
+    char_u *cmd_end;
 
-	if (cmd_end != NULL)
-	    eap->nextcmd = check_nextcmd(cmd_end);
+    if (!getline_equal(eap->getline, eap->cookie, getsourceline))
+    {
+	emsg(_("E1094: import can only be used in a script"));
+	return;
     }
+
+    cmd_end = handle_import(eap->arg, NULL, current_sctx.sc_sid, NULL);
+    if (cmd_end != NULL)
+	eap->nextcmd = check_nextcmd(cmd_end);
 }
 
 /*
@@ -533,6 +440,94 @@ handle_import(char_u *arg_start, garray_T *gap, int import_sid, void *cctx)
 	}
     }
     return cmd_end;
+}
+
+/*
+ * Declare a script-local variable without init: "let var: type".
+ * "const" is an error since the value is missing.
+ * Returns a pointer to after the type.
+ */
+    char_u *
+vim9_declare_scriptvar(exarg_T *eap, char_u *arg)
+{
+    char_u	    *p;
+    char_u	    *name;
+    scriptitem_T    *si = SCRIPT_ITEM(current_sctx.sc_sid);
+    type_T	    *type;
+    int		    called_emsg_before = called_emsg;
+    typval_T	    init_tv;
+
+    if (eap->cmdidx == CMD_const)
+    {
+	emsg(_(e_const_req_value));
+	return arg + STRLEN(arg);
+    }
+
+    // Check for valid starting character.
+    if (!eval_isnamec1(*arg))
+    {
+	semsg(_(e_invarg2), arg);
+	return arg + STRLEN(arg);
+    }
+
+    for (p = arg + 1; *p != NUL && eval_isnamec(*p); MB_PTR_ADV(p))
+	if (*p == ':' && p != arg + 1)
+	    break;
+
+    if (*p != ':')
+    {
+	emsg(_(e_type_req));
+	return arg + STRLEN(arg);
+    }
+    if (!VIM_ISWHITE(p[1]))
+    {
+	semsg(_(e_white_after), ":");
+	return arg + STRLEN(arg);
+    }
+    name = vim_strnsave(arg, p - arg);
+
+    // parse type
+    p = skipwhite(p + 1);
+    type = parse_type(&p, &si->sn_type_list);
+    if (called_emsg != called_emsg_before)
+    {
+	vim_free(name);
+	return p;
+    }
+
+    // Create the variable with 0/NULL value.
+    CLEAR_FIELD(init_tv);
+    init_tv.v_type = type->tt_type;
+    set_var_const(name, type, &init_tv, FALSE, 0);
+
+    vim_free(name);
+    return p;
+}
+
+/*
+ * Check if the type of script variable "dest" allows assigning "value".
+ */
+    void
+check_script_var_type(typval_T *dest, typval_T *value, char_u *name)
+{
+    scriptitem_T    *si = SCRIPT_ITEM(current_sctx.sc_sid);
+    int		    idx;
+
+    // Find the svar_T in sn_var_vals.
+    for (idx = 0; idx < si->sn_var_vals.ga_len; ++idx)
+    {
+	svar_T    *sv = ((svar_T *)si->sn_var_vals.ga_data) + idx;
+
+	if (sv->sv_tv == dest)
+	{
+	    if (sv->sv_const)
+		semsg(_(e_readonlyvar), name);
+	    else
+		check_type(sv->sv_type, typval2type(value), TRUE);
+	    return;
+	}
+    }
+    iemsg("check_script_var_type(): not found");
 }
 
 #endif // FEAT_EVAL

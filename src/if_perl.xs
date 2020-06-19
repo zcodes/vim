@@ -1067,7 +1067,7 @@ replace_line(linenr_T *line, linenr_T *end)
     }
     else
     {
-	ml_delete(*line, FALSE);
+	ml_delete(*line);
 	deleted_lines_mark(*line, 1L);
 	--(*end);
 	--(*line);
@@ -1435,7 +1435,7 @@ PerlIOVim_write(pTHX_ PerlIO *f, const void *vbuf, Size_t count)
     char_u *str;
     PerlIOVim * s = PerlIOSelf(f, PerlIOVim);
 
-    str = vim_strnsave((char_u *)vbuf, (int)count);
+    str = vim_strnsave((char_u *)vbuf, count);
     if (str == NULL)
 	return 0;
     msg_split((char_u *)str, s->attr);
@@ -1862,7 +1862,7 @@ Delete(vimbuf, ...)
 
 		    if (u_savedel(lnum, 1) == OK)
 		    {
-			ml_delete(lnum, 0);
+			ml_delete(lnum);
 			check_cursor();
 			deleted_lines_mark(lnum, 1L);
 		    }

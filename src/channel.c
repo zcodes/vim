@@ -156,9 +156,9 @@ ch_logfile(char_u *fname, char_u *opt)
     if (log_fd != NULL)
     {
 	if (*fname != NUL)
-	    ch_log(NULL, "closing, opening %s", fname);
+	    ch_log(NULL, "closing this logfile, opening %s", fname);
 	else
-	    ch_log(NULL, "closing");
+	    ch_log(NULL, "closing logfile");
 	fclose(log_fd);
     }
 
@@ -999,8 +999,8 @@ channel_open(
     for (addr = res; addr != NULL; addr = addr->ai_next)
     {
 	const char  *dst = hostname;
-	const void  *src = NULL;
 # ifdef HAVE_INET_NTOP
+	const void  *src = NULL;
 	char	    buf[NUMBUFLEN];
 # endif
 
@@ -1009,14 +1009,18 @@ channel_open(
 	    struct sockaddr_in6 *sai = (struct sockaddr_in6 *)addr->ai_addr;
 
 	    sai->sin6_port = htons(port);
+# ifdef HAVE_INET_NTOP
 	    src = &sai->sin6_addr;
+# endif
 	}
 	else if (addr->ai_family == AF_INET)
 	{
 	    struct sockaddr_in *sai = (struct sockaddr_in *)addr->ai_addr;
 
 	    sai->sin_port = htons(port);
+# ifdef HAVE_INET_NTOP
 	    src = &sai->sin_addr;
+#endif
 	}
 # ifdef HAVE_INET_NTOP
 	if (src != NULL)
@@ -2399,7 +2403,7 @@ channel_get_json(
 	list_T	    *l = item->jq_value->vval.v_list;
 	typval_T    *tv;
 
-	range_list_materialize(l);
+	CHECK_LIST_MATERIALIZE(l);
 	tv = &l->lv_first->li_tv;
 
 	if ((without_callback || !item->jq_no_callback)
@@ -2902,7 +2906,7 @@ may_invoke_callback(channel_T *channel, ch_part_T part)
 	    {
 		// Copy the message into allocated memory (excluding the NL)
 		// and remove it from the buffer (including the NL).
-		msg = vim_strnsave(buf, (int)(nl - buf));
+		msg = vim_strnsave(buf, nl - buf);
 		channel_consume(channel, part, (int)(nl - buf) + 1);
 	    }
 	}
@@ -3699,7 +3703,7 @@ channel_read_block(
 	{
 	    // Copy the message into allocated memory and remove it from the
 	    // buffer.
-	    msg = vim_strnsave(buf, (int)(nl - buf));
+	    msg = vim_strnsave(buf, nl - buf);
 	    channel_consume(channel, part, (int)(nl - buf) + 1);
 	}
     }
@@ -5302,12 +5306,13 @@ get_job_options(typval_T *tv, jobopt_T *opt, int supported, int supported2)
 		    return FAIL;
 		}
 
-		range_list_materialize(item->vval.v_list);
+		CHECK_LIST_MATERIALIZE(item->vval.v_list);
 		li = item->vval.v_list->lv_first;
 		for (; li != NULL && n < 16; li = li->li_next, n++)
 		{
 		    char_u	*color_name;
 		    guicolor_T	guicolor;
+		    int		called_emsg_before = called_emsg;
 
 		    color_name = tv_get_string_chk(&li->li_tv);
 		    if (color_name == NULL)
@@ -5315,7 +5320,12 @@ get_job_options(typval_T *tv, jobopt_T *opt, int supported, int supported2)
 
 		    guicolor = GUI_GET_COLOR(color_name);
 		    if (guicolor == INVALCOLOR)
+		    {
+			if (called_emsg_before == called_emsg)
+			    // may not get the error if the GUI didn't start
+			    semsg(_(e_alloc_color), color_name);
 			return FAIL;
+		    }
 
 		    rgb[n] = GUI_MCH_GET_RGB(guicolor);
 		}
@@ -5729,7 +5739,7 @@ win32_build_cmd(list_T *l, garray_T *gap)
     listitem_T  *li;
     char_u	*s;
 
-    range_list_materialize(l);
+    CHECK_LIST_MATERIALIZE(l);
     FOR_ALL_LIST_ITEMS(l, li)
     {
 	s = tv_get_string_chk(&li->li_tv);

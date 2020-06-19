@@ -120,7 +120,12 @@ EXTERN int	screen_Columns INIT(= 0);   // actual size of ScreenLines[]
  * When vgetc() is called, it sets mod_mask to the set of modifiers that are
  * held down based on the MOD_MASK_* symbols that are read first.
  */
-EXTERN int	mod_mask INIT(= 0x0);		// current key modifiers
+EXTERN int	mod_mask INIT(= 0);		// current key modifiers
+
+// The value of "mod_mask" and the unomdified character before calling
+// merge_modifyOtherKeys().
+EXTERN int	vgetc_mod_mask INIT(= 0);
+EXTERN int	vgetc_char INIT(= 0);
 
 /*
  * Cmdline_row is the row where the command line starts, just below the
@@ -344,7 +349,7 @@ EXTERN int force_abort INIT(= FALSE);
  * field of a later list element, when the "emsg_severe" flag was set when the
  * emsg() call was made.
  */
-EXTERN struct msglist **msg_list INIT(= NULL);
+EXTERN msglist_T **msg_list INIT(= NULL);
 
 /*
  * suppress_errthrow: When TRUE, don't convert an error to an exception.  Used
@@ -480,9 +485,11 @@ EXTERN char_u	*use_gvimrc INIT(= NULL);	// "-U" cmdline argument
 EXTERN int	cterm_normal_fg_color INIT(= 0);
 EXTERN int	cterm_normal_fg_bold INIT(= 0);
 EXTERN int	cterm_normal_bg_color INIT(= 0);
+EXTERN int	cterm_normal_ul_color INIT(= 0);
 #ifdef FEAT_TERMGUICOLORS
 EXTERN guicolor_T cterm_normal_fg_gui_color INIT(= INVALCOLOR);
 EXTERN guicolor_T cterm_normal_bg_gui_color INIT(= INVALCOLOR);
+EXTERN guicolor_T cterm_normal_ul_gui_color INIT(= INVALCOLOR);
 #endif
 #ifdef FEAT_TERMRESPONSE
 EXTERN int	is_mac_terminal INIT(= FALSE);  // recognized Terminal.app
@@ -1164,14 +1171,19 @@ EXTERN int	curscript INIT(= 0);	    // index in scriptin[]
 EXTERN FILE	*scriptout  INIT(= NULL);   // stream to write script to
 EXTERN int	read_cmd_fd INIT(= 0);	    // fd to read commands from
 
-// volatile because it is used in signal handler catch_sigint().
-EXTERN volatile sig_atomic_t got_int INIT(= FALSE); // set to TRUE when interrupt
-						// signal occurred
+// Set to TRUE when an interrupt signal occurred.
+// Volatile because it is used in signal handler catch_sigint().
+EXTERN volatile sig_atomic_t got_int INIT(= FALSE);
+
+// Set to TRUE when SIGUSR1 signal was detected.
+// Volatile because it is used in signal handler catch_sigint().
+EXTERN volatile sig_atomic_t got_sigusr1 INIT(= FALSE);
+
 #ifdef USE_TERM_CONSOLE
 EXTERN int	term_console INIT(= FALSE); // set to TRUE when console used
 #endif
 EXTERN int	termcap_active INIT(= FALSE);	// set by starttermcap()
-EXTERN int	cur_tmode INIT(= TMODE_COOK);	// input terminal mode
+EXTERN tmode_T	cur_tmode INIT(= TMODE_COOK);	// input terminal mode
 EXTERN int	bangredo INIT(= FALSE);	    // set to TRUE with ! command
 EXTERN int	searchcmdlen;		    // length of previous search cmd
 #ifdef FEAT_SYN_HL
@@ -1574,6 +1586,9 @@ EXTERN char e_invcmd[]		INIT(= N_("E476: Invalid command"));
 #if defined(UNIX) || defined(FEAT_SYN_HL) || defined(FEAT_SPELL)
 EXTERN char e_isadir2[]		INIT(= N_("E17: \"%s\" is a directory"));
 #endif
+#ifdef FEAT_SPELL
+EXTERN char e_no_spell[]	INIT(= N_("E756: Spell checking is not possible"));
+#endif
 #ifdef FEAT_LIBCALL
 EXTERN char e_libcall[]	INIT(= N_("E364: Library call failed for \"%s()\""));
 #endif
@@ -1683,6 +1698,8 @@ EXTERN char e_inval_string[]	INIT(= N_("E908: using an invalid value as a String
 EXTERN char e_const_option[]	INIT(= N_("E996: Cannot lock an option"));
 EXTERN char e_unknown_option[]	INIT(= N_("E113: Unknown option: %s"));
 EXTERN char e_letunexp[]	INIT(= N_("E18: Unexpected characters in :let"));
+EXTERN char e_reduceempty[]	INIT(= N_("E998: Reduce of an empty %s with no initial value"));
+EXTERN char e_no_dict_key[]	INIT(= N_("E857: Dictionary key \"%s\" required"));
 #endif
 #ifdef FEAT_QUICKFIX
 EXTERN char e_readerrf[]	INIT(= N_("E47: Error while reading errorfile"));
@@ -1743,6 +1760,9 @@ EXTERN char e_notset[]	INIT(= N_("E764: Option '%s' is not set"));
 #ifndef FEAT_CLIPBOARD
 EXTERN char e_invalidreg[]    INIT(= N_("E850: Invalid register name"));
 #endif
+#ifdef FEAT_FLOAT
+EXTERN char e_float_as_string[] INIT(= N_("E806: using Float as a String"));
+#endif
 EXTERN char e_dirnotf[]	INIT(= N_("E919: Directory not found in '%s': \"%s\""));
 EXTERN char e_au_recursive[]	INIT(= N_("E952: Autocommand caused recursive behavior"));
 #ifdef FEAT_MENU
@@ -1766,6 +1786,11 @@ EXTERN char e_white_after[]	INIT(= N_("E1069: white space required after '%s'"))
 EXTERN char e_no_white_before[] INIT(= N_("E1068: No white space allowed before '%s'"));
 
 EXTERN char e_lock_unlock[]	INIT(= N_("E940: Cannot lock or unlock variable %s"));
+EXTERN char e_const_req_value[] INIT(= N_("E1021: const requires a value"));
+EXTERN char e_type_req[]	INIT(= N_("E1022: type or initialization required"));
+#endif
+#if defined(FEAT_GUI) || defined(FEAT_TERMGUICOLORS)
+EXTERN char e_alloc_color[]	INIT(= N_("E254: Cannot allocate color %s"));
 #endif
 
 #ifdef FEAT_GUI_MAC
@@ -1817,6 +1842,8 @@ EXTERN int  disable_redraw_for_testing INIT(= FALSE);
 EXTERN int  ignore_redraw_flag_for_testing INIT(= FALSE);
 EXTERN int  nfa_fail_for_testing INIT(= FALSE);
 EXTERN int  no_query_mouse_for_testing INIT(= FALSE);
+EXTERN int  ui_delay_for_testing INIT(= 0);
+EXTERN int  reset_term_props_on_termresponse INIT(= FALSE);
 
 EXTERN int  in_free_unref_items INIT(= FALSE);
 #endif
