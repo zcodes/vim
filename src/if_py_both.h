@@ -785,7 +785,7 @@ VimToPython(typval_T *our_tv, int depth, PyObject *lookup_dict)
 	    return NULL;
 	}
 
-	range_list_materialize(list);
+	CHECK_LIST_MATERIALIZE(list);
 	FOR_ALL_LIST_ITEMS(list, curr)
 	{
 	    if (!(newObj = VimToPython(&curr->li_tv, depth + 1, lookup_dict)))
@@ -2256,7 +2256,7 @@ ListNew(PyTypeObject *subtype, list_T *list)
 	return NULL;
     self->list = list;
     ++list->lv_refcount;
-    range_list_materialize(list);
+    CHECK_LIST_MATERIALIZE(list);
 
     pyll_add((PyObject *)(self), &self->ref, &lastlist);
 
@@ -2824,7 +2824,7 @@ ListIter(ListObject *self)
 	return NULL;
     }
 
-    range_list_materialize(l);
+    CHECK_LIST_MATERIALIZE(l);
     list_add_watch(l, &lii->lw);
     lii->lw.lw_item = l->lv_first;
     lii->list = l;
@@ -3021,7 +3021,7 @@ FunctionConstructor(PyTypeObject *subtype, PyObject *args, PyObject *kwargs)
 		return NULL;
 	    }
 	    argslist = argstv.vval.v_list;
-	    range_list_materialize(argslist);
+	    CHECK_LIST_MATERIALIZE(argslist);
 
 	    argc = argslist->lv_len;
 	    if (argc != 0)
@@ -4399,7 +4399,7 @@ SetBufferLine(buf_T *buf, PyInt n, PyObject *line, PyInt *len_change)
 
 	if (u_savedel((linenr_T)n, 1L) == FAIL)
 	    RAISE_UNDO_FAIL;
-	else if (ml_delete((linenr_T)n, FALSE) == FAIL)
+	else if (ml_delete((linenr_T)n) == FAIL)
 	    RAISE_DELETE_LINE_FAIL;
 	else
 	{
@@ -4512,7 +4512,7 @@ SetBufferLineList(
 	{
 	    for (i = 0; i < n; ++i)
 	    {
-		if (ml_delete((linenr_T)lo, FALSE) == FAIL)
+		if (ml_delete((linenr_T)lo) == FAIL)
 		{
 		    RAISE_DELETE_LINE_FAIL;
 		    break;
@@ -4588,7 +4588,7 @@ SetBufferLineList(
 	if (!PyErr_Occurred())
 	{
 	    for (i = 0; i < old_len - new_len; ++i)
-		if (ml_delete((linenr_T)lo, FALSE) == FAIL)
+		if (ml_delete((linenr_T)lo) == FAIL)
 		{
 		    RAISE_DELETE_LINE_FAIL;
 		    break;

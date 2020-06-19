@@ -748,6 +748,15 @@ typedef struct memline
 #endif
 } memline_T;
 
+// Values for the flags argument of ml_delete_flags().
+#define ML_DEL_MESSAGE	    1	// may give a "No lines in buffer" message
+#define ML_DEL_UNDO	    2	// called from undo, do not update textprops
+
+// Values for the flags argument of ml_append_int().
+#define ML_APPEND_NEW	    1	// starting to edit a new file
+#define ML_APPEND_MARK	    2	// mark the new line
+#define ML_APPEND_UNDO	    4	// called from undo
+
 
 /*
  * Structure defining text properties.  These stick with the text.
@@ -933,13 +942,16 @@ typedef struct {
  * A list of error messages that can be converted to an exception.  "throw_msg"
  * is only set in the first element of the list.  Usually, it points to the
  * original message stored in that element, but sometimes it points to a later
- * message in the list.  See cause_errthrow() below.
+ * message in the list.  See cause_errthrow().
  */
+typedef struct msglist msglist_T;
 struct msglist
 {
-    char		*msg;		// original message
-    char		*throw_msg;	// msg to throw: usually original one
-    struct msglist	*next;		// next of several messages in a row
+    char	*msg;		// original message, allocated
+    char	*throw_msg;	// msg to throw: usually original one
+    char_u	*sfile;		// value from estack_sfile(), allocated
+    long	slnum;		// line number for "sfile"
+    msglist_T	*next;		// next of several messages in a row
 };
 
 /*
@@ -1062,9 +1074,11 @@ typedef struct attr_entry
 	    // These colors need to be > 8 bits to hold 256.
 	    short_u	    fg_color;	// foreground color number
 	    short_u	    bg_color;	// background color number
+	    short_u	    ul_color;	// underline color number
 # ifdef FEAT_TERMGUICOLORS
 	    guicolor_T	    fg_rgb;	// foreground color RGB
 	    guicolor_T	    bg_rgb;	// background color RGB
+	    guicolor_T	    ul_rgb;	// underline color RGB
 # endif
 	} cterm;
 # ifdef FEAT_GUI
@@ -1522,6 +1536,10 @@ struct blobvar_S
 #if defined(FEAT_EVAL) || defined(PROTO)
 typedef struct funccall_S funccall_T;
 
+// values used for "uf_dfunc_idx"
+# define UF_NOT_COMPILED -2
+# define UF_TO_BE_COMPILED -1
+
 /*
  * Structure to hold info for a user function.
  */
@@ -1531,7 +1549,7 @@ typedef struct
     int		uf_flags;	// FC_ flags
     int		uf_calls;	// nr of active calls
     int		uf_cleared;	// func_clear() was already called
-    int		uf_dfunc_idx;	// >= 0 for :def function only
+    int		uf_dfunc_idx;	// UF_NOT_COMPILED, UF_TO_BE_COMPILED or >= 0
     garray_T	uf_args;	// arguments, including optional arguments
     garray_T	uf_def_args;	// default argument expressions
 
@@ -2254,6 +2272,10 @@ typedef struct
 #define SYNSPL_TOP	1	// spell check toplevel text
 #define SYNSPL_NOTOP	2	// don't spell check toplevel text
 
+// values for b_syn_foldlevel: how to compute foldlevel on a line
+#define SYNFLD_START	0	// use level of item at start of line
+#define SYNFLD_MINIMUM	1	// use lowest local minimum level on line
+
 // avoid #ifdefs for when b_spell is not available
 #ifdef FEAT_SPELL
 # define B_SPELL(buf)  ((buf)->b_spell)
@@ -2348,6 +2370,7 @@ typedef struct {
     int		b_syn_slow;		// TRUE when 'redrawtime' reached
 # endif
     int		b_syn_ic;		// ignore case for :syn cmds
+    int		b_syn_foldlevel;	// how to compute foldlevel on a line
     int		b_syn_spell;		// SYNSPL_ values
     garray_T	b_syn_patterns;		// table for syntax patterns
     garray_T	b_syn_clusters;		// table for syntax clusters
@@ -2406,6 +2429,7 @@ typedef struct {
     regprog_T	*b_cap_prog;	    // program for 'spellcapcheck'
     char_u	*b_p_spf;	    // 'spellfile'
     char_u	*b_p_spl;	    // 'spelllang'
+    char_u	*b_p_spo;	    // 'spelloptions'
     int		b_cjk;		    // all CJK letters as OK
 #endif
 #if !defined(FEAT_SYN_HL) && !defined(FEAT_SPELL)
@@ -2791,6 +2815,7 @@ struct file_buffer
     int		b_ind_cpp_namespace;
     int		b_ind_if_for_while;
     int		b_ind_cpp_extern_c;
+    int		b_ind_pragma;
 #endif
 
     linenr_T	b_no_eol_lnum;	// non-zero lnum when last line of next binary
@@ -2976,6 +3001,8 @@ struct tabpage_S
 
     char_u	    *tp_localdir;	// absolute path of local directory or
 					// NULL
+    char_u	    *tp_prevdir;	// previous directory
+
 #ifdef FEAT_DIFF
     diff_T	    *tp_first_diff;
     buf_T	    *(tp_diffbuf[DB_COUNT]);
@@ -3379,6 +3406,7 @@ struct window_S
 
     char_u	*w_localdir;	    // absolute path of local directory or
 				    // NULL
+    char_u	*w_prevdir;	    // previous directory
 #ifdef FEAT_MENU
     vimmenu_T	*w_winbar;	    // The root of the WinBar menu hierarchy.
     winbar_item_T *w_winbar_items;  // list of items in the WinBar
@@ -4108,6 +4136,7 @@ typedef struct
 #endif
     int		sa_wrapped;	// search wrapped around
 } searchit_arg_T;
+
 
 #define WRITEBUFSIZE	8192	// size of normal write buffer
 
