@@ -6637,7 +6637,7 @@ init_structs(void)
     OptionsType.tp_traverse = (traverseproc)OptionsTraverse;
     OptionsType.tp_clear = (inquiry)OptionsClear;
 
-#if PY_VERSION_HEX < 0x030700f0
+#if PY_VERSION_HEX < 0x030400f0
     CLEAR_FIELD(LoaderType);
     LoaderType.tp_name = "vim.Loader";
     LoaderType.tp_basicsize = sizeof(LoaderObject);
