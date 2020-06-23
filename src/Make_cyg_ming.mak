@@ -1021,7 +1021,7 @@ ifeq (yes, $(STATIC_WINPTHREAD))
  ifeq (yes, $(HAS_GCC_EH))
 LIB += -lgcc_eh
 endif
-LIB += -Wl,-Bstatic -lstdc++ -lwinpthread -Wl,-Bdynamic
+LIB += -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic
 endif
 
 ifeq (yes, $(MAP))
