@@ -1535,6 +1535,9 @@ struct blobvar_S
     char	bv_lock;	// zero, VAR_LOCKED, VAR_FIXED
 };
 
+typedef int (*cfunc_T)(int argcount, typval_T *argvars, typval_T *rettv, void *state);
+typedef void (*cfunc_free_T)(void *state);
+
 #if defined(FEAT_EVAL) || defined(PROTO)
 typedef struct funccall_S funccall_T;
 
@@ -1568,6 +1571,11 @@ typedef struct
     char_u	*uf_va_name;	// name from "...name" or NULL
     type_T	*uf_va_type;	// type from "...name: type" or NULL
     type_T	*uf_func_type;	// type of the function, &t_func_any if unknown
+# if defined(FEAT_LUA)
+    cfunc_T     uf_cb;		// callback function for cfunc
+    cfunc_free_T uf_cb_free;    // callback function to free cfunc
+    void        *uf_cb_state;   // state of uf_cb
+# endif
 
     garray_T	uf_lines;	// function lines
 # ifdef FEAT_PROFILE
@@ -1613,6 +1621,7 @@ typedef struct
 #define FC_EXPORT   0x100	// "export def Func()"
 #define FC_NOARGS   0x200	// no a: variables in lambda
 #define FC_VIM9	    0x400	// defined in vim9 script file
+#define FC_CFUNC    0x800	// defined as Lua C func
 
 #define MAX_FUNC_ARGS	20	// maximum number of function arguments
 #define VAR_SHORT_LEN	20	// short variable name length
@@ -1752,6 +1761,22 @@ typedef struct
 # endif
 } scriptitem_T;
 
+// Struct passed through eval() functions.
+// See EVALARG_EVALUATE for a fixed value with eval_flags set to EVAL_EVALUATE.
+typedef struct {
+    int		eval_flags;	// EVAL_ flag values below
+
+    // copied from exarg_T when "getline" is "getsourceline". Can be NULL.
+    void	*eval_cookie;	// argument for getline()
+
+    // pointer to the line obtained with getsourceline()
+    char_u	*eval_tofree;
+} evalarg_T;
+
+// Flags for expression evaluation.
+#define EVAL_EVALUATE	    1	    // when missing don't actually evaluate
+#define EVAL_CONSTANT	    2	    // when not a constant return FAIL
+
 # ifdef FEAT_PROFILE
 /*
  * Struct used in sn_prl_ga for every line of a script.
@@ -1787,6 +1812,10 @@ typedef struct
 {
     int	    dummy;
 } scriptitem_T;
+typedef struct
+{
+    int	    dummy;
+} evalarg_T;
 #endif
 
 // Struct passed between functions dealing with function call execution.

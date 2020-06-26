@@ -239,7 +239,7 @@ get_function_args(
 		whitep = p;
 		p = skipwhite(p);
 		expr = p;
-		if (eval1(&p, &rettv, 0) != FAIL)
+		if (eval1(&p, &rettv, NULL) != FAIL)
 		{
 		    if (ga_grow(default_args, 1) == FAIL)
 			goto err_ret;
@@ -340,6 +340,51 @@ get_lambda_name(void)
     sprintf((char*)name, "<lambda>%d", ++lambda_no);
     return name;
 }
+
+#if defined(FEAT_LUA) || defined(PROTO)
+/*
+ * Registers a native C callback which can be called from Vim script.
+ * Returns the name of the Vim script function.
+ */
+    char_u *
+register_cfunc(cfunc_T cb, cfunc_free_T cb_free, void *state)
+{
+    char_u	*name = get_lambda_name();
+    ufunc_T	*fp = NULL;
+    garray_T	newargs;
+    garray_T	newlines;
+
+    ga_init(&newargs);
+    ga_init(&newlines);
+
+    fp = alloc_clear(offsetof(ufunc_T, uf_name) + STRLEN(name) + 1);
+    if (fp == NULL)
+        goto errret;
+
+    fp->uf_dfunc_idx = UF_NOT_COMPILED;
+    fp->uf_refcount = 1;
+    fp->uf_varargs = TRUE;
+    fp->uf_flags = FC_CFUNC;
+    fp->uf_calls = 0;
+    fp->uf_script_ctx = current_sctx;
+    fp->uf_lines = newlines;
+    fp->uf_args = newargs;
+    fp->uf_cb = cb;
+    fp->uf_cb_free = cb_free;
+    fp->uf_cb_state = state;
+
+    set_ufunc_name(fp, name);
+    hash_add(&func_hashtab, UF2HIKEY(fp));
+
+    return name;
+
+errret:
+    ga_clear_strings(&newargs);
+    ga_clear_strings(&newlines);
+    vim_free(fp);
+    return NULL;
+}
+#endif
 
 /*
  * Parse a lambda expression and get a Funcref from "*arg".
@@ -561,6 +606,10 @@ get_func_tv(
     int		ret = OK;
     typval_T	argvars[MAX_FUNC_ARGS + 1];	// vars for arguments
     int		argcount = 0;		// number of arguments found
+    evalarg_T	evalarg;
+
+    CLEAR_FIELD(evalarg);
+    evalarg.eval_flags = funcexe->evaluate ? EVAL_EVALUATE : 0;
 
     /*
      * Get the arguments.
@@ -572,8 +621,7 @@ get_func_tv(
 	argp = skipwhite(argp + 1);	    // skip the '(' or ','
 	if (*argp == ')' || *argp == ',' || *argp == NUL)
 	    break;
-	if (eval1(&argp, &argvars[argcount],
-				funcexe->evaluate ? EVAL_EVALUATE : 0) == FAIL)
+	if (eval1(&argp, &argvars[argcount], &evalarg) == FAIL)
 	{
 	    ret = FAIL;
 	    break;
@@ -1024,6 +1072,17 @@ func_clear_items(ufunc_T *fp)
 	vim_free(((type_T **)fp->uf_type_list.ga_data)
 						  [--fp->uf_type_list.ga_len]);
     ga_clear(&fp->uf_type_list);
+
+#ifdef FEAT_LUA
+    if (fp->uf_cb_free != NULL)
+    {
+	fp->uf_cb_free(fp->uf_cb_state);
+	fp->uf_cb_free = NULL;
+    }
+
+    fp->uf_cb_state = NULL;
+    fp->uf_cb = NULL;
+#endif
 #ifdef FEAT_PROFILE
     VIM_CLEAR(fp->uf_tml_count);
     VIM_CLEAR(fp->uf_tml_total);
@@ -1249,7 +1308,7 @@ call_user_func(
 
 		default_expr = ((char_u **)(fp->uf_def_args.ga_data))
 						 [ai + fp->uf_def_args.ga_len];
-		if (eval1(&default_expr, &def_rettv, EVAL_EVALUATE) == FAIL)
+		if (eval1(&default_expr, &def_rettv, &EVALARG_EVALUATE) == FAIL)
 		{
 		    default_arg_err = 1;
 		    break;
@@ -1394,7 +1453,7 @@ call_user_func(
 	// A Lambda always has the command "return {expr}".  It is much faster
 	// to evaluate {expr} directly.
 	++ex_nesting_level;
-	(void)eval1(&p, rettv, EVAL_EVALUATE);
+	(void)eval1(&p, rettv, &EVALARG_EVALUATE);
 	--ex_nesting_level;
     }
     else
@@ -1970,6 +2029,14 @@ call_func(
 
 	    if (fp != NULL && (fp->uf_flags & FC_DELETED))
 		error = FCERR_DELETED;
+#ifdef FEAT_LUA
+	    else if (fp != NULL && (fp->uf_flags & FC_CFUNC))
+	    {
+		cfunc_T cb = fp->uf_cb;
+
+		error = (*cb)(argcount, argvars, rettv, fp->uf_cb_state);
+	    }
+#endif
 	    else if (fp != NULL)
 	    {
 		if (funcexe->argv_func != NULL)
@@ -3697,6 +3764,7 @@ ex_return(exarg_T *eap)
     char_u	*arg = eap->arg;
     typval_T	rettv;
     int		returning = FALSE;
+    evalarg_T	evalarg;
 
     if (current_funccal == NULL)
     {
@@ -3704,13 +3772,15 @@ ex_return(exarg_T *eap)
 	return;
     }
 
+    CLEAR_FIELD(evalarg);
+    evalarg.eval_flags = eap->skip ? 0 : EVAL_EVALUATE;
+
     if (eap->skip)
 	++emsg_skip;
 
     eap->nextcmd = NULL;
     if ((*arg != NUL && *arg != '|' && *arg != '\n')
-	    && eval0(arg, &rettv, &eap->nextcmd, eap->skip ? 0 : EVAL_EVALUATE)
-								       != FAIL)
+				  && eval0(arg, &rettv, eap, &evalarg) != FAIL)
     {
 	if (!eap->skip)
 	    returning = do_return(eap, FALSE, TRUE, &rettv);
@@ -3767,7 +3837,7 @@ ex_call(exarg_T *eap)
 	// instead to skip to any following command, e.g. for:
 	//   :if 0 | call dict.foo().bar() | endif
 	++emsg_skip;
-	if (eval0(eap->arg, &rettv, &eap->nextcmd, 0) != FAIL)
+	if (eval0(eap->arg, &rettv, eap, NULL) != FAIL)
 	    clear_tv(&rettv);
 	--emsg_skip;
 	return;

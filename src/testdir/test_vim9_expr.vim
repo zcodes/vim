@@ -13,6 +13,9 @@ def Test_expr1()
     assert_equal('one', 0.1 ? 'one' : 'two')
   endif
   assert_equal('one', 'x' ? 'one' : 'two')
+  assert_equal('one', 'x'
+  			? 'one'
+			: 'two')
   assert_equal('one', 0z1234 ? 'one' : 'two')
   assert_equal('one', [0] ? 'one' : 'two')
   assert_equal('one', #{x: 0} ? 'one' : 'two')
@@ -70,6 +73,8 @@ def Test_expr2()
 		    0 ||
 		    7)
   assert_equal(0, 0 || 0)
+  assert_equal(0, 0
+  		    || 0)
   assert_equal('', 0 || '')
 
   g:vals = []
@@ -81,7 +86,9 @@ def Test_expr2()
   assert_equal([0, 5], g:vals)
 
   g:vals = []
-  assert_equal(4, Record(0) || Record(4) || Record(0))
+  assert_equal(4, Record(0)
+		      || Record(4)
+		      || Record(0))
   assert_equal([0, 4], g:vals)
 
   g:vals = []
@@ -104,7 +111,9 @@ def Test_expr3()
   assert_equal(0, 0 &&
 		0 &&
 		7)
-  assert_equal(7, 2 && 3 && 7)
+  assert_equal(7, 2
+  		    && 3
+		    && 7)
   assert_equal(0, 0 && 0)
   assert_equal(0, 0 && '')
   assert_equal('', 8 && '')
@@ -158,7 +167,8 @@ def Test_expr4_equal()
   assert_equal(true, true == true)
   assert_equal(false, true ==
 			false)
-  assert_equal(true, true == trueVar)
+  assert_equal(true, true
+			== trueVar)
   assert_equal(false, true == falseVar)
   assert_equal(true, true == g:atrue)
   assert_equal(false, g:atrue == false)
@@ -250,7 +260,8 @@ def Test_expr4_notequal()
   assert_equal(false, true != true)
   assert_equal(true, true !=
 			false)
-  assert_equal(false, true != trueVar)
+  assert_equal(false, true
+  			!= trueVar)
   assert_equal(true, true != falseVar)
   assert_equal(false, true != g:atrue)
   assert_equal(true, g:atrue != false)
@@ -334,7 +345,8 @@ def Test_expr4_greater()
   assert_true(nr2 >
 		1)
   assert_false(nr2 > 2)
-  assert_false(nr2 > 3)
+  assert_false(nr2
+  		    > 3)
   if has('float')
     let ff = 2.0
     assert_true(ff > 0.0)
@@ -367,7 +379,8 @@ def Test_expr4_smaller()
   assert_false(2 < 0)
   assert_false(2 <
 			2)
-  assert_true(2 < 3)
+  assert_true(2
+  		< 3)
   let nr2 = 2
   assert_false(nr2 < 0)
   assert_false(nr2 < 2)
@@ -385,7 +398,8 @@ def Test_expr4_smallerequal()
   assert_false(2 <= 0)
   assert_false(2 <=
 			1)
-  assert_true(2 <= 2)
+  assert_true(2
+  		<= 2)
   assert_true(2 <= 3)
   let nr2 = 2
   assert_false(nr2 <= 0)
@@ -404,6 +418,8 @@ enddef
 " test =~ comperator
 def Test_expr4_match()
   assert_equal(false, '2' =~ '0')
+  assert_equal(false, ''
+  			 =~ '0')
   assert_equal(true, '2' =~
 			'[0-9]')
 enddef
@@ -411,6 +427,8 @@ enddef
 " test !~ comperator
 def Test_expr4_nomatch()
   assert_equal(true, '2' !~ '0')
+  assert_equal(true, ''
+  			!~ '0')
   assert_equal(false, '2' !~
 			'[0-9]')
 enddef
@@ -424,7 +442,8 @@ def Test_expr4_is()
 		other)
 
   let myblob = 0z1234
-  assert_false(myblob is 0z1234)
+  assert_false(myblob
+  			is 0z1234)
   let otherblob = myblob
   assert_true(myblob is otherblob)
 enddef
@@ -439,7 +458,8 @@ def Test_expr4_isnot()
 			other)
 
   let myblob = 0z1234
-  assert_true(myblob isnot 0z1234)
+  assert_true(myblob
+  		isnot 0z1234)
   let otherblob = myblob
   assert_false(myblob isnot otherblob)
 enddef
@@ -522,28 +542,52 @@ def Test_expr5()
   assert_equal(66, 60 + 6)
   assert_equal(70, 60 +
 			g:anint)
-  assert_equal(9, g:alsoint + 5)
+  assert_equal(9, g:alsoint
+  			+ 5)
   assert_equal(14, g:alsoint + g:anint)
   assert_equal([1, 2, 3, 4], [1] + g:alist)
 
   assert_equal(54, 60 - 6)
   assert_equal(50, 60 -
 		    g:anint)
-  assert_equal(-1, g:alsoint - 5)
+  assert_equal(-1, g:alsoint
+  			- 5)
   assert_equal(-6, g:alsoint - g:anint)
 
   assert_equal('hello', 'hel' .. 'lo')
   assert_equal('hello 123', 'hello ' ..
 					123)
-  assert_equal('hello 123', 'hello ' ..  123)
+  assert_equal('hello 123', 'hello '
+  				..  123)
   assert_equal('123 hello', 123 .. ' hello')
   assert_equal('123456', 123 .. 456)
 
   assert_equal([1, 2, 3, 4], [1, 2] + [3, 4])
   assert_equal(0z11223344, 0z1122 + 0z3344)
-  assert_equal(0z112201ab, 0z1122 + g:ablob)
+  assert_equal(0z112201ab, 0z1122
+  				+ g:ablob)
   assert_equal(0z01ab3344, g:ablob + 0z3344)
   assert_equal(0z01ab01ab, g:ablob + g:ablob)
+enddef
+
+def Test_expr5_vim9script()
+  " only checks line continuation
+  let lines =<< trim END
+      vim9script
+      let var = 11
+      		+ 77
+		- 22
+      assert_equal(66, var)
+  END
+  CheckScriptSuccess(lines)
+
+  lines =<< trim END
+      vim9script
+      let var = 'one'
+      		.. 'two'
+      assert_equal('onetwo', var)
+  END
+  CheckScriptSuccess(lines)
 enddef
 
 def Test_expr5_float()
@@ -554,13 +598,15 @@ def Test_expr5_float()
     assert_equal(66.0, 60.0 + 6)
     assert_equal(66.0, 60 +
 			 6.0)
-    assert_equal(5.1, g:afloat + 5)
+    assert_equal(5.1, g:afloat
+    			+ 5)
     assert_equal(8.1, 8 + g:afloat)
     assert_equal(10.1, g:anint + g:afloat)
     assert_equal(10.1, g:afloat + g:anint)
 
     assert_equal(54.0, 60.0 - 6.0)
-    assert_equal(54.0, 60.0 - 6)
+    assert_equal(54.0, 60.0
+    			    - 6)
     assert_equal(54.0, 60 - 6.0)
     assert_equal(-4.9, g:afloat - 5)
     assert_equal(7.9, 8 - g:afloat)
@@ -599,20 +645,23 @@ def Test_expr6()
   assert_equal(36, 6 * 6)
   assert_equal(24, 6 *
 			g:alsoint)
-  assert_equal(24, g:alsoint * 6)
+  assert_equal(24, g:alsoint
+  			* 6)
   assert_equal(40, g:anint * g:alsoint)
 
   assert_equal(10, 60 / 6)
   assert_equal(6, 60 /
 			g:anint)
   assert_equal(1, g:anint / 6)
-  assert_equal(2, g:anint / g:alsoint)
+  assert_equal(2, g:anint
+  			/ g:alsoint)
 
   assert_equal(5, 11 % 6)
   assert_equal(4, g:anint % 6)
   assert_equal(3, 13 %
 			g:anint)
-  assert_equal(2, g:anint % g:alsoint)
+  assert_equal(2, g:anint
+  			% g:alsoint)
 
   assert_equal(4, 6 * 4 / 6)
 
@@ -623,11 +672,33 @@ def Test_expr6()
   if has('float')
     let xf = [2.0]
     let yf = [3.0]
-    assert_equal(5.0, xf[0] + yf[0])
-    assert_equal(6.0, xf[0] * yf[0])
+    assert_equal(5.0, xf[0]
+    			+ yf[0])
+    assert_equal(6.0, xf[0]
+    			* yf[0])
   endif
 
   call CheckDefFailure(["let x = 6 * xxx"], 'E1001')
+enddef
+
+def Test_expr6_vim9script()
+  " only checks line continuation
+  let lines =<< trim END
+      vim9script
+      let var = 11
+      		* 22
+		/ 3
+      assert_equal(80, var)
+  END
+  CheckScriptSuccess(lines)
+
+  lines =<< trim END
+      vim9script
+      let var = 25
+      		% 10
+      assert_equal(5, var)
+  END
+  CheckScriptSuccess(lines)
 enddef
 
 def Test_expr6_float()
