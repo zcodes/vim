@@ -754,6 +754,7 @@ OBJ = \
 	$(OUTDIR)/main.o \
 	$(OUTDIR)/map.o \
 	$(OUTDIR)/mark.o \
+	$(OUTDIR)/match.o \
 	$(OUTDIR)/memfile.o \
 	$(OUTDIR)/memline.o \
 	$(OUTDIR)/menu.o \
