@@ -14,7 +14,7 @@
  */
 
 /*
- * Include common code for dosinst.c and uninstal.c.
+ * Include common code for dosinst.c and uninstall.c.
  */
 #define DOSINST
 #include "dosinst.h"
@@ -1647,7 +1647,7 @@ install_registry(void)
 
     // For the NSIS installer use the generated uninstaller.
     if (interactive)
-	snprintf(uninstall_string, BUFSIZE, "%s\\uninstal.exe", installdir);
+	snprintf(uninstall_string, BUFSIZE, "%s\\uninstall.exe", installdir);
     else
 	snprintf(uninstall_string, BUFSIZE, "%s\\uninstall-gui.exe", installdir);
 

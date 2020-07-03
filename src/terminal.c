@@ -6811,7 +6811,7 @@ failed:
 	char *msg = (char *)utf16_to_enc(
 				(short_u *)winpty_error_msg(winpty_err), NULL);
 
-	emsg((char *) msg);
+	emsg(msg);
 	winpty_error_free(winpty_err);
     }
     return FAIL;

@@ -78,7 +78,9 @@ DYNAMIC_IME=yes
 POSTSCRIPT=no
 
 # Set to yes to enable OLE support.
+ifndef OLE
 OLE=no
+endif
 
 # Set the default $(WINVER).  Use 0x0501 to make it work with WinXP.
 ifndef WINVER

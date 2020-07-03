@@ -2,11 +2,6 @@
 
 CC=gcc
 CFLAGS=-O2 -fno-strength-reduce
-ifneq (sh.exe, $(SHELL))
-DEL = rm
-else
-DEL = del
-endif
 
 ifneq (sh.exe, $(SHELL))
 DEL = rm
