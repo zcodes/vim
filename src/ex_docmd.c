@@ -3219,8 +3219,9 @@ find_ex_command(
      * "lvar = value", "lvar(arg)", "[1, 2 3]->Func()"
      */
     p = eap->cmd;
-    if (lookup != NULL && (*p == '('
-	       || ((p = to_name_const_end(eap->cmd)) > eap->cmd && *p != NUL)))
+    if (lookup != NULL && (*p == '(' || *p == '{'
+	       || ((p = to_name_const_end(eap->cmd)) > eap->cmd && *p != NUL)
+	       || *p == '['))
     {
 	int oplen;
 	int heredoc;
@@ -3230,8 +3231,10 @@ find_ex_command(
 	// "g:varname" is an expression.
 	// "varname->expr" is an expression.
 	// "(..." is an expression.
+	// "{..." is an dict expression.
 	if (*p == '('
-		|| *p == '['
+		|| *p == '{'
+		|| (*p == '[' && p > eap->cmd)
 		|| p[1] == ':'
 		|| (*p == '-' && p[1] == '>'))
 	{
@@ -3239,12 +3242,24 @@ find_ex_command(
 	    return eap->cmd;
 	}
 
+	// "[...]->Method()" is a list expression, but "[a, b] = Func()" is
+	// an assignment.
+	// If there is no line break inside the "[...]" then "p" is advanced to
+	// after the "]" by to_name_const_end(): check if a "=" follows.
+	// If "[...]" has a line break "p" still points at the "[" and it can't
+	// be an assignment.
+	if (*eap->cmd == '[' && (p == eap->cmd || *skipwhite(p) != '='))
+	{
+	    eap->cmdidx = CMD_eval;
+	    return eap->cmd;
+	}
+
+	// Recognize an assignment if we recognize the variable name:
+	// "g:var = expr"
+	// "var = expr"  where "var" is a local var name.
 	oplen = assignment_len(skipwhite(p), &heredoc);
 	if (oplen > 0)
 	{
-	    // Recognize an assignment if we recognize the variable name:
-	    // "g:var = expr"
-	    // "var = expr"  where "var" is a local var name.
 	    if (((p - eap->cmd) > 2 && eap->cmd[1] == ':')
 		    || lookup(eap->cmd, p - eap->cmd, cctx) != NULL)
 	    {

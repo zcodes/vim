@@ -353,6 +353,22 @@ def Test_vim9script_call()
     assert_equal('text', var)
     ("some")->MyFunc()
     assert_equal('some', var)
+
+    MyFunc(
+        'continued'
+        )
+    assert_equal('continued',
+            var
+            )
+
+    call MyFunc(
+        'more'
+          ..
+          'lines'
+        )
+    assert_equal(
+        'morelines',
+        var)
   END
   writefile(lines, 'Xcall.vim')
   source Xcall.vim
@@ -835,6 +851,22 @@ enddef
 def Test_sort_return_type()
   let res: list<number>
   res = [1, 2, 3]->sort()
+enddef
+
+def Test_getqflist_return_type()
+  let l = getqflist()
+  assert_equal([], l)
+
+  let d = getqflist(#{items: 0})
+  assert_equal(#{items: []}, d)
+enddef
+
+def Test_getloclist_return_type()
+  let l = getloclist(1)
+  assert_equal([], l)
+
+  let d = getloclist(1, #{items: 0})
+  assert_equal(#{items: []}, d)
 enddef
 
 def Line_continuation_in_def(dir: string = ''): string
