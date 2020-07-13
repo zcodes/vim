@@ -1545,6 +1545,7 @@ typedef struct funccall_S funccall_T;
 typedef enum {
     UF_NOT_COMPILED,
     UF_TO_BE_COMPILED,
+    UF_COMPILING,
     UF_COMPILED
 } def_status_T;
 
