@@ -1256,6 +1256,7 @@ typedef struct hashtable_S
 				// array is "ht_mask" + 1)
     long_u	ht_used;	// number of items used
     long_u	ht_filled;	// number of items used + removed
+    int		ht_changed;	// incremented when adding or removing an item
     int		ht_locked;	// counter for hash_lock()
     int		ht_error;	// when set growing failed, can't add more
 				// items before growing works
@@ -3307,6 +3308,7 @@ struct window_S
     int		w_minwidth;	    // "minwidth" for popup window
     int		w_maxheight;	    // "maxheight" for popup window
     int		w_maxwidth;	    // "maxwidth" for popup window
+    int		w_maxwidth_opt;	    // maxwidth from option
     int		w_wantline;	    // "line" for popup window
     int		w_wantcol;	    // "col" for popup window
     int		w_firstline;	    // "firstline" for popup window

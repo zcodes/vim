@@ -80,7 +80,7 @@ def Test_call_ufunc_count()
   Increment()
   Increment()
   Increment()
-  " works with and without :call
+  # works with and without :call
   assert_equal(4, g:counter)
   call assert_equal(4, g:counter)
   unlet g:counter
@@ -104,10 +104,18 @@ def MyDefaultArgs(name = 'string'): string
   return name
 enddef
 
+def MyDefaultSecond(name: string, second: bool  = true): string
+  return second ? name : 'none'
+enddef
+
 def Test_call_default_args()
   assert_equal('string', MyDefaultArgs())
   assert_equal('one', MyDefaultArgs('one'))
   assert_fails('call MyDefaultArgs("one", "two")', 'E118:')
+
+  assert_equal('test', MyDefaultSecond('test'))
+  assert_equal('test', MyDefaultSecond('test', true))
+  assert_equal('none', MyDefaultSecond('test', false))
 
   CheckScriptFailure(['def Func(arg: number = asdf)', 'enddef', 'defcompile'], 'E1001:')
   CheckScriptFailure(['def Func(arg: number = "text")', 'enddef', 'defcompile'], 'E1013: argument 1: type mismatch, expected number but got string')
@@ -228,7 +236,7 @@ def ListArg(arg: list<string>)
 enddef
 
 def Test_assign_to_argument()
-  " works for dict and list
+  # works for dict and list
   let d: dict<string> = {}
   DictArg(d)
   assert_equal('value', d['key'])
@@ -258,19 +266,19 @@ let SomeFunc = function('len')
 let NotAFunc = 'text'
 
 def CombineFuncrefTypes()
-  " same arguments, different return type
+  # same arguments, different return type
   let Ref1: func(bool): string
   let Ref2: func(bool): number
   let Ref3: func(bool): any
   Ref3 = g:cond ? Ref1 : Ref2
 
-  " different number of arguments
+  # different number of arguments
   let Refa1: func(bool): number
   let Refa2: func(bool, number): number
   let Refa3: func: number
   Refa3 = g:cond ? Refa1 : Refa2
 
-  " different argument types
+  # different argument types
   let Refb1: func(bool, string): number
   let Refb2: func(string, number): number
   let Refb3: func(any, any): number
@@ -286,7 +294,7 @@ def DefinedEvenLater(arg: string): string
 enddef
 
 def Test_error_in_nested_function()
-  " Error in called function requires unwinding the call stack.
+  # Error in called function requires unwinding the call stack.
   assert_fails('call FuncWithForwardCall()', 'E1096')
 enddef
 
@@ -355,6 +363,15 @@ def Test_vim9script_call()
     ("some")->MyFunc()
     assert_equal('some', var)
 
+    'asdfasdf'->MyFunc()
+    assert_equal('asdfasdf', var)
+
+    def UseString()
+      'xyork'->MyFunc()
+    enddef
+    UseString()
+    assert_equal('xyork', var)
+
     MyFunc(
         'continued'
         )
@@ -388,6 +405,17 @@ def Test_vim9script_call_fail_decl()
   writefile(lines, 'Xcall_decl.vim')
   assert_fails('source Xcall_decl.vim', 'E1054:')
   delete('Xcall_decl.vim')
+enddef
+
+def Test_vim9script_call_fail_type()
+  let lines =<< trim END
+    vim9script
+    def MyFunc(arg: string)
+      echo arg
+    enddef
+    MyFunc(1234)
+  END
+  CheckScriptFailure(lines, 'E1013: type mismatch, expected string but got number')
 enddef
 
 def Test_vim9script_call_fail_const()
@@ -954,6 +982,14 @@ def Test_filter_return_type()
   assert_equal(6, res)
 enddef
 
+def Wrong_dict_key_type(items: list<number>): list<number>
+  return filter(items, {_, val -> get({val: 1}, 'x')})
+enddef
+
+def Test_wrong_dict_key_type()
+  assert_fails('Wrong_dict_key_type([1, 2, 3])', 'E1029:')
+enddef
+
 def Line_continuation_in_def(dir: string = ''): string
     let path: string = empty(dir)
             \ ? 'empty'
@@ -1009,6 +1045,43 @@ enddef
 
 def Test_recursive_call()
   assert_equal(6765, Fibonacci(20))
+enddef
+
+def TreeWalk(dir: string): list<any>
+  return readdir(dir)->map({_, val ->
+            fnamemodify(dir .. '/' .. val, ':p')->isdirectory()
+               ? {val : TreeWalk(dir .. '/' .. val)}
+               : val
+             })
+enddef
+
+def Test_closure_in_map()
+  mkdir('XclosureDir/tdir', 'p')
+  writefile(['111'], 'XclosureDir/file1')
+  writefile(['222'], 'XclosureDir/file2')
+  writefile(['333'], 'XclosureDir/tdir/file3')
+
+  assert_equal(['file1', 'file2', {'tdir': ['file3']}], TreeWalk('XclosureDir'))
+
+  delete('XclosureDir', 'rf')
+enddef
+
+def Test_partial_call()
+  let Xsetlist = function('setloclist', [0])
+  Xsetlist([], ' ', {'title': 'test'})
+  assert_equal({'title': 'test'}, getloclist(0, {'title': 1}))
+
+  Xsetlist = function('setloclist', [0, [], ' '])
+  Xsetlist({'title': 'test'})
+  assert_equal({'title': 'test'}, getloclist(0, {'title': 1}))
+
+  Xsetlist = function('setqflist')
+  Xsetlist([], ' ', {'title': 'test'})
+  assert_equal({'title': 'test'}, getqflist({'title': 1}))
+
+  Xsetlist = function('setqflist', [[], ' '])
+  Xsetlist({'title': 'test'})
+  assert_equal({'title': 'test'}, getqflist({'title': 1}))
 enddef
 
 

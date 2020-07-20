@@ -1620,6 +1620,7 @@ parse_popup_option(win_T *wp, int is_preview)
 		if (is_preview)
 		    wp->w_minwidth = x;
 		wp->w_maxwidth = x;
+		wp->w_maxwidth_opt = x;
 	    }
 	}
 	else if (STRNCMP(s, "highlight:", 10) == 0)
@@ -3855,6 +3856,11 @@ update_popups(void (*win_update)(win_T *wp))
 	// Back to the normal zindex.
 	screen_zindex = 0;
     }
+
+#if defined(FEAT_SEARCH_EXTRA)
+    // In case win_update() called start_search_hl().
+    end_search_hl();
+#endif
 }
 
 /*
@@ -4025,6 +4031,18 @@ popup_hide_info(void)
 
     if (wp != NULL)
 	popup_hide(wp);
+}
+
+/*
+ * Close any info popup.
+ */
+    void
+popup_close_info(void)
+{
+    win_T *wp = popup_find_info_window();
+
+    if (wp != NULL)
+	popup_close_with_retval(wp, -1);
 }
 #endif
 
