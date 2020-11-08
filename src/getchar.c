@@ -447,6 +447,8 @@ flush_buffers(flush_buffers_T flush_typeahead)
     typebuf.tb_silent = 0;
     cmd_silent = FALSE;
     typebuf.tb_no_abbr_cnt = 0;
+    if (++typebuf.tb_change_cnt == 0)
+	typebuf.tb_change_cnt = 1;
 }
 
 /*
@@ -1886,7 +1888,9 @@ vgetc(void)
     }
 #endif
 #ifdef FEAT_PROP_POPUP
-    if (popup_do_filter(c))
+    // Only filter keys that do not come from ":normal".  Keys from feedkeys()
+    // are filtered.
+    if ((!ex_normal_busy || in_feedkeys) && popup_do_filter(c))
     {
 	if (c == Ctrl_C)
 	    got_int = FALSE;  // avoid looping
@@ -2035,17 +2039,19 @@ f_getchar(typval_T *argvars, typval_T *rettv)
 	if (argvars[0].v_type == VAR_UNKNOWN)
 	    // getchar(): blocking wait.
 	    n = plain_vgetc();
-	else if (tv_get_number_chk(&argvars[0], &error) == 1)
+	else if (tv_get_bool_chk(&argvars[0], &error))
 	    // getchar(1): only check if char avail
 	    n = vpeekc_any();
 	else if (error || vpeekc_any() == NUL)
 	    // illegal argument or getchar(0) and no char avail: return zero
 	    n = 0;
 	else
-	    // getchar(0) and char avail: return char
-	    n = plain_vgetc();
+	    // getchar(0) and char avail() != NUL: get a character.
+	    // Note that vpeekc_any() returns K_SPECIAL for K_IGNORE.
+	    n = safe_vgetc();
 
-	if (n == K_IGNORE || n == K_MOUSEMOVE)
+	if (n == K_IGNORE || n == K_MOUSEMOVE
+		|| n == K_VER_SCROLLBAR || n == K_HOR_SCROLLBAR)
 	    continue;
 	break;
     }
@@ -2149,7 +2155,8 @@ parse_queued_messages(void)
 
     // Do not handle messages while redrawing, because it may cause buffers to
     // change or be wiped while they are being redrawn.
-    if (updating_screen)
+    // Also bail out when parsing messages was explicitly disabled.
+    if (updating_screen || dont_parse_messages)
 	return;
 
     // If memory allocation fails during startup we'll exit but curbuf or
@@ -3164,6 +3171,7 @@ vgetorpeek(int advance)
 			timedout = TRUE;
 			continue;
 		    }
+
 		    // When 'insertmode' is set, ESC just beeps in Insert
 		    // mode.  Use CTRL-L to make edit() return.
 		    // For the command line only CTRL-C always breaks it.

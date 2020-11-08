@@ -84,9 +84,7 @@ func Test_syntax_after_reload()
 endfunc
 
 func Test_syntime()
-  if !has('profile')
-    return
-  endif
+  CheckFeature profile
 
   syntax on
   syntime on
@@ -109,7 +107,7 @@ func Test_syntime()
   call assert_notmatch('.* cppNumber*', a)
   call assert_notmatch('[1-9]', a)
 
-  call assert_fails('syntime abc', 'E475')
+  call assert_fails('syntime abc', 'E475:')
 
   syntax clear
   let a = execute('syntime report')
@@ -119,9 +117,7 @@ func Test_syntime()
 endfunc
 
 func Test_syntime_completion()
-  if !has('profile')
-    return
-  endif
+  CheckFeature profile
 
   call feedkeys(":syntime \<C-A>\<C-B>\"\<CR>", 'tx')
   call assert_equal('"syntime clear off on report', @:)
@@ -377,6 +373,7 @@ func Test_syntax_invalid_arg()
   call AssertFails('syntax cluster contains=Abc', 'E400:')
   call AssertFails("syntax match Character /'.'", 'E401:')
   call AssertFails("syntax match Character /'.'/a", 'E402:')
+  call assert_fails('syntax sync linecont /\%(/', 'E53:')
   call assert_fails('syntax sync linecont /pat', 'E404:')
   call assert_fails('syntax sync linecont', 'E404:')
   call assert_fails('syntax sync linecont /pat1/ linecont /pat2/', 'E403:')
@@ -386,6 +383,7 @@ func Test_syntax_invalid_arg()
   call AssertFails('syntax match ccFoo "Foo" nextgroup=ALLBUT,F', 'E407:')
   call AssertFails('syntax region Block start="{" contains=F,ALLBUT', 'E408:')
   call AssertFails("syntax match Characters contains=a.*x /'.'/", 'E409:')
+  call assert_fails('syntax match Search /abc/ contains=ALLBUT,/\%(/', 'E53:')
 endfunc
 
 func Test_syn_sync()
@@ -432,7 +430,11 @@ func Test_ownsyntax()
   call setline(1, '#define FOO')
   syntax on
   set filetype=c
+
   ownsyntax perl
+  " this should not crash
+  set
+
   call assert_equal('perlComment', synIDattr(synID(line('.'), col('.'), 1), 'name'))
   call assert_equal('c',    b:current_syntax)
   call assert_equal('perl', w:current_syntax)
@@ -498,9 +500,8 @@ func Test_bg_detection()
 endfunc
 
 func Test_syntax_hangs()
-  if !has('reltime') || !has('float') || !has('syntax')
-    return
-  endif
+  CheckFunction reltimefloat
+  CheckFeature syntax
 
   " This pattern takes a long time to match, it should timeout.
   new
@@ -532,9 +533,7 @@ func Test_syntax_hangs()
 endfunc
 
 func Test_conceal()
-  if !has('conceal')
-    return
-  endif
+  CheckFeature conceal
 
   new
   call setline(1, ['', '123456'])
@@ -725,8 +724,8 @@ func Test_syntax_foldlevel()
   syntax on
   set foldmethod=syntax
 
-  call assert_fails('syn foldlevel start start', 'E390')
-  call assert_fails('syn foldlevel not_an_option', 'E390')
+  call assert_fails('syn foldlevel start start', 'E390:')
+  call assert_fails('syn foldlevel not_an_option', 'E390:')
 
   set foldlevel=1
 
