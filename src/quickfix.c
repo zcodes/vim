@@ -4151,13 +4151,15 @@ qf_open_new_cwindow(qf_info_T *qi, int height)
     if (qf_buf != NULL)
     {
 	// Use the existing quickfix buffer
-	(void)do_ecmd(qf_buf->b_fnum, NULL, NULL, NULL, ECMD_ONE,
-		ECMD_HIDE + ECMD_OLDBUF, oldwin);
+	if (do_ecmd(qf_buf->b_fnum, NULL, NULL, NULL, ECMD_ONE,
+				      ECMD_HIDE + ECMD_OLDBUF, oldwin) == FAIL)
+	    return FAIL;
     }
     else
     {
 	// Create a new quickfix buffer
-	(void)do_ecmd(0, NULL, NULL, NULL, ECMD_ONE, ECMD_HIDE, oldwin);
+	if (do_ecmd(0, NULL, NULL, NULL, ECMD_ONE, ECMD_HIDE, oldwin) == FAIL)
+	    return FAIL;
 
 	// save the number of the new buffer
 	qi->qf_bufnr = curbuf->b_fnum;
@@ -7347,7 +7349,7 @@ qf_setprop_items_from_lines(
     if (action == 'r')
 	qf_free_items(&qi->qf_lists[qf_idx]);
     if (qf_init_ext(qi, qf_idx, NULL, NULL, &di->di_tv, errorformat,
-		FALSE, (linenr_T)0, (linenr_T)0, NULL, NULL) > 0)
+		FALSE, (linenr_T)0, (linenr_T)0, NULL, NULL) >= 0)
 	retval = OK;
 
     return retval;
@@ -7472,8 +7474,10 @@ qf_set_properties(qf_info_T *qi, dict_T *what, int action, char_u *title)
     if ((di = dict_find(what, (char_u *)"quickfixtextfunc", -1)) != NULL)
 	retval = qf_setprop_qftf(qi, qfl, di);
 
-    if (retval == OK)
+    if (newlist || retval == OK)
 	qf_list_changed(qfl);
+    if (newlist)
+	qf_update_buffer(qi, NULL);
 
     return retval;
 }

@@ -1043,6 +1043,7 @@ extern int (*dyn_libintl_wputenv)(const wchar_t *envstring);
 #define DOCMD_KEYTYPED	0x08	// don't reset KeyTyped
 #define DOCMD_EXCRESET	0x10	// reset exception environment (for debugging)
 #define DOCMD_KEEPLINE  0x20	// keep typed line for repeating with "."
+#define DOCMD_RANGEOK	0240	// can use a range without ":" in Vim9 script
 
 // flags for beginline()
 #define BL_WHITE	1	// cursor on first non-white in the line
@@ -1995,7 +1996,8 @@ typedef int sock_T;
 #define VV_ECHOSPACE	93
 #define VV_ARGV		94
 #define VV_COLLATE      95
-#define VV_LEN		96	// number of v: vars
+#define VV_EXITING	96
+#define VV_LEN		97	// number of v: vars
 
 // used for v_number in VAR_BOOL and VAR_SPECIAL
 #define VVAL_FALSE	0L	// VAR_BOOL
