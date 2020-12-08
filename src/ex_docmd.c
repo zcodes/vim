@@ -274,7 +274,6 @@ static void	ex_tag_cmd(exarg_T *eap, char_u *name);
 # define ex_continue		ex_ni
 # define ex_debug		ex_ni
 # define ex_debuggreedy		ex_ni
-# define ex_def			ex_ni
 # define ex_defcompile		ex_ni
 # define ex_delfunction		ex_ni
 # define ex_disassemble		ex_ni
@@ -596,6 +595,17 @@ do_cmdline_cmd(char_u *cmd)
 }
 
 /*
+ * Execute the "+cmd" argument of "edit +cmd fname" and the like.
+ * This allows for using a range without ":" in Vim9 script.
+ */
+    int
+do_cmd_argument(char_u *cmd)
+{
+    return do_cmdline(cmd, NULL, NULL,
+		      DOCMD_VERBOSE|DOCMD_NOWAIT|DOCMD_KEYTYPED|DOCMD_RANGEOK);
+}
+
+/*
  * do_cmdline(): execute one Ex command line
  *
  * 1. Execute "cmdline" when it is not NULL.
@@ -747,6 +757,9 @@ do_cmdline(
      * cancel the whole command line, and any if/endif or loop.
      * If force_abort is set, we cancel everything.
      */
+#ifdef FEAT_EVAL
+    did_emsg_cumul += did_emsg;
+#endif
     did_emsg = FALSE;
 
     /*
@@ -778,7 +791,12 @@ do_cmdline(
 		&& !(getline_is_func && func_has_abort(real_cookie))
 #endif
 							)
+	{
+#ifdef FEAT_EVAL
+	    did_emsg_cumul += did_emsg;
+#endif
 	    did_emsg = FALSE;
+	}
 
 	/*
 	 * 1. If repeating a line in a loop, get a line from lines_ga.
@@ -982,7 +1000,7 @@ do_cmdline(
 	 *    "cmdline_copy" can change, e.g. for '%' and '#' expansion.
 	 */
 	++recursive;
-	next_cmdline = do_one_cmd(&cmdline_copy, flags & DOCMD_VERBOSE,
+	next_cmdline = do_one_cmd(&cmdline_copy, flags,
 #ifdef FEAT_EVAL
 				&cstack,
 #endif
@@ -1026,7 +1044,10 @@ do_cmdline(
 	if (did_emsg && !force_abort
 		&& getline_equal(fgetline, cookie, get_func_line)
 					      && !func_has_abort(real_cookie))
+	{
+	    // did_emsg_cumul is not set here
 	    did_emsg = FALSE;
+	}
 
 	if (cstack.cs_looplevel > 0)
 	{
@@ -1675,7 +1696,8 @@ comment_start(char_u *p, int starts_with_colon UNUSED)
 /*
  * Execute one Ex command.
  *
- * If 'sourcing' is TRUE, the command will be included in the error message.
+ * If "flags" has DOCMD_VERBOSE, the command will be included in the error
+ * message.
  *
  * 1. skip comment lines and leading space
  * 2. handle command modifiers
@@ -1698,7 +1720,7 @@ comment_start(char_u *p, int starts_with_colon UNUSED)
     static char_u *
 do_one_cmd(
     char_u	**cmdlinep,
-    int		sourcing,
+    int		flags,
 #ifdef FEAT_EVAL
     cstack_T	*cstack,
 #endif
@@ -1721,6 +1743,7 @@ do_one_cmd(
     int		vim9script = in_vim9script();
     int		did_set_expr_line = FALSE;
 #endif
+    int		sourcing = flags & DOCMD_VERBOSE;
 
     CLEAR_FIELD(ea);
     ea.line1 = 1;
@@ -1784,7 +1807,7 @@ do_one_cmd(
 #ifdef FEAT_EVAL
     // In Vim9 script a colon is required before the range.  This may also be
     // after command modifiers.
-    if (vim9script)
+    if (vim9script && (flags & DOCMD_RANGEOK) == 0)
     {
 	may_have_range = FALSE;
 	for (p = ea.cmd; p >= *cmdlinep; --p)
@@ -3309,9 +3332,13 @@ find_ex_command(
 
 		// When followed by "=" or "+=" then it is an assignment.
 		++emsg_silent;
-		if (skip_expr(&after, NULL) == OK
-				  && (*after == '='
-				      || (*after != NUL && after[1] == '=')))
+		if (skip_expr(&after, NULL) == OK)
+		    after = skipwhite(after);
+		else
+		    after = (char_u *)"";
+		if (*after == '=' || (*after != NUL && after[1] == '=')
+					 || (after[0] == '.' && after[1] == '.'
+							   && after[2] == '='))
 		    eap->cmdidx = CMD_var;
 		else
 		    eap->cmdidx = CMD_eval;
@@ -3329,7 +3356,14 @@ find_ex_command(
 	    if (*eap->cmd == '[')
 	    {
 		p = to_name_const_end(eap->cmd);
-		if (p == eap->cmd || *skipwhite(p) != '=')
+		if (p == eap->cmd && *p == '[')
+		{
+		    int count = 0;
+		    int	semicolon = FALSE;
+
+		    p = skip_var_list(eap->cmd, TRUE, &count, &semicolon, TRUE);
+		}
+		if (p == NULL || p == eap->cmd || *skipwhite(p) != '=')
 		{
 		    eap->cmdidx = CMD_eval;
 		    return eap->cmd;
@@ -3470,6 +3504,11 @@ find_ex_command(
 #endif
 		break;
 	    }
+
+	// Not not recognize ":*" as the star command unless '*' is in
+	// 'cpoptions'.
+	if (eap->cmdidx == CMD_star && vim_strchr(p_cpo, CPO_STAR) == NULL)
+	    p = eap->cmd;
 
 	// Look for a user defined command as a last resort.  Let ":Print" be
 	// overruled by a user defined command.
@@ -4994,7 +5033,7 @@ ex_buffer(exarg_T *eap)
 	else
 	    goto_buffer(eap, DOBUF_FIRST, FORWARD, (int)eap->line2);
 	if (eap->do_ecmd_cmd != NULL)
-	    do_cmdline_cmd(eap->do_ecmd_cmd);
+	    do_cmd_argument(eap->do_ecmd_cmd);
     }
 }
 
@@ -5007,7 +5046,7 @@ ex_bmodified(exarg_T *eap)
 {
     goto_buffer(eap, DOBUF_MOD, FORWARD, (int)eap->line2);
     if (eap->do_ecmd_cmd != NULL)
-	do_cmdline_cmd(eap->do_ecmd_cmd);
+	do_cmd_argument(eap->do_ecmd_cmd);
 }
 
 /*
@@ -5022,7 +5061,7 @@ ex_bnext(exarg_T *eap)
 
     goto_buffer(eap, DOBUF_CURRENT, FORWARD, (int)eap->line2);
     if (eap->do_ecmd_cmd != NULL)
-	do_cmdline_cmd(eap->do_ecmd_cmd);
+	do_cmd_argument(eap->do_ecmd_cmd);
 }
 
 /*
@@ -5039,7 +5078,7 @@ ex_bprevious(exarg_T *eap)
 
     goto_buffer(eap, DOBUF_CURRENT, BACKWARD, (int)eap->line2);
     if (eap->do_ecmd_cmd != NULL)
-	do_cmdline_cmd(eap->do_ecmd_cmd);
+	do_cmd_argument(eap->do_ecmd_cmd);
 }
 
 /*
@@ -5056,7 +5095,7 @@ ex_brewind(exarg_T *eap)
 
     goto_buffer(eap, DOBUF_FIRST, FORWARD, 0);
     if (eap->do_ecmd_cmd != NULL)
-	do_cmdline_cmd(eap->do_ecmd_cmd);
+	do_cmd_argument(eap->do_ecmd_cmd);
 }
 
 /*
@@ -5071,7 +5110,7 @@ ex_blast(exarg_T *eap)
 
     goto_buffer(eap, DOBUF_LAST, BACKWARD, 0);
     if (eap->do_ecmd_cmd != NULL)
-	do_cmdline_cmd(eap->do_ecmd_cmd);
+	do_cmd_argument(eap->do_ecmd_cmd);
 }
 
 /*
@@ -6610,7 +6649,8 @@ do_exedit(
 	else if (eap->cmdidx == CMD_enew)
 	    readonlymode = FALSE;   // 'readonly' doesn't make sense in an
 				    // empty buffer
-	setpcmark();
+	if (eap->cmdidx != CMD_balt && eap->cmdidx != CMD_badd)
+	    setpcmark();
 	if (do_ecmd(0, (eap->cmdidx == CMD_enew ? NULL : eap->arg),
 		    NULL, eap,
 		    // ":edit" goes to first line if Vi compatible
@@ -6665,7 +6705,7 @@ do_exedit(
     else
     {
 	if (eap->do_ecmd_cmd != NULL)
-	    do_cmdline_cmd(eap->do_ecmd_cmd);
+	    do_cmd_argument(eap->do_ecmd_cmd);
 #ifdef FEAT_TITLE
 	n = curwin->w_arg_idx_invalid;
 #endif
@@ -7955,9 +7995,13 @@ save_current_state(save_state_T *sst)
     sst->save_opcount = opcount;
     sst->save_reg_executing = reg_executing;
 
-    msg_scroll = FALSE;	    // no msg scrolling in Normal mode
-    restart_edit = 0;	    // don't go to Insert mode
-    p_im = FALSE;	    // don't use 'insertmode'
+    msg_scroll = FALSE;		    // no msg scrolling in Normal mode
+    restart_edit = 0;		    // don't go to Insert mode
+    p_im = FALSE;		    // don't use 'insertmode'
+#ifdef FEAT_EVAL
+    sst->save_script_version = current_sctx.sc_version;
+    current_sctx.sc_version = 1;    // not in Vim9 script
+#endif
 
     /*
      * Save the current typeahead.  This is required to allow using ":normal"
@@ -7981,6 +8025,9 @@ restore_current_state(save_state_T *sst)
     opcount = sst->save_opcount;
     reg_executing = sst->save_reg_executing;
     msg_didout |= sst->save_msg_didout;	// don't reset msg_didout now
+#ifdef FEAT_EVAL
+    current_sctx.sc_version = sst->save_script_version;
+#endif
 
     // Restore the state (needed when called from a function executed for
     // 'indentexpr'). Update the mouse and cursor, they may have changed.

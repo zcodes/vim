@@ -123,7 +123,7 @@ func Test_terminal_split_quit()
   unlet g:job
 endfunc
 
-func Test_terminal_hide_buffer()
+func Test_terminal_hide_buffer_job_running()
   let buf = Run_shell_in_terminal({})
   setlocal bufhidden=hide
   quit
@@ -138,6 +138,25 @@ func Test_terminal_hide_buffer()
   exe buf . 'bwipe'
 
   unlet g:job
+endfunc
+
+func Test_terminal_hide_buffer_job_finished()
+  term echo hello
+  let buf = bufnr()
+  setlocal bufhidden=hide
+  call WaitForAssert({-> assert_equal('finished', term_getstatus(buf))})
+  call assert_true(bufloaded(buf))
+  call assert_true(buflisted(buf))
+  edit Xasdfasdf
+  call assert_true(bufloaded(buf))
+  call assert_true(buflisted(buf))
+  exe buf .. 'buf'
+  call assert_equal(buf, bufnr())
+  setlocal bufhidden=
+  edit Xasdfasdf
+  call assert_false(bufloaded(buf))
+  call assert_false(buflisted(buf))
+  bwipe Xasdfasdf
 endfunc
 
 func s:Nasty_exit_cb(job, st)
@@ -1237,20 +1256,36 @@ func Test_terminal_popup_with_cmd()
   unlet s:winid
 endfunc
 
+func Test_terminal_popup_bufload()
+  let termbuf = term_start(&shell, #{hidden: v:true, term_finish: 'close'})
+  let winid = popup_create(termbuf, {})
+  sleep 50m
+
+  let newbuf = bufadd('')
+  call bufload(newbuf)
+  call setbufline(newbuf, 1, 'foobar')
+
+  " must not have switched to another window
+  call assert_equal(winid, win_getid())
+
+  call StopShellInTerminal(termbuf)
+  call WaitFor({-> win_getid() != winid})
+  exe 'bwipe! ' .. newbuf
+endfunc
+
 func Test_terminal_popup_insert_cmd()
   CheckUnix
 
   inoremap <F3> <Cmd>call StartTermInPopup()<CR>
   func StartTermInPopup()
-    call term_start(['/bin/sh', '-c', 'cat'], #{hidden: v:true})->popup_create(#{highlight: 'Pmenu'})
+    call term_start(['/bin/sh', '-c', 'cat'], #{hidden: v:true, term_finish: 'close'})->popup_create(#{highlight: 'Pmenu'})
   endfunc
   call feedkeys("i\<F3>")
   sleep 10m
   call assert_equal('n', mode())
 
   call feedkeys("\<C-D>", 'xt')
-  sleep 20m
-  call feedkeys(":q\<CR>", 'xt')
+  call WaitFor({-> popup_list() == []})
   delfunc StartTermInPopup
   iunmap <F3>
 endfunc

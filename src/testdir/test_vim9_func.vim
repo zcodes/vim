@@ -30,14 +30,14 @@ def TestCompilingError()
   END
   call writefile(lines, 'XTest_compile_error')
   var buf = RunVimInTerminal('-S XTest_compile_error',
-              #{rows: 10, wait_for_ruler: 0})
+              {rows: 10, wait_for_ruler: 0})
   var text = ''
   for loop in range(100)
     text = ''
     for i in range(1, 9)
       text ..= term_getline(buf, i)
     endfor
-    if text =~ 'Error detected'
+    if text =~ 'Variable not found: nothing'
       break
     endif
     sleep 20m
@@ -47,6 +47,36 @@ def TestCompilingError()
   # clean up
   call StopVimInTerminal(buf)
   call delete('XTest_compile_error')
+enddef
+
+def CallRecursive(n: number): number
+  return CallRecursive(n + 1)
+enddef
+
+def CallMapRecursive(l: list<number>): number
+  return map(l, {_, v -> CallMapRecursive([v])})[0]
+enddef
+
+def Test_funcdepth_error()
+  set maxfuncdepth=10
+
+  var caught = false
+  try
+    CallRecursive(1)
+  catch /E132:/
+    caught = true
+  endtry
+  assert_true(caught)
+
+  caught = false
+  try
+    CallMapRecursive([1])
+  catch /E132:/
+    caught = true
+  endtry
+  assert_true(caught)
+
+  set maxfuncdepth&
 enddef
 
 def ReturnString(): string
@@ -169,7 +199,9 @@ def Test_call_default_args()
   MyDefaultSecond('test', false)->assert_equal('none')
 
   CheckScriptFailure(['def Func(arg: number = asdf)', 'enddef', 'defcompile'], 'E1001:')
+  delfunc g:Func
   CheckScriptFailure(['def Func(arg: number = "text")', 'enddef', 'defcompile'], 'E1013: Argument 1: type mismatch, expected number but got string')
+  delfunc g:Func
 enddef
 
 def Test_nested_function()
@@ -185,22 +217,47 @@ def Test_nested_function()
   CheckDefFailure(['def s:Nested()', 'enddef'], 'E1075:')
   CheckDefFailure(['def b:Nested()', 'enddef'], 'E1075:')
 
-  CheckDefFailure([
-        'def Outer()',
-        '  def Inner()',
-        '    # comment',
-        '  enddef',
-        '  def Inner()',
-        '  enddef',
-        'enddef'], 'E1073:')
-  CheckDefFailure([
-        'def Outer()',
-        '  def Inner()',
-        '    # comment',
-        '  enddef',
-        '  def! Inner()',
-        '  enddef',
-        'enddef'], 'E1117:')
+  var lines =<< trim END
+      def Outer()
+        def Inner()
+          # comment
+        enddef
+        def Inner()
+        enddef
+      enddef
+  END
+  CheckDefFailure(lines, 'E1073:')
+
+  lines =<< trim END
+      def Outer()
+        def Inner()
+          # comment
+        enddef
+        def! Inner()
+        enddef
+      enddef
+  END
+  CheckDefFailure(lines, 'E1117:')
+
+  # nested function inside conditional
+  # TODO: should it work when "thecount" is inside the "if"?
+  lines =<< trim END
+      vim9script
+      var thecount = 0
+      if true
+        def Test(): number
+          def TheFunc(): number
+            thecount += 1
+            return thecount
+          enddef
+          return TheFunc()
+        enddef
+      endif
+      defcompile
+      assert_equal(1, Test())
+      assert_equal(2, Test())
+  END
+  CheckScriptSuccess(lines)
 enddef
 
 func Test_call_default_args_from_func()
@@ -258,6 +315,42 @@ def Test_nested_global_function()
   CheckScriptFailure(lines, "E1073:")
 enddef
 
+def DefListAll()
+  def
+enddef
+
+def DefListOne()
+  def DefListOne
+enddef
+
+def DefListMatches()
+  def /DefList
+enddef
+
+def Test_nested_def_list()
+  var funcs = split(execute('call DefListAll()'), "\n")
+  assert_true(len(funcs) > 10)
+  assert_true(funcs->index('def DefListAll()') >= 0)
+
+  funcs = split(execute('call DefListOne()'), "\n")
+  assert_equal(['   def DefListOne()', '1    def DefListOne', '   enddef'], funcs)
+
+  funcs = split(execute('call DefListMatches()'), "\n")
+  assert_true(len(funcs) >= 3)
+  assert_true(funcs->index('def DefListAll()') >= 0)
+  assert_true(funcs->index('def DefListOne()') >= 0)
+  assert_true(funcs->index('def DefListMatches()') >= 0)
+
+  var lines =<< trim END
+    vim9script
+    def Func()
+      def +Func+
+    enddef
+    defcompile
+  END
+  CheckScriptFailure(lines, 'E476:', 1)
+enddef
+
 def Test_global_local_function()
   var lines =<< trim END
       vim9script
@@ -269,6 +362,7 @@ def Test_global_local_function()
       enddef
       g:Func()->assert_equal('global')
       Func()->assert_equal('local')
+      delfunc g:Func
   END
   CheckScriptSuccess(lines)
 
@@ -548,6 +642,7 @@ def Test_assign_to_argument()
   l[0]->assert_equal('value')
 
   CheckScriptFailure(['def Func(arg: number)', 'arg = 3', 'enddef', 'defcompile'], 'E1090:')
+  delfunc! g:Func
 enddef
 
 " These argument names are reserved in legacy functions.
@@ -706,33 +801,41 @@ def Test_return_type_wrong()
         'return "a"',
         'enddef',
         'defcompile'], 'expected number but got string')
+  delfunc! g:Func
   CheckScriptFailure([
         'def Func(): string',
         'return 1',
         'enddef',
         'defcompile'], 'expected string but got number')
+  delfunc! g:Func
   CheckScriptFailure([
         'def Func(): void',
         'return "a"',
         'enddef',
         'defcompile'],
         'E1096: Returning a value in a function without a return type')
+  delfunc! g:Func
   CheckScriptFailure([
         'def Func()',
         'return "a"',
         'enddef',
         'defcompile'],
         'E1096: Returning a value in a function without a return type')
+  delfunc! g:Func
 
   CheckScriptFailure([
         'def Func(): number',
         'return',
         'enddef',
         'defcompile'], 'E1003:')
+  delfunc! g:Func
 
   CheckScriptFailure(['def Func(): list', 'return []', 'enddef'], 'E1008:')
+  delfunc! g:Func
   CheckScriptFailure(['def Func(): dict', 'return {}', 'enddef'], 'E1008:')
+  delfunc! g:Func
   CheckScriptFailure(['def Func()', 'return 1'], 'E1057:')
+  delfunc! g:Func
 
   CheckScriptFailure([
         'vim9script',
@@ -781,16 +884,16 @@ def Test_vim9script_call()
     def DictFunc(arg: dict<number>)
        dictvar = arg
     enddef
-    {'a': 1, 'b': 2}->DictFunc()
-    dictvar->assert_equal(#{a: 1, b: 2})
+    {a: 1, b: 2}->DictFunc()
+    dictvar->assert_equal({a: 1, b: 2})
     def CompiledDict()
-      {'a': 3, 'b': 4}->DictFunc()
+      {a: 3, b: 4}->DictFunc()
     enddef
     CompiledDict()
-    dictvar->assert_equal(#{a: 3, b: 4})
+    dictvar->assert_equal({a: 3, b: 4})
 
-    #{a: 3, b: 4}->DictFunc()
-    dictvar->assert_equal(#{a: 3, b: 4})
+    {a: 3, b: 4}->DictFunc()
+    dictvar->assert_equal({a: 3, b: 4})
 
     ('text')->MyFunc()
     name->assert_equal('text')
@@ -1191,6 +1294,7 @@ def Test_error_reporting()
     v:exception->assert_match('Invalid command: invalid')
     v:throwpoint->assert_match(', line 3$')
   endtry
+  delfunc! g:Func
 
   # comment lines after the start of the function
   lines =<< trim END
@@ -1211,11 +1315,12 @@ def Test_error_reporting()
     v:exception->assert_match('Invalid command: invalid')
     v:throwpoint->assert_match(', line 4$')
   endtry
+  delfunc! g:Func
 
   lines =<< trim END
     vim9script
     def Func()
-      var db = #{foo: 1, bar: 2}
+      var db = {foo: 1, bar: 2}
       # comment
       var x = db.asdf
     enddef
@@ -1229,6 +1334,7 @@ def Test_error_reporting()
   catch /E716:/
     v:throwpoint->assert_match('_Func, line 3$')
   endtry
+  delfunc! g:Func
 
   delete('Xdef')
 enddef
@@ -1411,6 +1517,29 @@ def Test_nested_closure_fails()
   CheckScriptFailure(lines, 'E1012:')
 enddef
 
+def Test_failure_in_called_function()
+  # this was using the frame index as the return value
+  var lines =<< trim END
+      vim9script
+      au TerminalWinOpen * eval [][0]
+      def PopupTerm(a: any)
+        # make sure typvals on stack are string
+        ['a', 'b', 'c', 'd', 'e', 'f', 'g']->join()
+        FireEvent()
+      enddef
+      def FireEvent()
+          do TerminalWinOpen
+      enddef
+      # use try/catch to make eval fail
+      try
+          call PopupTerm(0)
+      catch
+      endtry
+      au! TerminalWinOpen
+  END
+  CheckScriptSuccess(lines)
+enddef
+
 def Test_nested_lambda()
   var lines =<< trim END
     vim9script
@@ -1426,6 +1555,15 @@ def Test_nested_lambda()
   CheckScriptSuccess(lines)
 enddef
 
+def Shadowed(): list<number>
+  var FuncList: list<func: number> = [{ -> 42}]
+  return FuncList->map({_, Shadowed -> Shadowed()})
+enddef
+
+def Test_lambda_arg_shadows_func()
+  assert_equal([42], Shadowed())
+enddef
+
 def Line_continuation_in_def(dir: string = ''): string
   var path: string = empty(dir)
           \ ? 'empty'
@@ -1435,6 +1573,15 @@ enddef
 
 def Test_line_continuation_in_def()
   Line_continuation_in_def('.')->assert_equal('full')
+enddef
+
+def Test_script_var_in_lambda()
+  var lines =<< trim END
+      vim9script
+      var script = 'test'
+      assert_equal(['test'], map(['one'], {-> script}))
+  END
+  CheckScriptSuccess(lines)
 enddef
 
 def Line_continuation_in_lambda(): list<string>
@@ -1509,7 +1656,7 @@ def Test_ignore_silent_error_in_filter()
           return popup_filter_menu(winid, key)
       enddef
 
-      popup_create('popup', #{filter: Filter})
+      popup_create('popup', {filter: Filter})
       feedkeys("o\r", 'xnt')
   END
   CheckScriptSuccess(lines)
@@ -1530,7 +1677,7 @@ enddef
 def TreeWalk(dir: string): list<any>
   return readdir(dir)->map({_, val ->
             fnamemodify(dir .. '/' .. val, ':p')->isdirectory()
-               ? {val: TreeWalk(dir .. '/' .. val)}
+               ? {[val]: TreeWalk(dir .. '/' .. val)}
                : val
              })
 enddef
@@ -1541,7 +1688,7 @@ def Test_closure_in_map()
   writefile(['222'], 'XclosureDir/file2')
   writefile(['333'], 'XclosureDir/tdir/file3')
 
-  TreeWalk('XclosureDir')->assert_equal(['file1', 'file2', {'tdir': ['file3']}])
+  TreeWalk('XclosureDir')->assert_equal(['file1', 'file2', {tdir: ['file3']}])
 
   delete('XclosureDir', 'rf')
 enddef
@@ -1574,20 +1721,20 @@ enddef
 
 def Test_partial_call()
   var Xsetlist = function('setloclist', [0])
-  Xsetlist([], ' ', {'title': 'test'})
-  getloclist(0, {'title': 1})->assert_equal({'title': 'test'})
+  Xsetlist([], ' ', {title: 'test'})
+  getloclist(0, {title: 1})->assert_equal({title: 'test'})
 
   Xsetlist = function('setloclist', [0, [], ' '])
-  Xsetlist({'title': 'test'})
-  getloclist(0, {'title': 1})->assert_equal({'title': 'test'})
+  Xsetlist({title: 'test'})
+  getloclist(0, {title: 1})->assert_equal({title: 'test'})
 
   Xsetlist = function('setqflist')
-  Xsetlist([], ' ', {'title': 'test'})
-  getqflist({'title': 1})->assert_equal({'title': 'test'})
+  Xsetlist([], ' ', {title: 'test'})
+  getqflist({title: 1})->assert_equal({title: 'test'})
 
   Xsetlist = function('setqflist', [[], ' '])
-  Xsetlist({'title': 'test'})
-  getqflist({'title': 1})->assert_equal({'title': 'test'})
+  Xsetlist({title: 'test'})
+  getqflist({title: 1})->assert_equal({title: 'test'})
 
   var Len: func: number = function('len', ['word'])
   assert_equal(4, Len())
@@ -1652,6 +1799,111 @@ def Test_block_scoped_var()
         assert_equal(['x', 'x', 'x'], z)
       enddef
       Func()
+  END
+  CheckScriptSuccess(lines)
+enddef
+
+def Test_reset_did_emsg()
+  var lines =<< trim END
+      @s = 'blah'
+      au BufWinLeave * #
+      def Func()
+        var winid = popup_create('popup', {})
+        exe '*s'
+        popup_close(winid)
+      enddef
+      Func()
+  END
+  CheckScriptFailure(lines, 'E492:', 8)
+  delfunc! g:Func
+enddef
+
+def Test_abort_with_silent_call()
+  var lines =<< trim END
+      vim9script
+      g:result = 'none'
+      def Func()
+        g:result += 3
+        g:result = 'yes'
+      enddef
+      # error is silenced, but function aborts on error
+      silent! Func()
+      assert_equal('none', g:result)
+      unlet g:result
+  END
+  CheckScriptSuccess(lines)
+enddef
+
+def Test_continues_with_silent_error()
+  var lines =<< trim END
+      vim9script
+      g:result = 'none'
+      def Func()
+        silent!  g:result += 3
+        g:result = 'yes'
+      enddef
+      # error is silenced, function does not abort
+      Func()
+      assert_equal('yes', g:result)
+      unlet g:result
+  END
+  CheckScriptSuccess(lines)
+enddef
+
+def Test_abort_even_with_silent()
+  var lines =<< trim END
+      vim9script
+      g:result = 'none'
+      def Func()
+        eval {-> ''}() .. '' .. {}['X']
+        g:result = 'yes'
+      enddef
+      silent! Func()
+      assert_equal('none', g:result)
+      unlet g:result
+  END
+  CheckScriptSuccess(lines)
+enddef
+
+def Test_cmdmod_silent_restored()
+  var lines =<< trim END
+      vim9script
+      def Func()
+        g:result = 'none'
+        silent! g:result += 3
+        g:result = 'none'
+        g:result += 3
+      enddef
+      Func()
+  END
+  # can't use CheckScriptFailure, it ignores the :silent!
+  var fname = 'Xdefsilent'
+  writefile(lines, fname)
+  var caught = 'no'
+  try
+    exe 'source ' .. fname
+  catch /E1030:/
+    caught = 'yes'
+    assert_match('Func, line 4', v:throwpoint)
+  endtry
+  assert_equal('yes', caught)
+  delete(fname)
+enddef
+
+def Test_dict_member_with_silent()
+  var lines =<< trim END
+      vim9script
+      g:result = 'none'
+      var d: dict<any>
+      def Func()
+        try
+          g:result = map([], {_, v -> {}[v]})->join() .. d['']
+        catch
+        endtry
+      enddef
+      silent! Func()
+      assert_equal('0', g:result)
+      unlet g:result
   END
   CheckScriptSuccess(lines)
 enddef
