@@ -341,6 +341,36 @@ tv_get_float(typval_T *varp)
 #endif
 
 /*
+ * Give an error and return FAIL unless "tv" is a string.
+ */
+    int
+check_for_string(typval_T *tv)
+{
+    if (tv->v_type != VAR_STRING)
+    {
+	emsg(_(e_stringreq));
+	return FAIL;
+    }
+    return OK;
+}
+
+/*
+ * Give an error and return FAIL unless "tv" is a non-empty string.
+ */
+    int
+check_for_nonempty_string(typval_T *tv)
+{
+    if (check_for_string(tv) == FAIL)
+	return FAIL;
+    if (tv->vval.v_string == NULL || *tv->vval.v_string == NUL)
+    {
+	emsg(_(e_non_empty_string_required));
+	return FAIL;
+    }
+    return OK;
+}
+
+/*
  * Get the string value of a variable.
  * If it is a Number variable, the number is converted into a string.
  * tv_get_string() uses a single, static buffer.  YOU CAN ONLY USE IT ONCE!
@@ -1506,11 +1536,11 @@ eval_env_var(char_u **arg, typval_T *rettv, int evaluate)
     linenr_T
 tv_get_lnum(typval_T *argvars)
 {
-    linenr_T	lnum = 0;
+    linenr_T	lnum = -1;
 
     if (argvars[0].v_type != VAR_STRING || !in_vim9script())
 	lnum = (linenr_T)tv_get_number_chk(&argvars[0], NULL);
-    if (lnum == 0)  // no valid number, try using arg like line()
+    if (lnum <= 0)  // no valid number, try using arg like line()
     {
 	int	fnum;
 	pos_T	*fp = var2fpos(&argvars[0], TRUE, &fnum);

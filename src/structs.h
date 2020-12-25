@@ -1369,6 +1369,7 @@ typedef struct jsonq_S jsonq_T;
 typedef struct cbq_S cbq_T;
 typedef struct channel_S channel_T;
 typedef struct cctx_S cctx_T;
+typedef struct ectx_S ectx_T;
 
 typedef enum
 {
@@ -1604,6 +1605,9 @@ typedef struct
     garray_T	uf_type_list;	// types used in arg and return types
     int		*uf_def_arg_idx; // instruction indexes for evaluating
 				// uf_def_args; length: uf_def_args.ga_len + 1
+    partial_T	*uf_partial;	// for closure created inside :def function:
+				// information about the context
+
     char_u	*uf_va_name;	// name from "...name" or NULL
     type_T	*uf_va_type;	// type from "...name: type" or NULL
     type_T	*uf_func_type;	// type of the function, &t_func_any if unknown
@@ -1792,13 +1796,12 @@ typedef struct {
 } imported_T;
 
 /*
- * Growarray to store info about already sourced scripts.
- * For Unix also store the dev/ino, so that we don't have to stat() each
- * script when going through the list.
+ * Info about an already sourced scripts.
  */
 typedef struct
 {
     char_u	*sn_name;
+    int		sn_script_seq;	    // latest sctx_T sc_seq value
 
     // "sn_vars" stores the s: variables currently valid.  When leaving a block
     // variables local to that block are removed.
@@ -4312,3 +4315,9 @@ typedef struct
 // We have to guess how much a sequence of bytes may expand when converting
 // with iconv() to be able to allocate a buffer.
 #define ICONV_MULT 8
+
+typedef enum {
+    MAGIC_NOT_SET,	// p_magic not overruled
+    MAGIC_ON,		// magic on inside regexp
+    MAGIC_OFF		// magic off inside regexp
+} magic_T;

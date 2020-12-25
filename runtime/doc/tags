@@ -5151,10 +5151,13 @@ VIMINIT	starting.txt	/*VIMINIT*
 VMS	os_vms.txt	/*VMS*
 Vi	intro.txt	/*Vi*
 View	starting.txt	/*View*
+Vim9	vim9.txt	/*Vim9*
 VimEnter	autocmd.txt	/*VimEnter*
 VimLeave	autocmd.txt	/*VimLeave*
 VimLeavePre	autocmd.txt	/*VimLeavePre*
 VimResized	autocmd.txt	/*VimResized*
+VimResume	autocmd.txt	/*VimResume*
+VimSuspend	autocmd.txt	/*VimSuspend*
 Vimball-copyright	pi_vimball.txt	/*Vimball-copyright*
 Virtual-Replace-mode	insert.txt	/*Virtual-Replace-mode*
 VisVim	if_ole.txt	/*VisVim*
@@ -6255,6 +6258,7 @@ exepath()	eval.txt	/*exepath()*
 exim	starting.txt	/*exim*
 exists()	eval.txt	/*exists()*
 exiting	starting.txt	/*exiting*
+exiting-variable	eval.txt	/*exiting-variable*
 exp()	eval.txt	/*exp()*
 expand()	eval.txt	/*expand()*
 expand-env	options.txt	/*expand-env*
@@ -6862,6 +6866,7 @@ g:tex_fast	syntax.txt	/*g:tex_fast*
 g:tex_flavor	filetype.txt	/*g:tex_flavor*
 g:tex_fold_enabled	syntax.txt	/*g:tex_fold_enabled*
 g:tex_isk	syntax.txt	/*g:tex_isk*
+g:tex_matchcheck	syntax.txt	/*g:tex_matchcheck*
 g:tex_no_error	syntax.txt	/*g:tex_no_error*
 g:tex_nospell	syntax.txt	/*g:tex_nospell*
 g:tex_stylish	syntax.txt	/*g:tex_stylish*
@@ -9174,8 +9179,10 @@ synstack()	eval.txt	/*synstack()*
 syntax	syntax.txt	/*syntax*
 syntax-functions	usr_41.txt	/*syntax-functions*
 syntax-highlighting	syntax.txt	/*syntax-highlighting*
+syntax-latex	syntax.txt	/*syntax-latex*
 syntax-loading	syntax.txt	/*syntax-loading*
 syntax-printing	usr_06.txt	/*syntax-printing*
+syntax-tex	syntax.txt	/*syntax-tex*
 syntax.txt	syntax.txt	/*syntax.txt*
 syntax_cmd	syntax.txt	/*syntax_cmd*
 sys-file-list	help.txt	/*sys-file-list*
@@ -9610,6 +9617,7 @@ tex-cole	syntax.txt	/*tex-cole*
 tex-conceal	syntax.txt	/*tex-conceal*
 tex-error	syntax.txt	/*tex-error*
 tex-folding	syntax.txt	/*tex-folding*
+tex-matchcheck	syntax.txt	/*tex-matchcheck*
 tex-math	syntax.txt	/*tex-math*
 tex-morecommands	syntax.txt	/*tex-morecommands*
 tex-nospell	syntax.txt	/*tex-nospell*
@@ -9787,6 +9795,7 @@ v:errmsg	eval.txt	/*v:errmsg*
 v:errors	eval.txt	/*v:errors*
 v:event	eval.txt	/*v:event*
 v:exception	eval.txt	/*v:exception*
+v:exiting	eval.txt	/*v:exiting*
 v:false	eval.txt	/*v:false*
 v:fcs_choice	eval.txt	/*v:fcs_choice*
 v:fcs_reason	eval.txt	/*v:fcs_reason*
@@ -10049,7 +10058,6 @@ vim-variable	eval.txt	/*vim-variable*
 vim.vim	syntax.txt	/*vim.vim*
 vim7	version7.txt	/*vim7*
 vim8	version8.txt	/*vim8*
-vim9	vim9.txt	/*vim9*
 vim9-classes	vim9.txt	/*vim9-classes*
 vim9-const	vim9.txt	/*vim9-const*
 vim9-declaration	vim9.txt	/*vim9-declaration*

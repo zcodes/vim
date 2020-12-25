@@ -1317,6 +1317,23 @@ func Test_expr5_fails_channel()
   call CheckDefFailure(["var x = 'a' .. test_null_channel()"], 'E1105:', 1)
 endfunc
 
+def Test_expr5_list_add()
+  # concatenating two lists with same member types is OK
+  var d = {}
+  for i in ['a'] + ['b']
+    d = {[i]: 0}
+  endfor
+
+  # concatenating two lists with different member types results in "any"
+  var lines =<< trim END
+      var d = {}
+      for i in ['a'] + [0]
+        d = {[i]: 0}
+      endfor
+  END
+  CheckDefExecFailure(lines, 'E1012:')
+enddef
+
 " test multiply, divide, modulo
 def Test_expr6()
   var lines =<< trim END
@@ -1846,6 +1863,10 @@ def Test_expr7_lambda()
   END
   CheckDefAndScriptSuccess(lines)
 
+  CheckDefFailure(["var Ref = {a->a + 1}"], 'E720:')
+  CheckDefFailure(["var Ref = {a-> a + 1}"], 'E720:')
+  CheckDefFailure(["var Ref = {a ->a + 1}"], 'E720:')
+
   CheckDefFailure(["filter([1, 2], {k,v -> 1})"], 'E1069:', 1)
   # error is in first line of the lambda
   CheckDefFailure(["var L = {a -> a + b}"], 'E1001:', 0)
@@ -1864,6 +1885,100 @@ def Test_expr7_lambda()
 
   CheckDefSuccess(['var Fx = {a -> [0,', ' 1]}'])
   CheckDefFailure(['var Fx = {a -> [0', ' 1]}'], 'E696:', 2)
+enddef
+
+def NewLambdaWithComments(): func
+  return (x) =>
+            # some comment
+            x == 1
+            # some comment
+            ||
+            x == 2
+enddef
+
+def NewLambdaUsingArg(x: number): func
+  return () =>
+            # some comment
+            x == 1
+            # some comment
+            ||
+            x == 2
+enddef
+
+def Test_expr7_new_lambda()
+  var lines =<< trim END
+      var La = () => 'result'
+      assert_equal('result', La())
+      assert_equal([1, 3, 5], [1, 2, 3]->map((key, val) => key + val))
+
+      # line continuation inside lambda with "cond ? expr : expr" works
+      var ll = range(3)
+      map(ll, (k, v) => v % 2 ? {
+                ['111']: 111 } : {}
+            )
+      assert_equal([{}, {111: 111}, {}], ll)
+
+      ll = range(3)
+      map(ll, (k, v) => v == 8 || v
+                    == 9
+                    || v % 2 ? 111 : 222
+            )
+      assert_equal([222, 111, 222], ll)
+
+      ll = range(3)
+      map(ll, (k, v) => v != 8 && v
+                    != 9
+                    && v % 2 == 0 ? 111 : 222
+            )
+      assert_equal([111, 222, 111], ll)
+
+      var dl = [{key: 0}, {key: 22}]->filter(( _, v) => v['key'] )
+      assert_equal([{key: 22}], dl)
+
+      dl = [{key: 12}, {['foo']: 34}]
+      assert_equal([{key: 12}], filter(dl,
+            (_, v) => has_key(v, 'key') ? v['key'] == 12 : 0))
+
+      assert_equal(false, NewLambdaWithComments()(0))
+      assert_equal(true, NewLambdaWithComments()(1))
+      assert_equal(true, NewLambdaWithComments()(2))
+      assert_equal(false, NewLambdaWithComments()(3))
+
+      assert_equal(false, NewLambdaUsingArg(0)())
+      assert_equal(true, NewLambdaUsingArg(1)())
+
+      var res = map([1, 2, 3], (i: number, v: number) => i + v)
+      assert_equal([1, 3, 5], res)
+
+      # Lambda returning a dict
+      var Lmb = () => {key: 42}
+      assert_equal({key: 42}, Lmb())
+  END
+  CheckDefSuccess(lines)
+
+  CheckDefFailure(["var Ref = (a)=>a + 1"], 'E1001:')
+  CheckDefFailure(["var Ref = (a)=> a + 1"], 'E1001:')
+  CheckDefFailure(["var Ref = (a) =>a + 1"], 'E1001:')
+
+  CheckDefFailure(["filter([1, 2], (k,v) => 1)"], 'E1069:', 1)
+  # error is in first line of the lambda
+  CheckDefFailure(["var L = (a) -> a + b"], 'E1001:', 1)
+
+# TODO: lambda after -> doesn't work yet
+#  assert_equal('xxxyyy', 'xxx'->((a, b) => a .. b)('yyy'))
+
+#  CheckDefExecFailure(["var s = 'asdf'->{a -> a}('x')"],
+#        'E1106: One argument too many')
+#  CheckDefExecFailure(["var s = 'asdf'->{a -> a}('x', 'y')"],
+#        'E1106: 2 arguments too many')
+#  CheckDefFailure(["echo 'asdf'->{a -> a}(x)"], 'E1001:', 1)
+
+  CheckDefSuccess(['var Fx = (a) => {k1: 0,', ' k2: 1}'])
+  CheckDefFailure(['var Fx = (a) => {k1: 0', ' k2: 1}'], 'E722:', 2)
+  CheckDefFailure(['var Fx = (a) => {k1: 0,', ' k2 1}'], 'E720:', 2)
+
+  CheckDefSuccess(['var Fx = (a) => [0,', ' 1]'])
+  CheckDefFailure(['var Fx = (a) => [0', ' 1]'], 'E696:', 2)
 enddef
 
 def Test_expr7_lambda_vim9script()
@@ -1971,7 +2086,15 @@ def Test_expr7_dict()
   CheckDefExecFailure(['var x: dict<string> = {a: "x", b: 134}'], 'E1012:', 1)
 
   CheckDefFailure(['var x = ({'], 'E723:', 2)
-  CheckDefExecFailure(['{}[getftype("")]'], 'E716: Key not present in Dictionary: ""', 1)
+  CheckDefExecFailure(['{}[getftype("file")]'], 'E716: Key not present in Dictionary: ""', 1)
+
+  # no automatic conversion from number to string
+  lines =<< trim END
+      var n = 123
+      var d = {[n]: 1}
+  END
+  CheckDefFailure(lines, 'E1012:', 2)
+  CheckScriptFailure(['vim9script'] + lines, 'E928:', 3)
 enddef
 
 def Test_expr7_dict_vim9script()
@@ -2513,7 +2636,7 @@ func Test_expr7_fails()
   call CheckDefFailure(["'yes'->", "Echo()"], 'E488: Trailing characters: ->', 1)
 
   call CheckDefExecFailure(["[1, 2->len()"], 'E697:', 2)
-  call CheckDefExecFailure(["{a: 1->len()"], 'E451:', 1)
+  call CheckDefExecFailure(["{a: 1->len()"], 'E723:', 2)
   call CheckDefExecFailure(["{['a']: 1->len()"], 'E723:', 2)
 endfunc
 

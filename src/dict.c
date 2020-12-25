@@ -951,6 +951,11 @@ eval_dict(char_u **arg, typval_T *rettv, evalarg_T *evalarg, int literal)
 	}
 	if (evaluate)
 	{
+	    if (vim9script && check_for_string(&tvkey) == FAIL)
+	    {
+		clear_tv(&tvkey);
+		goto failret;
+	    }
 	    key = tv_get_string_buf_chk(&tvkey, buf);
 	    if (key == NULL)
 	    {
@@ -1068,7 +1073,7 @@ dict_extend(dict_T *d1, dict_T *d2, char_u *action)
 			&& HI2DI(hi2)->di_tv.v_type == VAR_FUNC
 			&& var_wrong_func_name(hi2->hi_key, di1 == NULL))
 		    break;
-		if (!valid_varname(hi2->hi_key))
+		if (!valid_varname(hi2->hi_key, TRUE))
 		    break;
 	    }
 	    if (di1 == NULL)

@@ -655,10 +655,27 @@ call_func_retnr(
 }
 
 /*
+ * Call Vim script function like call_func_retnr() and drop the result.
+ * Returns FAIL when calling the function fails.
+ */
+    int
+call_func_noret(
+    char_u      *func,
+    int		argc,
+    typval_T	*argv)
+{
+    typval_T	rettv;
+
+    if (call_vim_function(func, argc, argv, &rettv) == FAIL)
+	return FAIL;
+    clear_tv(&rettv);
+    return OK;
+}
+
+/*
  * Call Vim script function "func" and return the result as a string.
+ * Uses "argv" and "argc" as call_func_retnr().
  * Returns NULL when calling the function fails.
- * Uses argv[0] to argv[argc - 1] for the function arguments. argv[argc] should
- * have type VAR_UNKNOWN.
  */
     void *
 call_func_retstr(
@@ -679,8 +696,7 @@ call_func_retstr(
 
 /*
  * Call Vim script function "func" and return the result as a List.
- * Uses argv[0] to argv[argc - 1] for the function arguments. argv[argc] should
- * have type VAR_UNKNOWN.
+ * Uses "argv" and "argc" as call_func_retnr().
  * Returns NULL when there is something wrong.
  */
     void *
@@ -874,6 +890,13 @@ get_lval(
     if (v == NULL)
 	return NULL;
 
+    if (in_vim9script() && (flags & GLV_NO_DECL) == 0)
+    {
+	if (!quiet)
+	    semsg(_(e_variable_already_declared), lp->ll_name);
+	return NULL;
+    }
+
     /*
      * Loop until no more [idx] or .key is following.
      */
@@ -1049,7 +1072,7 @@ get_lval(
 		wrong = (lp->ll_dict->dv_scope == VAR_DEF_SCOPE
 			       && rettv->v_type == VAR_FUNC
 			       && var_wrong_func_name(key, lp->ll_di == NULL))
-			|| !valid_varname(key);
+			|| !valid_varname(key, TRUE);
 		if (len != -1)
 		    key[len] = prevval;
 		if (wrong)
@@ -1311,7 +1334,7 @@ set_var_lval(
 	{
 	    typval_T tv;
 
-	    if (flags & ASSIGN_CONST)
+	    if (flags & (ASSIGN_CONST | ASSIGN_FINAL))
 	    {
 		emsg(_(e_cannot_mod));
 		*endp = cc;
@@ -1349,7 +1372,7 @@ set_var_lval(
 	listitem_T *ll_li = lp->ll_li;
 	int	    ll_n1 = lp->ll_n1;
 
-	if (flags & ASSIGN_CONST)
+	if (flags & (ASSIGN_CONST | ASSIGN_FINAL))
 	{
 	    emsg(_("E996: Cannot lock a range"));
 	    return;
@@ -1408,7 +1431,7 @@ set_var_lval(
 	/*
 	 * Assign to a List or Dictionary item.
 	 */
-	if (flags & ASSIGN_CONST)
+	if (flags & (ASSIGN_CONST | ASSIGN_FINAL))
 	{
 	    emsg(_("E996: Cannot lock a list or dict"));
 	    return;
@@ -1881,6 +1904,24 @@ set_context_for_expression(
 	    while ((c = *++arg) != NUL && (c == ' ' || c == '\t'))
 		/* skip */ ;
     }
+
+    // ":exe one two" completes "two"
+    if ((cmdidx == CMD_execute
+		|| cmdidx == CMD_echo
+		|| cmdidx == CMD_echon
+		|| cmdidx == CMD_echomsg)
+	    && xp->xp_context == EXPAND_EXPRESSION)
+    {
+	for (;;)
+	{
+	    char_u *n = skiptowhite(arg);
+
+	    if (n == arg || IS_WHITE_OR_NUL(*skipwhite(n)))
+		break;
+	    arg = skipwhite(n);
+	}
+    }
+
     xp->xp_pattern = arg;
 }
 
@@ -2158,7 +2199,10 @@ eval0(
 	    semsg(_(e_invexpr2), arg);
 
 	// Some of the expression may not have been consumed.  Do not check for
-	// a next command to avoid more errors.
+	// a next command to avoid more errors, unless "|" is following, which
+	// could only be a command separator.
+	if (eap != NULL && skipwhite(p)[0] == '|' && skipwhite(p)[1] != '|')
+	    eap->nextcmd = check_nextcmd(p);
 	return FAIL;
     }
 
@@ -4628,7 +4672,7 @@ set_ref_in_item(
  * "numbuf" is used for a number.
  * When "copyID" is not NULL replace recursive lists and dicts with "...".
  * When both "echo_style" and "composite_val" are FALSE, put quotes around
- * stings as "string()", otherwise does not put quotes around strings, as
+ * strings as "string()", otherwise does not put quotes around strings, as
  * ":echo" displays values.
  * When "restore_copyID" is FALSE, repeated items in dictionaries and lists
  * are replaced with "...".

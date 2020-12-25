@@ -20,6 +20,9 @@ def Test_edit_wildcards()
 
   edit X`=filename`xx`=filenr`yy
   assert_equal('XXtestxx77yy', bufname())
+
+  CheckDefFailure(['edit `=xxx`'], 'E1001:')
+  CheckDefFailure(['edit `="foo"'], 'E1083:')
 enddef
 
 def Test_hardcopy_wildcards()
@@ -614,6 +617,31 @@ def Test_put_command()
   assert_equal('above', getline(3))
   assert_equal('below', getline(4))
 
+  # compute range at runtime
+  setline(1, range(1, 8))
+  @a = 'aaa'
+  :$-2put a
+  assert_equal('aaa', getline(7))
+
+  setline(1, range(1, 8))
+  :2
+  :+2put! a
+  assert_equal('aaa', getline(4))
+
+  bwipe!
+
+  CheckDefFailure(['put =xxx'], 'E1001:')
+enddef
+
+def Test_put_with_linebreak()
+  new
+  var lines =<< trim END
+    vim9script
+    pu =split('abc', '\zs')
+            ->join()
+  END
+  CheckScriptSuccess(lines)
+  getline(2)->assert_equal('a b c')
   bwipe!
 enddef
 
@@ -673,5 +701,56 @@ def Test_cmd_argument_without_colon()
   delete('Xfile')
 enddef
 
+def Test_ambiguous_user_cmd()
+  var lines =<< trim END
+      com Cmd1 eval 0
+      com Cmd2 eval 0
+      Cmd
+  END
+  CheckScriptFailure(lines, 'E464:')
+enddef
+
+def Test_command_not_recognized()
+  var lines =<< trim END
+    d.key = 'asdf'
+  END
+  CheckDefFailure(lines, 'E1146:', 1)
+
+  lines =<< trim END
+    d['key'] = 'asdf'
+  END
+  CheckDefFailure(lines, 'E1146:', 1)
+enddef
+
+def Test_magic_not_used()
+  new
+  for cmd in ['set magic', 'set nomagic']
+    exe cmd
+    setline(1, 'aaa')
+    s/.../bbb/
+    assert_equal('bbb', getline(1))
+  endfor
+
+  set magic
+  setline(1, 'aaa')
+  assert_fails('s/.\M../bbb/', 'E486:')
+  assert_fails('snomagic/.../bbb/', 'E486:')
+  assert_equal('aaa', getline(1))
+
+  bwipe!
+enddef
+
+def Test_gdefault_not_used()
+  new
+  for cmd in ['set gdefault', 'set nogdefault']
+    exe cmd
+    setline(1, 'aaa')
+    s/./b/
+    assert_equal('baa', getline(1))
+  endfor
+
+  set nogdefault
+  bwipe!
+enddef
 
 " vim: ts=8 sw=2 sts=2 expandtab tw=80 fdm=marker

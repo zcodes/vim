@@ -437,9 +437,9 @@ fi
 
 dnl Set QUOTESED. Needs additional backslashes on zOS
 if test "$zOSUnix" = "yes"; then
-    QUOTESED="sed -e 's/[[\\\\\"]]/\\\\\\\\&/g' -e 's/\\\\\\\\\"/\"/' -e 's/\\\\\\\\\";\$\$/\";/'"
+    QUOTESED="sed -e 's/[[\\\\\"]]/\\\\\\\\&/g' -e 's/\\\\\\\\\"/\"/' -e 's/\\\\\\\\\";\$\$/\";/' -e 's/  */ /g'"
 else
-    QUOTESED="sed -e 's/[[\\\\\"]]/\\\\&/g' -e 's/\\\\\"/\"/' -e 's/\\\\\";\$\$/\";/'"
+    QUOTESED="sed -e 's/[[\\\\\"]]/\\\\&/g' -e 's/\\\\\"/\"/' -e 's/\\\\\";\$\$/\";/' -e 's/  */ /g'"
 fi
 AC_SUBST(QUOTESED)
 
@@ -632,7 +632,7 @@ if test "$enable_luainterp" = "yes" -o "$enable_luainterp" = "dynamic"; then
 	  inc_path="$vi_cv_path_lua_pfx/include"
 	  for dir in "$inc_path"/moonjit-[[0-9]]* ; do
 	    if test -d "$dir" ; then
-	      lua_suf=`basename '$dir'`
+	      lua_suf=`basename "$dir"`
 	      lua_suf="/$lua_suf"
 	      break
 	    fi
