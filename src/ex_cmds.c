@@ -1360,8 +1360,8 @@ do_shell(
 #endif
 #ifdef MSWIN
     int		winstart = FALSE;
-    int		keep_termcap = FALSE;
 #endif
+    int		keep_termcap = !termcap_active;
 
     /*
      * Disallow shell commands for "rvim".
@@ -1395,9 +1395,7 @@ do_shell(
     msg_putchar('\r');			// put cursor at start of line
     if (!autocmd_busy)
     {
-#ifdef MSWIN
 	if (!keep_termcap)
-#endif
 	    stoptermcap();
     }
 #ifdef MSWIN
@@ -1488,9 +1486,7 @@ do_shell(
 	}
 #endif // FEAT_GUI_MSWIN
 
-#ifdef MSWIN
 	if (!keep_termcap)	// if keep_termcap is TRUE didn't stop termcap
-#endif
 	    starttermcap();	// start termcap if not done by wait_return()
 
 	/*
@@ -3672,7 +3668,7 @@ ex_substitute(exarg_T *eap)
 	    delimiter = *cmd++;		    // remember delimiter character
 	    pat = cmd;			    // remember start of search pat
 	    cmd = skip_regexp_ex(cmd, delimiter, magic_isset(),
-							      &eap->arg, NULL);
+							&eap->arg, NULL, NULL);
 	    if (cmd[0] == delimiter)	    // end delimiter found
 		*cmd++ = NUL;		    // replace it with a NUL
 	}
@@ -4856,7 +4852,7 @@ ex_global(exarg_T *eap)
 	if (delim)
 	    ++cmd;		// skip delimiter if there is one
 	pat = cmd;		// remember start of pattern
-	cmd = skip_regexp_ex(cmd, delim, magic_isset(), &eap->arg, NULL);
+	cmd = skip_regexp_ex(cmd, delim, magic_isset(), &eap->arg, NULL, NULL);
 	if (cmd[0] == delim)		    // end delimiter found
 	    *cmd++ = NUL;		    // replace it with a NUL
     }
@@ -5171,6 +5167,15 @@ ex_drop(exarg_T *eap)
 	    {
 		goto_tabpage_win(tp, wp);
 		curwin->w_arg_idx = 0;
+		if (!bufIsChanged(curbuf))
+		{
+		    int save_ar = curbuf->b_p_ar;
+
+		    // reload the file if it is newer
+		    curbuf->b_p_ar = TRUE;
+		    buf_check_timestamp(curbuf, FALSE);
+		    curbuf->b_p_ar = save_ar;
+		}
 		return;
 	    }
 	}

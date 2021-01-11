@@ -89,9 +89,11 @@ typedef struct VimMenu vimmenu_T;
  * sc_version is also here, for convenience.
  */
 typedef struct {
+#ifdef FEAT_EVAL
     scid_T	sc_sid;		// script ID
     int		sc_seq;		// sourcing sequence number
     linenr_T	sc_lnum;	// line number
+#endif
     int		sc_version;	// :scriptversion
 } sctx_T;
 
@@ -1230,8 +1232,8 @@ struct mapblock
     char	m_silent;	// <silent> used, don't echo commands
     char	m_nowait;	// <nowait> used
 #ifdef FEAT_EVAL
-    char	m_expr;		// <expr> used, m_str is an expression
     sctx_T	m_script_ctx;	// SCTX where map was defined
+    char	m_expr;		// <expr> used, m_str is an expression
 #endif
 };
 
@@ -1485,6 +1487,7 @@ struct listvar_S
 	    int		lv_idx;		// cached index of an item
 	} mat;
     } lv_u;
+    type_T	*lv_type;	// allocated by alloc_type()
     list_T	*lv_copylist;	// copied list used by deepcopy()
     list_T	*lv_used_next;	// next list in used lists list
     list_T	*lv_used_prev;	// previous list in used lists list
@@ -1548,6 +1551,7 @@ struct dictvar_S
     int		dv_refcount;	// reference count
     int		dv_copyID;	// ID used by deepcopy()
     hashtab_T	dv_hashtab;	// hashtab that refers to the items
+    type_T	*dv_type;	// allocated by alloc_type()
     dict_T	*dv_copydict;	// copied dict used by deepcopy()
     dict_T	*dv_used_next;	// next dict in used dicts list
     dict_T	*dv_used_prev;	// previous dict in used dicts list
@@ -1569,9 +1573,12 @@ typedef void (*cfunc_free_T)(void *state);
 // type of getline() last argument
 typedef enum {
     GETLINE_NONE,	    // do not concatenate any lines
-    GETLINE_CONCAT_CONT,    // concatenate continuation lines
+    GETLINE_CONCAT_CONT,    // concatenate continuation lines with backslash
+    GETLINE_CONCAT_CONTBAR, // concatenate continuation lines with \ and |
     GETLINE_CONCAT_ALL	    // concatenate continuation and Vim9 # comment lines
 } getline_opt_T;
+
+typedef struct svar_S svar_T;
 
 #if defined(FEAT_EVAL) || defined(PROTO)
 typedef struct funccall_S funccall_T;
@@ -1772,28 +1779,30 @@ struct sallvar_S {
 /*
  * Entry for "sn_var_vals".  Used for script-local variables.
  */
-typedef struct {
+struct svar_S {
     char_u	*sv_name;	// points into "sn_all_vars" di_key
     typval_T	*sv_tv;		// points into "sn_vars" or "sn_all_vars" di_tv
     type_T	*sv_type;
     int		sv_const;
     int		sv_export;	// "export let var = val"
-} svar_T;
+};
 
 typedef struct {
     char_u	*imp_name;	    // name imported as (allocated)
     int		imp_sid;	    // script ID of "from"
 
-    // for "import * as Name", "imp_name" is "Name"
-    int		imp_all;
+    int		imp_flags;	    // IMP_FLAGS_ values
 
-    // for variable
+    // for a variable
     type_T	*imp_type;
     int		imp_var_vals_idx;   // index in sn_var_vals of "from"
 
-    // for function
+    // for a function
     char_u	*imp_funcname;	    // user func name (NOT allocated)
 } imported_T;
+
+#define IMP_FLAGS_STAR		1   // using "import * as Name"
+#define IMP_FLAGS_RELOAD	2   // script reloaded, OK to redefine
 
 /*
  * Info about an already sourced scripts.
@@ -1827,7 +1836,7 @@ typedef struct
     int		sn_last_block_id;  // Unique ID for each script block
 
     int		sn_version;	// :scriptversion
-    int		sn_had_command;	// TRUE if any command was executed
+    int		sn_state;	// SN_STATE_ values
     char_u	*sn_save_cpo;	// 'cpo' value when :vim9script found
 
 # ifdef FEAT_PROFILE
@@ -1850,6 +1859,10 @@ typedef struct
     int		sn_prl_execed;	// line being timed was executed
 # endif
 } scriptitem_T;
+
+#define SN_STATE_NEW		0   // newly loaded script, nothing done
+#define SN_STATE_RELOAD		1   // script loaded before, nothing done
+#define SN_STATE_HAD_COMMAND	9   // a command was executed
 
 // Struct passed through eval() functions.
 // See EVALARG_EVALUATE for a fixed value with eval_flags set to EVAL_EVALUATE.
@@ -1937,6 +1950,7 @@ typedef struct {
     partial_T	*partial;	// for extra arguments
     dict_T	*selfdict;	// Dictionary for "self"
     typval_T	*basetv;	// base for base->method()
+    type_T	*check_type;	// type from funcref or NULL
 } funcexe_T;
 
 /*
@@ -1957,6 +1971,14 @@ typedef struct funcstack_S
     int		fs_copyID;	// for garray_T collection
 } funcstack_T;
 
+typedef struct outer_S outer_T;
+struct outer_S {
+    garray_T	*out_stack;	    // stack from outer scope
+    int		out_frame_idx;	    // index of stack frame in out_stack
+    outer_T	*out_up;	    // outer scope of outer scope or NULL
+    int		out_up_is_copy;	    // don't free out_up
+};
+
 struct partial_S
 {
     int		pt_refcount;	// reference count
@@ -1967,11 +1989,11 @@ struct partial_S
     int		pt_auto;	// when TRUE the partial was created for using
 				// dict.member in handle_subscript()
 
-    // For a compiled closure: the arguments and local variables.
-    garray_T	*pt_ectx_stack;	    // where to find local vars
-    int		pt_ectx_frame;	    // index of function frame in uf_ectx_stack
-    funcstack_T	*pt_funcstack;	    // copy of stack, used after context
-				    // function returns
+    // For a compiled closure: the arguments and local variables scope
+    outer_T	pt_outer;
+
+    funcstack_T	*pt_funcstack;	// copy of stack, used after context
+				// function returns
 
     int		pt_argc;	// number of arguments
     typval_T	*pt_argv;	// arguments in allocated array
@@ -4021,7 +4043,7 @@ typedef enum
     EXPR_MULT,		// *
     EXPR_DIV,		// /
     EXPR_REM,		// %
-} exptype_T;
+} exprtype_T;
 
 /*
  * Structure used for reading in json_decode().
@@ -4164,9 +4186,7 @@ typedef struct {
     int		save_finish_op;
     int		save_opcount;
     int		save_reg_executing;
-#ifdef FEAT_EVAL
     int		save_script_version;
-#endif
     tasave_T	tabuf;
 } save_state_T;
 
@@ -4316,8 +4336,20 @@ typedef struct
 // with iconv() to be able to allocate a buffer.
 #define ICONV_MULT 8
 
+// Used for "magic_overruled".
 typedef enum {
-    MAGIC_NOT_SET,	// p_magic not overruled
-    MAGIC_ON,		// magic on inside regexp
-    MAGIC_OFF		// magic off inside regexp
+    OPTION_MAGIC_NOT_SET,	// p_magic not overruled
+    OPTION_MAGIC_ON,		// magic on inside regexp
+    OPTION_MAGIC_OFF		// magic off inside regexp
+} optmagic_T;
+
+// Magicness of a pattern, used by regexp code.
+// The order and values matter:
+//  magic <= MAGIC_OFF includes MAGIC_NONE
+//  magic >= MAGIC_ON  includes MAGIC_ALL
+typedef enum {
+    MAGIC_NONE = 1,		// "\V" very unmagic
+    MAGIC_OFF = 2,		// "\M" or 'magic' off
+    MAGIC_ON = 3,		// "\m" or 'magic'
+    MAGIC_ALL = 4		// "\v" very magic
 } magic_T;

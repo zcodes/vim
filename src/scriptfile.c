@@ -1135,8 +1135,8 @@ do_source(
     char_u		    *fname_exp;
     char_u		    *firstline = NULL;
     int			    retval = FAIL;
-#ifdef FEAT_EVAL
     sctx_T		    save_current_sctx;
+#ifdef FEAT_EVAL
     static scid_T	    last_current_SID = 0;
     static int		    last_current_SID_seq = 0;
     funccal_entry_T	    funccalp_entry;
@@ -1300,6 +1300,9 @@ do_source(
 	time_push(&tv_rel, &tv_start);
 #endif
 
+    save_current_sctx = current_sctx;
+    current_sctx.sc_version = 1;  // default script version
+
 #ifdef FEAT_EVAL
 # ifdef FEAT_PROFILE
     if (do_profiling == PROF_YES)
@@ -1310,9 +1313,7 @@ do_source(
     // Also starts profiling timer for nested script.
     save_funccal(&funccalp_entry);
 
-    save_current_sctx = current_sctx;
     current_sctx.sc_lnum = 0;
-    current_sctx.sc_version = 1;  // default script version
 
     // Check if this script was sourced before to finds its SID.
     // Always use a new sequence number.
@@ -1320,43 +1321,28 @@ do_source(
     if (sid > 0)
     {
 	hashtab_T	*ht;
-	int		is_vim9 = si->sn_version == SCRIPT_VERSION_VIM9;
+	int		todo;
+	hashitem_T	*hi;
+	dictitem_T	*di;
 
 	// loading the same script again
-	si->sn_had_command = FALSE;
-	si->sn_version = 1;
+	si->sn_state = SN_STATE_RELOAD;
 	current_sctx.sc_sid = sid;
 
-	// In Vim9 script all script-local variables are removed when reloading
-	// the same script.  In legacy script they remain but "const" can be
-	// set again.
+	// Script-local variables remain but "const" can be set again.
+	// In Vim9 script variables will be cleared when "vim9script" is
+	// encountered without the "noclear" argument.
 	ht = &SCRIPT_VARS(sid);
-	if (is_vim9)
-	{
-	    hashtab_free_contents(ht);
-	    hash_init(ht);
-	}
-	else
-	{
-	    int		todo = (int)ht->ht_used;
-	    hashitem_T	*hi;
-	    dictitem_T	*di;
-
-	    for (hi = ht->ht_array; todo > 0; ++hi)
-		if (!HASHITEM_EMPTY(hi))
-		{
-		    --todo;
-		    di = HI2DI(hi);
-		    di->di_flags |= DI_FLAGS_RELOAD;
-		}
-	}
-
-	// old imports and script variables are no longer valid
-	free_imports_and_script_vars(sid);
-
-	// in Vim9 script functions are marked deleted
-	if (is_vim9)
-	    delete_script_functions(sid);
+	todo = (int)ht->ht_used;
+	for (hi = ht->ht_array; todo > 0; ++hi)
+	    if (!HASHITEM_EMPTY(hi))
+	    {
+		--todo;
+		di = HI2DI(hi);
+		di->di_flags |= DI_FLAGS_RELOAD;
+	    }
+	// imports can be redefined once
+	mark_imports_for_reload(sid);
     }
     else
     {
@@ -1390,8 +1376,10 @@ do_source(
 	fname_exp = vim_strsave(si->sn_name);  // used for autocmd
 	if (ret_sid != NULL)
 	    *ret_sid = current_sctx.sc_sid;
+
+	// Used to check script variable index is still valid.
+	si->sn_script_seq = current_sctx.sc_seq;
     }
-    si->sn_script_seq = current_sctx.sc_seq;
 
 # ifdef FEAT_PROFILE
     if (do_profiling == PROF_YES)
@@ -1496,13 +1484,14 @@ almosttheend:
 	CLEAR_POINTER(si->sn_save_cpo);
     }
 
-    current_sctx = save_current_sctx;
     restore_funccal();
 # ifdef FEAT_PROFILE
     if (do_profiling == PROF_YES)
 	prof_child_exit(&wait_start);		// leaving a child now
 # endif
 #endif
+    current_sctx = save_current_sctx;
+
     fclose(cookie.fp);
     vim_free(cookie.nextline);
     vim_free(firstline);
@@ -1565,6 +1554,7 @@ scriptnames_slash_adjust(void)
 
 /*
  * Get a pointer to a script name.  Used for ":verbose set".
+ * Message appended to "Last set from "
  */
     char_u *
 get_scriptname(scid_T id)
@@ -1579,6 +1569,8 @@ get_scriptname(scid_T id)
 	return (char_u *)_("environment variable");
     if (id == SID_ERROR)
 	return (char_u *)_("error handler");
+    if (id == SID_WINLAYOUT)
+	return (char_u *)_("changed window size");
     return SCRIPT_ITEM(id)->sn_name;
 }
 
@@ -1747,6 +1739,10 @@ getsourceline(
     struct source_cookie *sp = (struct source_cookie *)cookie;
     char_u		*line;
     char_u		*p;
+    int			do_vim9_all = in_vim9script()
+					      && options == GETLINE_CONCAT_ALL;
+    int			do_bar_cont = do_vim9_all
+					 || options == GETLINE_CONCAT_CONTBAR;
 
 #ifdef FEAT_EVAL
     // If breakpoints have been added/deleted need to check for it.
@@ -1793,17 +1789,15 @@ getsourceline(
 	// backslash. We always need to read the next line, keep it in
 	// sp->nextline.
 	/* Also check for a comment in between continuation lines: "\ */
-	// Also check for a Vim9 comment and empty line.
+	// Also check for a Vim9 comment, empty line, line starting with '|',
+	// but not "||".
 	sp->nextline = get_one_sourceline(sp);
 	if (sp->nextline != NULL
 		&& (*(p = skipwhite(sp->nextline)) == '\\'
 			      || (p[0] == '"' && p[1] == '\\' && p[2] == ' ')
-#ifdef FEAT_EVAL
-			      || (in_vim9script()
-				      && options == GETLINE_CONCAT_ALL
-				      && (*p == NUL || vim9_comment_start(p)))
-#endif
-			      ))
+			      || (do_vim9_all && (*p == NUL
+						     || vim9_comment_start(p)))
+			      || (do_bar_cont && p[0] == '|' && p[1] != '|')))
 	{
 	    garray_T    ga;
 
@@ -1811,6 +1805,11 @@ getsourceline(
 	    ga_concat(&ga, line);
 	    if (*p == '\\')
 		ga_concat(&ga, p + 1);
+	    else if (*p == '|')
+	    {
+		ga_concat(&ga, (char_u *)" ");
+		ga_concat(&ga, p);
+	    }
 	    for (;;)
 	    {
 		vim_free(sp->nextline);
@@ -1818,7 +1817,7 @@ getsourceline(
 		if (sp->nextline == NULL)
 		    break;
 		p = skipwhite(sp->nextline);
-		if (*p == '\\')
+		if (*p == '\\' || (do_bar_cont && p[0] == '|' && p[1] != '|'))
 		{
 		    // Adjust the growsize to the current length to speed up
 		    // concatenating many lines.
@@ -1829,15 +1828,16 @@ getsourceline(
 			else
 			    ga.ga_growsize = ga.ga_len;
 		    }
-		    ga_concat(&ga, p + 1);
+		    if (*p == '\\')
+			ga_concat(&ga, p + 1);
+		    else
+		    {
+			ga_concat(&ga, (char_u *)" ");
+			ga_concat(&ga, p);
+		    }
 		}
 		else if (!(p[0] == '"' && p[1] == '\\' && p[2] == ' ')
-#ifdef FEAT_EVAL
-			&& !(in_vim9script()
-				&& options == GETLINE_CONCAT_ALL
-				&& (*p == NUL || vim9_comment_start(p)))
-#endif
-			)
+		     && !(do_vim9_all && (*p == NUL || vim9_comment_start(p))))
 		    break;
 		/* drop a # comment or "\ comment line */
 	    }
@@ -1912,7 +1912,6 @@ ex_scriptencoding(exarg_T *eap)
     void
 ex_scriptversion(exarg_T *eap UNUSED)
 {
-#ifdef FEAT_EVAL
     int		nr;
 
     if (!getline_equal(eap->getline, eap->cookie, getsourceline))
@@ -1934,9 +1933,10 @@ ex_scriptversion(exarg_T *eap UNUSED)
     else
     {
 	current_sctx.sc_version = nr;
+#ifdef FEAT_EVAL
 	SCRIPT_ITEM(current_sctx.sc_sid)->sn_version = nr;
-    }
 #endif
+    }
 }
 
 #if defined(FEAT_EVAL) || defined(PROTO)
