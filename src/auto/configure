@@ -5006,9 +5006,9 @@ esac
 fi
 
 if test "$zOSUnix" = "yes"; then
-    QUOTESED="sed -e 's/[\\\\\"]/\\\\\\\\&/g' -e 's/\\\\\\\\\"/\"/' -e 's/\\\\\\\\\";\$\$/\";/'"
+    QUOTESED="sed -e 's/[\\\\\"]/\\\\\\\\&/g' -e 's/\\\\\\\\\"/\"/' -e 's/\\\\\\\\\";\$\$/\";/' -e 's/  */ /g'"
 else
-    QUOTESED="sed -e 's/[\\\\\"]/\\\\&/g' -e 's/\\\\\"/\"/' -e 's/\\\\\";\$\$/\";/'"
+    QUOTESED="sed -e 's/[\\\\\"]/\\\\&/g' -e 's/\\\\\"/\"/' -e 's/\\\\\";\$\$/\";/' -e 's/  */ /g'"
 fi
 
 
@@ -5479,7 +5479,7 @@ $as_echo "no" >&6; }
 	  inc_path="$vi_cv_path_lua_pfx/include"
 	  for dir in "$inc_path"/moonjit-[0-9]* ; do
 	    if test -d "$dir" ; then
-	      lua_suf=`basename '$dir'`
+	      lua_suf=`basename "$dir"`
 	      lua_suf="/$lua_suf"
 	      break
 	    fi
@@ -7617,8 +7617,7 @@ $as_echo "$rubyhdrdir" >&6; }
 	librubyarg=`$vi_cv_path_ruby -r rbconfig -e "print $ruby_rbconfig.expand($ruby_rbconfig::CONFIG['LIBRUBYARG'])"`
 	librubya=`$vi_cv_path_ruby -r rbconfig -e "print $ruby_rbconfig.expand($ruby_rbconfig::CONFIG['LIBRUBY_A'])"`
 	rubylibdir=`$vi_cv_path_ruby -r rbconfig -e "print $ruby_rbconfig.expand($ruby_rbconfig::CONFIG['libdir'])"`
-	if test -f "$rubylibdir/$librubya"; then
-	  librubyarg="$librubyarg"
+	if test -f "$rubylibdir/$librubya" || expr "$librubyarg" : "-lruby"; then
 	  RUBY_LIBS="$RUBY_LIBS -L$rubylibdir"
 	elif test "$librubyarg" = "libruby.a"; then
 	  	  librubyarg="-lruby"
@@ -7651,6 +7650,9 @@ $as_echo "$rubyhdrdir" >&6; }
 
 	  RUBY_CFLAGS="-DDYNAMIC_RUBY_DLL=\\\"$libruby_soname\\\" $RUBY_CFLAGS"
 	  RUBY_LIBS=
+	fi
+	if test "X$CLANG_VERSION" != "X" -a "$rubyversion" -ge 30; then
+	  RUBY_CFLAGS="$RUBY_CFLAGS -fdeclspec"
 	fi
       else
 	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: not found; disabling Ruby" >&5
@@ -14860,6 +14862,8 @@ else
   { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
 $as_echo "no" >&6; }
 fi
+
+LDFLAGS=`echo "$LDFLAGS" | sed -e 's/-L /-L/g'`
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking linker --as-needed support" >&5
 $as_echo_n "checking linker --as-needed support... " >&6; }

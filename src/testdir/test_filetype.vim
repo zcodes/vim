@@ -153,6 +153,7 @@ let s:filename_checks = {
     \ 'dsl': ['file.dsl'],
     \ 'dtd': ['file.dtd'],
     \ 'dts': ['file.dts', 'file.dtsi'],
+    \ 'dune': ['jbuild', 'dune', 'dune-project', 'dune-workspace'],
     \ 'dylan': ['file.dylan'],
     \ 'dylanintr': ['file.intr'],
     \ 'dylanlid': ['file.lid'],
@@ -185,6 +186,7 @@ let s:filename_checks = {
     \ 'gdb': ['.gdbinit'],
     \ 'gdmo': ['file.mo', 'file.gdmo'],
     \ 'gedcom': ['file.ged', 'lltxxxxx.txt', '/tmp/lltmp', '/tmp/lltmp-file', 'any/tmp/lltmp', 'any/tmp/lltmp-file'],
+    \ 'gift': ['file.gift'],
     \ 'gitcommit': ['COMMIT_EDITMSG', 'MERGE_MSG', 'TAG_EDITMSG'],
     \ 'gitconfig': ['file.git/config', '.gitconfig', '.gitmodules', 'file.git/modules//config', '/.config/git/config', '/etc/gitconfig', '/etc/gitconfig.d/file', '/.gitconfig.d/file', 'any/.config/git/config', 'any/.gitconfig.d/file', 'some.git/config', 'some.git/modules/any/config'],
     \ 'gitolite': ['gitolite.conf', '/gitolite-admin/conf/file', 'any/gitolite-admin/conf/file'],
@@ -337,9 +339,10 @@ let s:filename_checks = {
     \ 'nroff': ['file.tr', 'file.nr', 'file.roff', 'file.tmac', 'file.mom', 'tmac.file'],
     \ 'nsis': ['file.nsi', 'file.nsh'],
     \ 'obj': ['file.obj'],
-    \ 'ocaml': ['file.ml', 'file.mli', 'file.mll', 'file.mly', '.ocamlinit'],
+    \ 'ocaml': ['file.ml', 'file.mli', 'file.mll', 'file.mly', '.ocamlinit', 'file.mlt', 'file.mlp', 'file.mlip', 'file.mli.cppo', 'file.ml.cppo'],
     \ 'occam': ['file.occ'],
     \ 'omnimark': ['file.xom', 'file.xin'],
+    \ 'opam': ['opam', 'file.opam', 'file.opam.template'],
     \ 'openroad': ['file.or'],
     \ 'ora': ['file.ora'],
     \ 'pamconf': ['/etc/pam.conf', '/etc/pam.d/file', 'any/etc/pam.conf', 'any/etc/pam.d/file'],
@@ -413,6 +416,7 @@ let s:filename_checks = {
     \ 'scheme': ['file.scm', 'file.ss', 'file.rkt'],
     \ 'scilab': ['file.sci', 'file.sce'],
     \ 'screen': ['.screenrc', 'screenrc'],
+    \ 'sexplib': ['file.sexp'],
     \ 'scss': ['file.scss'],
     \ 'sd': ['file.sd'],
     \ 'sdc': ['file.sdc'],
@@ -479,6 +483,7 @@ let s:filename_checks = {
     \ 'tilde': ['file.t.html'],
     \ 'tli': ['file.tli'],
     \ 'tmux': ['tmuxfile.conf', '.tmuxfile.conf', '.tmux-file.conf', '.tmux.conf', 'tmux-file.conf', 'tmux.conf'],
+    \ 'toml': ['file.toml'],
     \ 'tpp': ['file.tpp'],
     \ 'treetop': ['file.treetop'],
     \ 'trustees': ['trustees.conf'],
@@ -487,7 +492,6 @@ let s:filename_checks = {
     \ 'tssgm': ['file.tssgm'],
     \ 'tssop': ['file.tssop'],
     \ 'twig': ['file.twig'],
-    \ 'typescript': ['file.ts'],
     \ 'typescriptreact': ['file.tsx'],
     \ 'uc': ['file.uc'],
     \ 'udevconf': ['/etc/udev/udev.conf', 'any/etc/udev/udev.conf'],
@@ -706,6 +710,23 @@ func Test_hook_file()
   bwipe!
 
   call delete('Xfile.hook')
+  filetype off
+endfunc
+
+func Test_ts_file()
+  filetype on
+
+  call writefile(['<?xml version="1.0" encoding="utf-8"?>'], 'Xfile.ts')
+  split Xfile.ts
+  call assert_equal('xml', &filetype)
+  bwipe!
+
+  call writefile(['// looks like Typescript'], 'Xfile.ts')
+  split Xfile.ts
+  call assert_equal('typescript', &filetype)
+  bwipe!
+
+  call delete('Xfile.ts')
   filetype off
 endfunc
 

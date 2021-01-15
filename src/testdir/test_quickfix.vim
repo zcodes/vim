@@ -702,6 +702,26 @@ func Test_helpgrep()
   call s:test_xhelpgrep('l')
 endfunc
 
+def Test_helpgrep_vim9_restore_cpo()
+  assert_equal('aABceFs', &cpo)
+
+  var rtp_save = &rtp
+  var dir = 'Xruntime/after'
+  &rtp ..= ',' .. dir
+  mkdir(dir .. '/ftplugin', 'p')
+  writefile(['vim9'], dir .. '/ftplugin/qf.vim')
+  filetype plugin on
+  silent helpgrep grail
+  cwindow
+  silent helpgrep grail
+
+  assert_equal('aABceFs', &cpo)
+  delete(dir, 'rf')
+  &rtp = rtp_save
+  cclose
+  helpclose
+enddef
+
 func Test_errortitle()
   augroup QfBufWinEnter
     au!
@@ -4165,6 +4185,30 @@ func Test_qftitle()
   call setqflist([], 'r', {'items' : [{'filename' : 'a.c', 'lnum' : 10}]})
   call assert_equal('Errors', w:quickfix_title)
   cclose
+
+  " Switching to another quickfix list in one tab page should update the
+  " quickfix window title and statusline in all the other tab pages also
+  call setqflist([], 'f')
+  %bw!
+  cgetexpr ['file_one:1:1: error in the first quickfix list']
+  call setqflist([], 'a', {'title': 'first quickfix list'})
+  cgetexpr ['file_two:2:1: error in the second quickfix list']
+  call setqflist([], 'a', {'title': 'second quickfix list'})
+  copen
+  wincmd t
+  tabnew two
+  copen
+  wincmd t
+  colder
+  call assert_equal('first quickfix list', gettabwinvar(1, 2, 'quickfix_title'))
+  call assert_equal('first quickfix list', gettabwinvar(2, 2, 'quickfix_title'))
+  call assert_equal(1, tabpagewinnr(1))
+  call assert_equal(1, tabpagewinnr(2))
+  tabnew
+  call setqflist([], 'a', {'title': 'new quickfix title'})
+  call assert_equal('new quickfix title', gettabwinvar(1, 2, 'quickfix_title'))
+  call assert_equal('new quickfix title', gettabwinvar(2, 2, 'quickfix_title'))
+  %bw!
 endfunc
 
 func Test_lbuffer_with_bwipe()
@@ -5253,7 +5297,7 @@ func Test_quickfix_window_fails_to_open()
   call delete('XquickfixFails')
 endfunc
 
-" Test for updating the quickfix buffer whenever the assocaited quickfix list
+" Test for updating the quickfix buffer whenever the associated quickfix list
 " is changed.
 func Xqfbuf_update(cchar)
   call s:setup_commands(a:cchar)

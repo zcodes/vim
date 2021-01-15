@@ -851,7 +851,10 @@ func Test_term_mouse_multiple_clicks_to_visually_select()
   let save_term = &term
   let save_ttymouse = &ttymouse
   call test_override('no_query_mouse', 1)
-  set mouse=a term=xterm mousetime=200
+  
+  " 'mousetime' must be sufficiently large, or else the test is flaky when
+  " using a ssh connection with X forwarding; i.e. ssh -X (issue #7563).
+  set mouse=a term=xterm mousetime=600
   new
 
   for ttymouse_val in g:Ttymouse_values + g:Ttymouse_dec
@@ -1965,6 +1968,16 @@ func RunTest_modifyOtherKeys(func)
   call assert_equal("aaa", bufname())
   bwipe aaa
   bwipe bbb
+
+  " Ctrl-V X 33 is 3
+  call setline(1, '')
+  call feedkeys("a\<C-V>" .. a:func('X', 2) .. "33\<Esc>", 'Lx!')
+  call assert_equal("3", getline(1))
+
+  " Ctrl-V U 12345 is Unicode 12345
+  call setline(1, '')
+  call feedkeys("a\<C-V>" .. a:func('U', 2) .. "12345\<Esc>", 'Lx!')
+  call assert_equal("\U12345", getline(1))
 
   bwipe!
   set timeoutlen&

@@ -304,7 +304,6 @@ static void	ex_tag_cmd(exarg_T *eap, char_u *name);
 # define ex_try			ex_ni
 # define ex_unlet		ex_ni
 # define ex_unlockvar		ex_ni
-# define ex_vim9script		ex_ni
 # define ex_while		ex_ni
 # define ex_import		ex_ni
 # define ex_export		ex_ni
@@ -890,7 +889,8 @@ do_cmdline(
 #else
 		    0
 #endif
-		    , TRUE)) == NULL)
+		    , in_vim9script() ? GETLINE_CONCAT_CONTBAR
+					       : GETLINE_CONCAT_CONT)) == NULL)
 	    {
 		// Don't call wait_return for aborted command line.  The NULL
 		// returned for the end of a sourced file or executed function
@@ -1683,7 +1683,7 @@ comment_start(char_u *p, int starts_with_colon UNUSED)
 {
 #ifdef FEAT_EVAL
     if (in_vim9script())
-	return p[0] == '#' && p[1] != '{' && !starts_with_colon;
+	return p[0] == '#' && !starts_with_colon;
 #endif
     return *p == '"';
 }
@@ -1839,7 +1839,7 @@ do_one_cmd(
 	    // message.
 	    if (ar > ea.cmd)
 	    {
-		emsg(_(e_colon_required_before_a_range));
+		semsg(_(e_colon_required_before_range_str), ea.cmd);
 		goto doend;
 	    }
 	}
@@ -2025,7 +2025,7 @@ do_one_cmd(
     if (p == NULL)
     {
 	if (!ea.skip)
-	    errormsg = _("E464: Ambiguous use of user-defined command");
+	    errormsg = _(e_ambiguous_use_of_user_defined_command);
 	goto doend;
     }
     // Check for wrong commands.
@@ -2594,7 +2594,7 @@ do_one_cmd(
     // Set flag that any command was executed, used by ex_vim9script().
     if (getline_equal(ea.getline, ea.cookie, getsourceline)
 						    && current_sctx.sc_sid > 0)
-	SCRIPT_ITEM(current_sctx.sc_sid)->sn_had_command = TRUE;
+	SCRIPT_ITEM(current_sctx.sc_sid)->sn_state = SN_STATE_HAD_COMMAND;
 
     /*
      * If the command just executed called do_cmdline(), any throw or ":return"
@@ -2738,6 +2738,28 @@ parse_command_modifiers(
 	}
 
 	p = skip_range(eap->cmd, TRUE, NULL);
+
+	// In Vim9 script a variable can shadow a command modifier:
+	//   verbose = 123
+	//   verbose += 123
+	//   silent! verbose = func()
+	//   verbose.member = 2
+	//   verbose[expr] = 2
+	// But not:
+	//   verbose [a, b] = list
+	if (in_vim9script())
+	{
+	    char_u *s, *n;
+
+	    for (s = p; ASCII_ISALPHA(*s); ++s)
+		;
+	    n = skipwhite(s);
+	    if (vim_strchr((char_u *)".=", *n) != NULL
+		    || *s == '['
+		    || (*n != NUL && n[1] == '='))
+		break;
+	}
+
 	switch (*p)
 	{
 	    // When adding an entry, also modify cmd_exists().
@@ -3271,7 +3293,7 @@ skip_option_env_lead(char_u *start)
 find_ex_command(
 	exarg_T *eap,
 	int	*full UNUSED,
-	void	*(*lookup)(char_u *, size_t, cctx_T *) UNUSED,
+	int	(*lookup)(char_u *, size_t, void *, cctx_T *) UNUSED,
 	cctx_T	*cctx UNUSED)
 {
     int		len;
@@ -3332,6 +3354,8 @@ find_ex_command(
 
 		// When followed by "=" or "+=" then it is an assignment.
 		++emsg_silent;
+		if (*after == '.')
+		    after = skipwhite(after + 1);
 		if (skip_expr(&after, NULL) == OK)
 		    after = skipwhite(after);
 		else
@@ -3387,7 +3411,7 @@ find_ex_command(
 			|| *eap->cmd == '&'
 			|| *eap->cmd == '$'
 			|| *eap->cmd == '@'
-			|| lookup(eap->cmd, p - eap->cmd, cctx) != NULL)
+			|| lookup(eap->cmd, p - eap->cmd, NULL, cctx) == OK)
 		{
 		    eap->cmdidx = CMD_var;
 		    return eap->cmd;
@@ -3520,13 +3544,25 @@ find_ex_command(
 		++p;
 	    p = find_ucmd(eap, p, full, NULL, NULL);
 	}
-	if (p == eap->cmd)
+	if (p == NULL || p == eap->cmd)
 	    eap->cmdidx = CMD_SIZE;
     }
 
     // ":fina" means ":finally" for backwards compatibility.
     if (eap->cmdidx == CMD_final && p - eap->cmd == 4)
 	eap->cmdidx = CMD_finally;
+
+#ifdef FEAT_EVAL
+    if (eap->cmdidx < CMD_SIZE
+	    && in_vim9script()
+	    && !IS_WHITE_OR_NUL(*p) && *p != '\n' && *p != '!'
+	    && (eap->cmdidx < 0 ||
+		(cmdnames[eap->cmdidx].cmd_argt & EX_NONWHITE_OK) == 0))
+    {
+	semsg(_(e_command_not_followed_by_white_space_str), eap->cmd);
+	eap->cmdidx = CMD_SIZE;
+    }
+#endif
 
     return p;
 }
@@ -3939,7 +3975,7 @@ get_address(
 		}
 		if (skip)	// skip "/pat/"
 		{
-		    cmd = skip_regexp(cmd, c, (int)p_magic);
+		    cmd = skip_regexp(cmd, c, magic_isset());
 		    if (*cmd == c)
 			++cmd;
 		}
@@ -4780,7 +4816,6 @@ separate_nextcmd(exarg_T *eap)
 		|| (*p == '#'
 		    && in_vim9script()
 		    && !(eap->argt & EX_NOTRLCOM)
-		    && p[1] != '{'
 		    && p > eap->cmd && VIM_ISWHITE(p[-1]))
 #endif
 		|| *p == '|' || *p == '\n')
@@ -5115,7 +5150,7 @@ ex_blast(exarg_T *eap)
 
 /*
  * Check if "c" ends an Ex command.
- * In Vim9 script does not check for white space before # or #{.
+ * In Vim9 script does not check for white space before #.
  */
     int
 ends_excmd(int c)
@@ -5864,6 +5899,7 @@ ex_stop(exarg_T *eap)
     {
 	if (!eap->forceit)
 	    autowrite_all();
+	apply_autocmds(EVENT_VIMSUSPEND, NULL, NULL, FALSE, NULL);
 	windgoto((int)Rows - 1, 0);
 	out_char('\n');
 	out_flush();
@@ -5881,6 +5917,7 @@ ex_stop(exarg_T *eap)
 	scroll_start();		// scroll screen before redrawing
 	redraw_later_clear();
 	shell_resized();	// may have resized window
+	apply_autocmds(EVENT_VIMRESUME, NULL, NULL, FALSE, NULL);
     }
 }
 
@@ -6522,9 +6559,9 @@ ex_open(exarg_T *eap)
     {
 	// ":open /pattern/": put cursor in column found with pattern
 	++eap->arg;
-	p = skip_regexp(eap->arg, '/', p_magic);
+	p = skip_regexp(eap->arg, '/', magic_isset());
 	*p = NUL;
-	regmatch.regprog = vim_regcomp(eap->arg, p_magic ? RE_MAGIC : 0);
+	regmatch.regprog = vim_regcomp(eap->arg, magic_isset() ? RE_MAGIC : 0);
 	if (regmatch.regprog != NULL)
 	{
 	    regmatch.rm_ic = p_ic;
@@ -7516,11 +7553,12 @@ ex_may_print(exarg_T *eap)
     static void
 ex_submagic(exarg_T *eap)
 {
-    int		magic_save = p_magic;
+    optmagic_T saved = magic_overruled;
 
-    p_magic = (eap->cmdidx == CMD_smagic);
+    magic_overruled = eap->cmdidx == CMD_smagic
+					  ? OPTION_MAGIC_ON : OPTION_MAGIC_OFF;
     ex_substitute(eap);
-    p_magic = magic_save;
+    magic_overruled = saved;
 }
 
 /*
@@ -7995,9 +8033,12 @@ save_current_state(save_state_T *sst)
     sst->save_opcount = opcount;
     sst->save_reg_executing = reg_executing;
 
-    msg_scroll = FALSE;	    // no msg scrolling in Normal mode
-    restart_edit = 0;	    // don't go to Insert mode
-    p_im = FALSE;	    // don't use 'insertmode'
+    msg_scroll = FALSE;		    // no msg scrolling in Normal mode
+    restart_edit = 0;		    // don't go to Insert mode
+    p_im = FALSE;		    // don't use 'insertmode'
+
+    sst->save_script_version = current_sctx.sc_version;
+    current_sctx.sc_version = 1;    // not in Vim9 script
 
     /*
      * Save the current typeahead.  This is required to allow using ":normal"
@@ -8021,6 +8062,7 @@ restore_current_state(save_state_T *sst)
     opcount = sst->save_opcount;
     reg_executing = sst->save_reg_executing;
     msg_didout |= sst->save_msg_didout;	// don't reset msg_didout now
+    current_sctx.sc_version = sst->save_script_version;
 
     // Restore the state (needed when called from a function executed for
     // 'indentexpr'). Update the mouse and cursor, they may have changed.
@@ -8313,7 +8355,7 @@ ex_findpat(exarg_T *eap)
     {
 	whole = FALSE;
 	++eap->arg;
-	p = skip_regexp(eap->arg, '/', p_magic);
+	p = skip_regexp(eap->arg, '/', magic_isset());
 	if (*p)
 	{
 	    *p++ = NUL;
@@ -8515,18 +8557,19 @@ find_cmdline_var(char_u *src, int *usedlen)
 /*
  * Evaluate cmdline variables.
  *
- * change '%'	    to curbuf->b_ffname
- *	  '#'	    to curwin->w_alt_fnum
- *	  '<cword>' to word under the cursor
- *	  '<cWORD>' to WORD under the cursor
- *	  '<cexpr>' to C-expression under the cursor
- *	  '<cfile>' to path name under the cursor
- *	  '<sfile>' to sourced file name
- *	  '<stack>' to call stack
- *	  '<slnum>' to sourced file line number
- *	  '<afile>' to file name for autocommand
- *	  '<abuf>'  to buffer number for autocommand
- *	  '<amatch>' to matching name for autocommand
+ * change "%"	    to curbuf->b_ffname
+ *	  "#"	    to curwin->w_alt_fnum
+ *	  "%%"	    to curwin->w_alt_fnum in Vim9 script
+ *	  "<cword>" to word under the cursor
+ *	  "<cWORD>" to WORD under the cursor
+ *	  "<cexpr>" to C-expression under the cursor
+ *	  "<cfile>" to path name under the cursor
+ *	  "<sfile>" to sourced file name
+ *	  "<stack>" to call stack
+ *	  "<slnum>" to sourced file line number
+ *	  "<afile>" to file name for autocommand
+ *	  "<abuf>"  to buffer number for autocommand
+ *	  "<amatch>" to matching name for autocommand
  *
  * When an error is detected, "errormsg" is set to a non-NULL pointer (may be
  * "" for error without a message) and NULL is returned.
@@ -8607,47 +8650,60 @@ eval_vars(
      */
     else
     {
+	int off = 0;
+
 	switch (spec_idx)
 	{
-	case SPEC_PERC:		// '%': current file
-		if (curbuf->b_fname == NULL)
+	case SPEC_PERC:
+#ifdef FEAT_EVAL
+		if (!in_vim9script() || src[1] != '%')
+#endif
 		{
-		    result = (char_u *)"";
-		    valid = 0;	    // Must have ":p:h" to be valid
+		    // '%': current file
+		    if (curbuf->b_fname == NULL)
+		    {
+			result = (char_u *)"";
+			valid = 0;	    // Must have ":p:h" to be valid
+		    }
+		    else
+		    {
+			result = curbuf->b_fname;
+			tilde_file = STRCMP(result, "~") == 0;
+		    }
+		    break;
 		}
-		else
-		{
-		    result = curbuf->b_fname;
-		    tilde_file = STRCMP(result, "~") == 0;
-		}
-		break;
-
+#ifdef FEAT_EVAL
+		// "%%" alternate file
+		off = 1;
+#endif
+		// FALLTHROUGH
 	case SPEC_HASH:		// '#' or "#99": alternate file
-		if (src[1] == '#')  // "##": the argument list
+		if (off == 0 ? src[1] == '#' : src[2] == '%')
 		{
+		    // "##" or "%%%": the argument list
 		    result = arg_all();
 		    resultbuf = result;
-		    *usedlen = 2;
+		    *usedlen = off + 2;
 		    if (escaped != NULL)
 			*escaped = TRUE;
 		    skip_mod = TRUE;
 		    break;
 		}
-		s = src + 1;
+		s = src + off + 1;
 		if (*s == '<')		// "#<99" uses v:oldfiles
 		    ++s;
 		i = (int)getdigits(&s);
-		if (s == src + 2 && src[1] == '-')
+		if (s == src + off + 2 && src[off + 1] == '-')
 		    // just a minus sign, don't skip over it
 		    s--;
 		*usedlen = (int)(s - src); // length of what we expand
 
-		if (src[1] == '<' && i != 0)
+		if (src[off + 1] == '<' && i != 0)
 		{
-		    if (*usedlen < 2)
+		    if (*usedlen < off + 2)
 		    {
 			// Should we give an error message for #<text?
-			*usedlen = 1;
+			*usedlen = off + 1;
 			return NULL;
 		    }
 #ifdef FEAT_EVAL
@@ -8665,8 +8721,8 @@ eval_vars(
 		}
 		else
 		{
-		    if (i == 0 && src[1] == '<' && *usedlen > 1)
-			*usedlen = 1;
+		    if (i == 0 && src[off + 1] == '<' && *usedlen > off + 1)
+			*usedlen = off + 1;
 		    buf = buflist_findnr(i);
 		    if (buf == NULL)
 		    {

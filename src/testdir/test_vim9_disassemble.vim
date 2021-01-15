@@ -15,6 +15,7 @@ let t:tabpagevar = 't'
 def s:ScriptFuncLoad(arg: string)
   var local = 1
   buffers
+  echo
   echo arg
   echo local
   echo &lines
@@ -22,6 +23,7 @@ def s:ScriptFuncLoad(arg: string)
   echo s:scriptvar
   echo g:globalvar
   echo get(g:, "global")
+  echo g:auto#var
   echo b:buffervar
   echo get(b:, "buffer")
   echo w:windowvar
@@ -43,19 +45,38 @@ def Test_disassemble_load()
 
   var res = execute('disass s:ScriptFuncLoad')
   assert_match('<SNR>\d*_ScriptFuncLoad.*' ..
-        'buffers.*' ..
-        ' EXEC \+buffers.*' ..
-        ' LOAD arg\[-1\].*' ..
-        ' LOAD $0.*' ..
-        ' LOADOPT &lines.*' ..
-        ' LOADV v:version.*' ..
-        ' LOADS s:scriptvar from .*test_vim9_disassemble.vim.*' ..
-        ' LOADG g:globalvar.*' ..
+        'buffers\_s*' ..
+        '\d\+ EXEC \+buffers\_s*' ..
+        'echo\_s*' ..
+        'echo arg\_s*' ..
+        '\d\+ LOAD arg\[-1\]\_s*' ..
+        '\d\+ ECHO 1\_s*' ..
+        'echo local\_s*' ..
+        '\d\+ LOAD $0\_s*' ..
+        '\d\+ ECHO 1\_s*' ..
+        'echo &lines\_s*' ..
+        '\d\+ LOADOPT &lines\_s*' ..
+        '\d\+ ECHO 1\_s*' ..
+        'echo v:version\_s*' ..
+        '\d\+ LOADV v:version\_s*' ..
+        '\d\+ ECHO 1\_s*' ..
+        'echo s:scriptvar\_s*' ..
+        '\d\+ LOADS s:scriptvar from .*test_vim9_disassemble.vim\_s*' ..
+        '\d\+ ECHO 1\_s*' ..
+        'echo g:globalvar\_s*' ..
+        '\d\+ LOADG g:globalvar\_s*' ..
+        '\d\+ ECHO 1\_s*' ..
         'echo get(g:, "global")\_s*' ..
         '\d\+ LOAD g:\_s*' ..
         '\d\+ PUSHS "global"\_s*' ..
-        '\d\+ BCALL get(argc 2).*' ..
-        ' LOADB b:buffervar.*' ..
+        '\d\+ BCALL get(argc 2)\_s*' ..
+        '\d\+ ECHO 1\_s*' ..
+        'echo g:auto#var\_s*' ..
+        '\d\+ LOADAUTO g:auto#var\_s*' ..
+        '\d\+ ECHO 1\_s*' ..
+        'echo b:buffervar\_s*' ..
+        '\d\+ LOADB b:buffervar\_s*' ..
+        '\d\+ ECHO 1\_s*' ..
         'echo get(b:, "buffer")\_s*' ..
         '\d\+ LOAD b:\_s*' ..
         '\d\+ PUSHS "buffer"\_s*' ..
@@ -96,8 +117,7 @@ def Test_disassemble_exec_expr()
         '\d 2STRING stack\[-1\]\_s*' ..
         '\d\+ PUSHS ".txt"\_s*' ..
         '\d\+ EXECCONCAT 4\_s*' ..
-        '\d\+ PUSHNR 0\_s*' ..
-        '\d\+ RETURN',
+        '\d\+ RETURN 0',
         res)
 enddef
 
@@ -113,8 +133,7 @@ def Test_disassemble_yank_range()
         '\d EXEC   norm! m\[jjm\]\_s*' ..
         '  :''\[,''\]yank\_s*' ..
         '\d EXEC   :''\[,''\]yank\_s*' ..
-        '\d PUSHNR 0\_s*' ..
-        '\d RETURN',
+        '\d RETURN 0',
         res)
 enddef
 
@@ -128,8 +147,21 @@ def Test_disassemble_put_expr()
         ' :3put ="text"\_s*' ..
         '\d PUSHS "text"\_s*' ..
         '\d PUT = 3\_s*' ..
-        '\d PUSHNR 0\_s*' ..
-        '\d RETURN',
+        '\d RETURN 0',
+        res)
+enddef
+
+def s:PutRange()
+  :$-2put a
+enddef
+
+def Test_disassemble_put_range()
+  var res = execute('disass s:PutRange')
+  assert_match('<SNR>\d*_PutRange.*' ..
+        ' :$-2put a\_s*' ..
+        '\d RANGE $-2\_s*' ..
+        '\d PUT a range\_s*' ..
+        '\d RETURN 0',
         res)
 enddef
 
@@ -146,7 +178,7 @@ def Test_disassemble_push()
   var res = execute('disass s:ScriptFuncPush')
   assert_match('<SNR>\d*_ScriptFuncPush.*' ..
         'localbool = true.*' ..
-        ' PUSH v:true.*' ..
+        ' PUSH true.*' ..
         'localspec = v:none.*' ..
         ' PUSH v:none.*' ..
         'localblob = 0z1234.*' ..
@@ -168,6 +200,7 @@ def s:ScriptFuncStore()
   v:char = 'abc'
   s:scriptvar = 'sv'
   g:globalvar = 'gv'
+  g:auto#var = 'av'
   b:buffervar = 'bv'
   w:windowvar = 'wv'
   t:tabpagevar = 'tv'
@@ -191,6 +224,8 @@ def Test_disassemble_store()
         ' STORES s:scriptvar in .*test_vim9_disassemble.vim.*' ..
         'g:globalvar = ''gv''.*' ..
         ' STOREG g:globalvar.*' ..
+        'g:auto#var = ''av''.*' ..
+        ' STOREAUTO g:auto#var.*' ..
         'b:buffervar = ''bv''.*' ..
         ' STOREB b:buffervar.*' ..
         'w:windowvar = ''wv''.*' ..
@@ -218,6 +253,7 @@ def Test_disassemble_store_member()
   assert_match('<SNR>\d*_ScriptFuncStoreMember\_s*' ..
         'var locallist: list<number> = []\_s*' ..
         '\d NEWLIST size 0\_s*' ..
+        '\d SETTYPE list<number>\_s*' ..
         '\d STORE $0\_s*' ..
         'locallist\[0\] = 123\_s*' ..
         '\d PUSHNR 123\_s*' ..
@@ -226,14 +262,37 @@ def Test_disassemble_store_member()
         '\d STORELIST\_s*' ..
         'var localdict: dict<number> = {}\_s*' ..
         '\d NEWDICT size 0\_s*' ..
+        '\d SETTYPE dict<number>\_s*' ..
         '\d STORE $1\_s*' ..
         'localdict\["a"\] = 456\_s*' ..
         '\d\+ PUSHNR 456\_s*' ..
         '\d\+ PUSHS "a"\_s*' ..
         '\d\+ LOAD $1\_s*' ..
         '\d\+ STOREDICT\_s*' ..
-        '\d\+ PUSHNR 0\_s*' ..
-        '\d\+ RETURN',
+        '\d\+ RETURN 0',
+        res)
+enddef
+
+def s:ScriptFuncStoreIndex()
+  var d = {dd: {}}
+  d.dd[0] = 0
+enddef
+
+def Test_disassemble_store_index()
+  var res = execute('disass s:ScriptFuncStoreIndex')
+  assert_match('<SNR>\d*_ScriptFuncStoreIndex\_s*' ..
+        'var d = {dd: {}}\_s*' ..
+        '\d PUSHS "dd"\_s*' ..
+        '\d NEWDICT size 0\_s*' ..
+        '\d NEWDICT size 1\_s*' ..
+        '\d STORE $0\_s*' ..
+        'd.dd\[0\] = 0\_s*' ..
+        '\d PUSHNR 0\_s*' ..
+        '\d PUSHNR 0\_s*' ..
+        '\d LOAD $0\_s*' ..
+        '\d MEMBER dd\_s*' ..
+        '\d STOREINDEX\_s*' ..
+        '\d\+ RETURN 0',
         res)
 enddef
 
@@ -268,8 +327,7 @@ def Test_disassemble_list_assign()
         '\d\+ STORE $1\_s*' ..
         '\d\+ SLICE 2\_s*' ..
         '\d\+ STORE $2\_s*' ..
-        '\d\+ PUSHNR 0\_s*' ..
-        '\d\+ RETURN',
+        '\d\+ RETURN 0',
         res)
 enddef
 
@@ -284,6 +342,7 @@ def Test_disassemble_list_add()
   assert_match('<SNR>\d*_ListAdd\_s*' ..
         'var l: list<number> = []\_s*' ..
         '\d NEWLIST size 0\_s*' ..
+        '\d SETTYPE list<number>\_s*' ..
         '\d STORE $0\_s*' ..
         'add(l, 123)\_s*' ..
         '\d LOAD $0\_s*' ..
@@ -296,8 +355,7 @@ def Test_disassemble_list_add()
         '\d\+ CHECKTYPE number stack\[-1\]\_s*' ..
         '\d\+ LISTAPPEND\_s*' ..
         '\d\+ DROP\_s*' ..
-        '\d\+ PUSHNR 0\_s*' ..
-        '\d\+ RETURN',
+        '\d\+ RETURN 0',
         res)
 enddef
 
@@ -324,8 +382,7 @@ def Test_disassemble_blob_add()
         '\d\+ CHECKTYPE number stack\[-1\]\_s*' ..
         '\d\+ BLOBAPPEND\_s*' ..
         '\d\+ DROP\_s*' ..
-        '\d\+ PUSHNR 0\_s*' ..
-        '\d\+ RETURN',
+        '\d\+ RETURN 0',
         res)
 enddef
 
@@ -390,7 +447,7 @@ enddef
 
 def s:ScriptFuncNew()
   var ll = [1, "two", 333]
-  var dd = #{one: 1, two: "val"}
+  var dd = {one: 1, two: "val"}
 enddef
 
 def Test_disassemble_new()
@@ -402,7 +459,7 @@ def Test_disassemble_new()
         '\d PUSHNR 333\_s*' ..
         '\d NEWLIST size 3\_s*' ..
         '\d STORE $0\_s*' ..
-        'var dd = #{one: 1, two: "val"}\_s*' ..
+        'var dd = {one: 1, two: "val"}\_s*' ..
         '\d PUSHS "one"\_s*' ..
         '\d PUSHNR 1\_s*' ..
         '\d PUSHS "two"\_s*' ..
@@ -510,18 +567,17 @@ def Test_disassemble_closure()
   var res = execute('disass g:Append')
   assert_match('<lambda>\d\_s*' ..
         'local ..= arg\_s*' ..
-        '\d LOADOUTER $0\_s*' ..
+        '\d LOADOUTER level 1 $0\_s*' ..
         '\d LOAD arg\[-1\]\_s*' ..
         '\d CONCAT\_s*' ..
-        '\d STOREOUTER $0\_s*' ..
-        '\d PUSHNR 0\_s*' ..
-        '\d RETURN',
+        '\d STOREOUTER level 1 $0\_s*' ..
+        '\d RETURN 0',
         res)
 
   res = execute('disass g:Get')
   assert_match('<lambda>\d\_s*' ..
         'return local\_s*' ..
-        '\d LOADOUTER $0\_s*' ..
+        '\d LOADOUTER level 1 $0\_s*' ..
         '\d RETURN',
         res)
 
@@ -549,8 +605,7 @@ def Test_disassemble_pcall()
         '\d PCALL top (argc 1)\_s*' ..
         '\d PCALL end\_s*' ..
         '\d DROP\_s*' ..
-        '\d PUSHNR 0\_s*' ..
-        '\d RETURN',
+        '\d RETURN 0',
         res)
 enddef
 
@@ -799,8 +854,7 @@ def Test_disassemble_function()
         '\d PUSHS "UserFunc"\_s*' ..
         '\d BCALL funcref(argc 1)\_s*' ..
         '\d STORE $2\_s*' ..
-        '\d PUSHNR 0\_s*' ..
-        '\d RETURN',
+        '\d RETURN 0',
         instr)
 enddef
 
@@ -827,13 +881,12 @@ def Test_disassemble_channel()
         'var chan1: channel\_s*' ..
         '\d PUSHCHANNEL 0\_s*' ..
         '\d STORE $2\_s*' ..
-        '\d PUSHNR 0\_s*' ..
-        '\d RETURN',
+        '\d RETURN 0',
         instr)
 enddef
 
 def WithLambda(): string
-  var F = {a -> "X" .. a .. "X"}
+  var F = (a) => "X" .. a .. "X"
   return F("x")
 enddef
 
@@ -841,7 +894,7 @@ def Test_disassemble_lambda()
   assert_equal("XxX", WithLambda())
   var instr = execute('disassemble WithLambda')
   assert_match('WithLambda\_s*' ..
-        'var F = {a -> "X" .. a .. "X"}\_s*' ..
+        'var F = (a) => "X" .. a .. "X"\_s*' ..
         '\d FUNCREF <lambda>\d\+\_s*' ..
         '\d STORE $0\_s*' ..
         'return F("x")\_s*' ..
@@ -866,7 +919,7 @@ def Test_disassemble_lambda()
 enddef
 
 def LambdaWithType(): number
-  var Ref = {a: number -> a + 10}
+  var Ref = (a: number) => a + 10
   return Ref(g:value)
 enddef
 
@@ -875,7 +928,7 @@ def Test_disassemble_lambda_with_type()
   assert_equal(15, LambdaWithType())
   var instr = execute('disassemble LambdaWithType')
   assert_match('LambdaWithType\_s*' ..
-        'var Ref = {a: number -> a + 10}\_s*' ..
+        'var Ref = (a: number) => a + 10\_s*' ..
         '\d FUNCREF <lambda>\d\+\_s*' ..
         '\d STORE $0\_s*' ..
         'return Ref(g:value)\_s*' ..
@@ -900,8 +953,7 @@ def Test_nested_func()
         'echomsg "inner"\_s*' ..
         'enddef\_s*' ..
         '\d NEWFUNC <lambda>\d\+ Inner\_s*' ..
-        '\d PUSHNR 0\_s*' ..
-        '\d RETURN',
+        '\d RETURN 0',
         instr)
 enddef
 
@@ -923,8 +975,7 @@ def Test_nested_def_list()
         '\d DEF /Info\_s*' ..
         'def /Info/\_s*' ..
         '\d DEF /Info/\_s*' ..
-        '\d PUSHNR 0\_s*' ..
-        '\d RETURN',
+        '\d RETURN 0',
         instr)
 enddef
 
@@ -971,6 +1022,7 @@ def Test_disassemble_for_loop()
   assert_match('ForLoop\_s*' ..
         'var res: list<number>\_s*' ..
         '\d NEWLIST size 0\_s*' ..
+        '\d SETTYPE list<number>\_s*' ..
         '\d STORE $0\_s*' ..
         'for i in range(3)\_s*' ..
         '\d STORE -1 in $1\_s*' ..
@@ -1055,8 +1107,7 @@ def Test_disassemble_for_loop_unpack()
         'endfor\_s*' ..
         '\d\+ JUMP -> 8\_s*' ..
         '\d\+ DROP\_s*' ..
-        '\d\+ PUSHNR 0\_s*' ..
-        '\d\+ RETURN',
+        '\d\+ RETURN 0',
         instr)
 enddef
 
@@ -1074,9 +1125,9 @@ def Test_disassemble_typecast()
         '\d LOADG g:number\_s*' ..
         '\d CHECKTYPE number stack\[-1\]\_s*' ..
         '\d NEWLIST size 2\_s*' ..
+        '\d SETTYPE list<number>\_s*' ..
         '\d STORE $0\_s*' ..
-        '\d PUSHNR 0\_s*' ..
-        '\d RETURN\_s*',
+        '\d RETURN 0\_s*',
         instr)
 enddef
 
@@ -1222,7 +1273,7 @@ enddef
 
 def StringSlice(): string
   var s = "abcd"
-  var res = s[1:8]
+  var res = s[1 : 8]
   return res
 enddef
 
@@ -1232,7 +1283,7 @@ def Test_disassemble_string_slice()
         'var s = "abcd"\_s*' ..
         '\d PUSHS "abcd"\_s*' ..
         '\d STORE $0\_s*' ..
-        'var res = s\[1:8]\_s*' ..
+        'var res = s\[1 : 8]\_s*' ..
         '\d LOAD $0\_s*' ..
         '\d PUSHNR 1\_s*' ..
         '\d PUSHNR 8\_s*' ..
@@ -1268,7 +1319,7 @@ enddef
 
 def ListSlice(): list<number>
   var l = [1, 2, 3]
-  var res = l[1:8]
+  var res = l[1 : 8]
   return res
 enddef
 
@@ -1281,7 +1332,7 @@ def Test_disassemble_list_slice()
         '\d PUSHNR 3\_s*' ..
         '\d NEWLIST size 3\_s*' ..
         '\d STORE $0\_s*' ..
-        'var res = l\[1:8]\_s*' ..
+        'var res = l\[1 : 8]\_s*' ..
         '\d LOAD $0\_s*' ..
         '\d PUSHNR 1\_s*' ..
         '\d PUSHNR 8\_s*' ..
@@ -1292,7 +1343,7 @@ def Test_disassemble_list_slice()
 enddef
 
 def DictMember(): number
-  var d = #{item: 1}
+  var d = {item: 1}
   var res = d.item
   res = d["item"]
   return res
@@ -1301,7 +1352,7 @@ enddef
 def Test_disassemble_dict_member()
   var instr = execute('disassemble DictMember')
   assert_match('DictMember\_s*' ..
-        'var d = #{item: 1}\_s*' ..
+        'var d = {item: 1}\_s*' ..
         '\d PUSHS "item"\_s*' ..
         '\d PUSHNR 1\_s*' ..
         '\d NEWDICT size 1\_s*' ..
@@ -1342,14 +1393,14 @@ def Test_disassemble_any_index()
 enddef
 
 def AnySlice(): list<number>
-  var res = g:somelist[1:3]
+  var res = g:somelist[1 : 3]
   return res
 enddef
 
 def Test_disassemble_any_slice()
   var instr = execute('disassemble AnySlice')
   assert_match('AnySlice\_s*' ..
-        'var res = g:somelist\[1:3\]\_s*' ..
+        'var res = g:somelist\[1 : 3\]\_s*' ..
         '\d LOADG g:somelist\_s*' ..
         '\d PUSHNR 1\_s*' ..
         '\d PUSHNR 3\_s*' ..
@@ -1398,7 +1449,7 @@ def Test_disassemble_invert_bool()
   var instr = execute('disassemble InvertBool')
   assert_match('InvertBool\_s*' ..
         'var flag = true\_s*' ..
-        '\d PUSH v:true\_s*' ..
+        '\d PUSH true\_s*' ..
         '\d STORE $0\_s*' ..
         'var invert = !flag\_s*' ..
         '\d LOAD $0\_s*' ..
@@ -1473,15 +1524,15 @@ def Test_disassemble_compare()
         ['[1, 2] is aList', 'COMPARELIST is'],
         ['[1, 2] isnot aList', 'COMPARELIST isnot'],
 
-        ['#{a: 1} == aDict', 'COMPAREDICT =='],
-        ['#{a: 1} != aDict', 'COMPAREDICT !='],
-        ['#{a: 1} is aDict', 'COMPAREDICT is'],
-        ['#{a: 1} isnot aDict', 'COMPAREDICT isnot'],
+        ['{a: 1} == aDict', 'COMPAREDICT =='],
+        ['{a: 1} != aDict', 'COMPAREDICT !='],
+        ['{a: 1} is aDict', 'COMPAREDICT is'],
+        ['{a: 1} isnot aDict', 'COMPAREDICT isnot'],
 
-        ['{->33} == {->44}', 'COMPAREFUNC =='],
-        ['{->33} != {->44}', 'COMPAREFUNC !='],
-        ['{->33} is {->44}', 'COMPAREFUNC is'],
-        ['{->33} isnot {->44}', 'COMPAREFUNC isnot'],
+        ['(() => 33) == (() => 44)', 'COMPAREFUNC =='],
+        ['(() => 33) != (() => 44)', 'COMPAREFUNC !='],
+        ['(() => 33) is (() => 44)', 'COMPAREFUNC is'],
+        ['(() => 33) isnot (() => 44)', 'COMPAREFUNC isnot'],
 
         ['77 == g:xx', 'COMPAREANY =='],
         ['77 != g:xx', 'COMPAREANY !='],
@@ -1519,7 +1570,7 @@ def Test_disassemble_compare()
              '  var aString = "yy"',
              '  var aBlob = 0z22',
              '  var aList = [3, 4]',
-             '  var aDict = #{x: 2}',
+             '  var aDict = {x: 2}',
              floatDecl,
              '  if ' .. case[0],
              '    echo 42'
@@ -1563,8 +1614,7 @@ def Test_dsassemble_falsy_op()
       'echo "" ?? "empty string"\_s*' ..
       '\d\+ PUSHS "empty string"\_s*' ..
       '\d\+ ECHO 1\_s*' ..
-      '\d\+ PUSHNR 0\_s*' ..
-      '\d\+ RETURN',
+      '\d\+ RETURN 0',
       res)
 enddef
 
@@ -1591,8 +1641,7 @@ def Test_disassemble_compare_const()
           'if ' .. substitute(case[0], '[[~]', '\\\0', 'g') .. '.*' ..
           '\d PUSHNR 42.*' ..
           '\d ECHO 1.*' ..
-          '\d PUSHNR 0.*' ..
-          '\d RETURN.*',
+          '\d RETURN 0',
           instr)
     else
       # condition false, function just returns
@@ -1600,8 +1649,7 @@ def Test_disassemble_compare_const()
           'if ' .. substitute(case[0], '[[~]', '\\\0', 'g') .. '[ \n]*' ..
           'echo 42[ \n]*' ..
           'endif[ \n]*' ..
-          '\s*\d PUSHNR 0.*' ..
-          '\d RETURN.*',
+          '\d RETURN 0',
           instr)
     endif
 
@@ -1639,8 +1687,7 @@ def Test_disassemble_execute()
         '\d\+ LOAD $1\_s*' ..
         '\d\+ CONCAT\_s*' ..
         '\d\+ EXECUTE 1\_s*' ..
-        '\d\+ PUSHNR 0\_s*' ..
-        '\d\+ RETURN',
+        '\d\+ RETURN 0',
         res)
 enddef
 
@@ -1659,8 +1706,7 @@ def Test_disassemble_echomsg()
         "echoerr 'went' .. 'wrong'\\_s*" ..
         '\d PUSHS "wentwrong"\_s*' ..
         '\d ECHOERR 1\_s*' ..
-        '\d PUSHNR 0\_s*' ..
-        '\d RETURN',
+        '\d RETURN 0',
         res)
 enddef
 
@@ -1769,8 +1815,7 @@ def Test_shuffle()
         '\d SHUFFLE 2 up 1\_s*' ..
         '\d BCALL append(argc 2)\_s*' ..
         '\d DROP\_s*' ..
-        '\d PUSHNR 0\_s*' ..
-        '\d RETURN',
+        '\d RETURN 0',
         res)
 enddef
 
@@ -1793,8 +1838,7 @@ def Test_silent()
         '\d PUSHS "error"\_s*' ..
         '\d ECHOERR 1\_s*' ..
         '\d CMDMOD_REV\_s*' ..
-        '\d PUSHNR 0\_s*' ..
-        '\d RETURN',
+        '\d RETURN 0',
         res)
 enddef
 

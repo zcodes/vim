@@ -219,15 +219,15 @@ def Test_prop_find2()
   # Multiple props per line, start on the first, should find the second.
   new
   ['the quikc bronw fox jumsp over the layz dog']->repeat(2)->setline(1)
-  prop_type_add('misspell', #{highlight: 'ErrorMsg'})
+  prop_type_add('misspell', {highlight: 'ErrorMsg'})
   for lnum in [1, 2]
     for col in [8, 14, 24, 38]
-      prop_add(lnum, col, #{type: 'misspell', length: 2})
+      prop_add(lnum, col, {type: 'misspell', length: 2})
     endfor
   endfor
   cursor(1, 8)
-  var expected = {'lnum': 1, 'id': 0, 'col': 14, 'end': 1, 'type': 'misspell', 'length': 2, 'start': 1}
-  var result = prop_find(#{type: 'misspell', skipstart: true}, 'f')
+  var expected = {lnum: 1, id: 0, col: 14, end: 1, type: 'misspell', length: 2, start: 1}
+  var result = prop_find({type: 'misspell', skipstart: true}, 'f')
   assert_equal(expected, result)
 
   prop_type_delete('misspell')
@@ -322,7 +322,7 @@ func Test_prop_remove()
 endfunc
 
 def Test_prop_add_vim9()
-  prop_type_add('comment', #{
+  prop_type_add('comment', {
       highlight: 'Directory',
       priority: 123,
       start_incl: true,
@@ -336,7 +336,7 @@ def Test_prop_remove_vim9()
   new
   AddPropTypes()
   SetupPropsInFirstLine()
-  assert_equal(1, prop_remove({'type': 'three', 'id': 13, 'both': true, 'all': true}))
+  assert_equal(1, prop_remove({type: 'three', id: 13, both: true, all: true}))
   DeletePropTypes()
   bwipe!
 enddef
@@ -1357,5 +1357,25 @@ func Test_prop_block_insert()
   bwipe!
   call prop_type_delete('test')
 endfunc
+
+" this was causing an ml_get error because w_botline was wrong
+func Test_prop_one_line_window()
+  enew
+  call range(2)->setline(1)
+  call prop_type_add('testprop', {})
+  call prop_add(1, 1, {'type': 'testprop'})
+  call popup_create('popup', {'textprop': 'testprop'})
+  $
+  new
+  wincmd _
+  call feedkeys("\r", 'xt')
+  redraw
+
+  call popup_clear()
+  call prop_type_delete('testprop')
+  close
+  bwipe!
+endfunc
+
 
 " vim: shiftwidth=2 sts=2 expandtab

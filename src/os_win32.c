@@ -862,6 +862,12 @@ win32_enable_privilege(LPTSTR lpszPrivilege, BOOL bEnable)
 }
 #endif
 
+#ifdef _MSC_VER
+// Suppress the deprecation warning for using GetVersionEx().
+// It is needed for implementing "windowsversion()".
+# pragma warning(push)
+# pragma warning(disable: 4996)
+#endif
 /*
  * Set "win8_or_later" and fill in "windowsVersion" if possible.
  */
@@ -892,6 +898,9 @@ PlatformId(void)
 	done = TRUE;
     }
 }
+#ifdef _MSC_VER
+# pragma warning(pop)
+#endif
 
 #if !defined(FEAT_GUI_MSWIN) || defined(VIMDLL)
 
@@ -1590,26 +1599,14 @@ WaitForChar(long msec, int ignore_input)
 	{
 	    DWORD dwWaitTime = dwEndTime - dwNow;
 
-# ifdef FEAT_JOB_CHANNEL
-	    // Check channel while waiting for input.
-	    if (dwWaitTime > 100)
-	    {
-		dwWaitTime = 100;
-		// If there is readahead then parse_queued_messages() timed out
-		// and we should call it again soon.
-		if (channel_any_readahead())
-		    dwWaitTime = 10;
-	    }
-# endif
-# ifdef FEAT_BEVAL_GUI
-	    if (p_beval && dwWaitTime > 100)
-		// The 'balloonexpr' may indirectly invoke a callback while
-		// waiting for a character, need to check often.
-		dwWaitTime = 100;
-# endif
+	    // Don't wait for more than 11 msec to avoid dropping characters,
+	    // check channel while waiting for input and handle a callback from
+	    // 'balloonexpr'.
+	    if (dwWaitTime > 11)
+		dwWaitTime = 11;
+
 # ifdef FEAT_MZSCHEME
-	    if (mzthreads_allowed() && p_mzq > 0
-				    && (msec < 0 || (long)dwWaitTime > p_mzq))
+	    if (mzthreads_allowed() && p_mzq > 0 && (long)dwWaitTime > p_mzq)
 		dwWaitTime = p_mzq; // don't wait longer than 'mzquantum'
 # endif
 # ifdef FEAT_TIMERS
@@ -7118,13 +7115,12 @@ mch_fopen(const char *name, const char *mode)
 /*
  * SUB STREAM (aka info stream) handling:
  *
- * NTFS can have sub streams for each file.  Normal contents of file is
- * stored in the main stream, and extra contents (author information and
- * title and so on) can be stored in sub stream.  After Windows 2000, user
- * can access and store those informations in sub streams via explorer's
- * property menuitem in right click menu.  Those informations in sub streams
- * were lost when copying only the main stream.  So we have to copy sub
- * streams.
+ * NTFS can have sub streams for each file.  The normal contents of a file is
+ * stored in the main stream, and extra contents (author information, title and
+ * so on) can be stored in a sub stream.  After Windows 2000, the user can
+ * access and store this information in sub streams via an explorer's property
+ * menu item in the right click menu.  This information in sub streams was lost
+ * when copying only the main stream.  Therefore we have to copy sub streams.
  *
  * Incomplete explanation:
  *	http://msdn.microsoft.com/library/en-us/dnw2k/html/ntfs5.asp

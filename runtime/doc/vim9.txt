@@ -1,4 +1,4 @@
-*vim9.txt*	For Vim version 8.2.  Last change: 2020 Nov 25
+*vim9.txt*	For Vim version 8.2.  Last change: 2021 Jan 03
 
 
 		  VIM REFERENCE MANUAL	  by Bram Moolenaar
@@ -6,7 +6,7 @@
 
 THIS IS STILL UNDER DEVELOPMENT - ANYTHING CAN BREAK - ANYTHING CAN CHANGE
 
-Vim9 script commands and expressions.			*vim9*
+Vim9 script commands and expressions.			*Vim9* *vim9*
 
 Most expression help is in |eval.txt|.  This file is about the new syntax and
 features in Vim9 script.
@@ -14,7 +14,7 @@ features in Vim9 script.
 THIS IS STILL UNDER DEVELOPMENT - ANYTHING CAN BREAK - ANYTHING CAN CHANGE
 
 
-1.  What is Vim9 script?		|vim9-script|
+1.  What is Vim9 script?		|Vim9-script|
 2.  Differences				|vim9-differences|
 3.  New style functions			|fast-functions|
 4.  Types				|vim9-types|
@@ -25,7 +25,7 @@ THIS IS STILL UNDER DEVELOPMENT - ANYTHING CAN BREAK - ANYTHING CAN CHANGE
 
 ==============================================================================
 
-1. What is Vim9 script?					*vim9-script*
+1. What is Vim9 script?					*Vim9-script*
 
 THIS IS STILL UNDER DEVELOPMENT - ANYTHING CAN BREAK - ANYTHING CAN CHANGE
 
@@ -112,7 +112,13 @@ In Vi # is a command to list text with numbers.  In Vim9 script you can use
 	101 number
 
 To improve readability there must be a space between a command and the #
-that starts a comment.
+that starts a comment: >
+	var name = value # comment
+	var name = value# error!
+
+In legacy Vim script # is also used for the alternate file name.  In Vim9
+script you need to use %% instead.  Instead of ## use %%% (stands for all
+arguments).
 
 
 Vim9 functions ~
@@ -123,8 +129,8 @@ often 10x to 100x times.
 Many errors are already found when compiling, before the function is executed.
 The syntax is strict, to enforce code that is easy to read and understand.
 
-Compilation is done when:
-- the function is first called
+Compilation is done when either of these is encountered:
+- the first time the function is called
 - when the `:defcompile` command is encountered in the script where the
   function was defined
 - `:disassemble` is used for the function.
@@ -132,8 +138,9 @@ Compilation is done when:
   reference
 
 `:def` has no options like `:function` does: "range", "abort", "dict" or
-"closure".  A `:def` function always aborts on an error, does not get a range
-passed and cannot be a "dict" function.
+"closure".  A `:def` function always aborts on an error (unless `:silent!` was
+used for the command or inside a `:try` block), does not get a range passed
+cannot be a "dict" function, and can always be a closure.
 
 The argument types and return type need to be specified.  The "any" type can
 be used, type checking will then be done at runtime, like with legacy
@@ -185,6 +192,33 @@ variables could be defined anywhere (good luck finding out where!).
 Global functions can still be defined and deleted at nearly any time.  In
 Vim9 script script-local functions are defined once when the script is sourced
 and cannot be deleted or replaced.
+
+When compiling a function and a function call is encountered for a function
+that is not (yet) defined, the |FuncUndefined| autocommand is not triggered.
+You can use an autoload function if needed, or call a legacy function and have
+|FuncUndefined| triggered there.
+
+
+Reloading a Vim9 script clears functions and variables by default ~
+							*vim9-reload*
+When loading a legacy Vim script a second time nothing is removed, the
+commands will replace existing variables and functions and create new ones.
+
+When loading a Vim9 script a second time all existing script-local functions
+and variables are deleted, thus you start with a clean slate.  This is useful
+if you are developing a plugin and want to try a new version.  If you renamed
+something you don't have to worry about the old name still hanging around.
+
+If you do want to keep items, use: >
+	vim9script noclear
+
+You want to use this in scripts that use a `finish` command to bail out at
+some point when loaded again.  E.g. when a buffer local option is set: >
+	vim9script noclear
+	setlocal completefunc=SomeFunc
+	if exists('*g:SomeFunc') | finish | endif
+	def g:SomeFunc()
+	....
 
 
 Variable declarations with :var, :final and :const ~
@@ -334,11 +368,49 @@ When using `function()` the resulting type is "func", a function with any
 number of arguments and any return type.  The function can be defined later.
 
 
+Lambda using => instead of -> ~
+
+In legacy script there can be confusion between using "->" for a method call
+and for a lambda.  Also, when a "{" is found the parser needs to figure out if
+it is the start of a lambda or a dictionary, which is now more complicated
+because of the use of argument types.
+
+To avoid these problems Vim9 script uses a different syntax for a lambda,
+which is similar to Javascript: >
+	var Lambda = (arg) => expression
+
+No line break is allowed in the arguments of a lambda up to and including the
+"=>".  This is OK: >
+	filter(list, (k, v) =>
+			v > 0)
+This does not work: >
+	filter(list, (k, v)
+			=> v > 0)
+This also does not work: >
+	filter(list, (k,
+			v) => v > 0)
+But you can use a backslash to concatenate the lines before parsing: >
+	filter(list, (k,
+		\	v)
+		\	=> v > 0)
+
+Additionally, a lambda can contain statements in {}: >
+	var Lambda = (arg) => {
+		g:was_called = 'yes'
+		return expression
+	    }
+NOT IMPLEMENTED YET
+
+To avoid the "{" of a dictionary literal to be recognized as a statement block
+wrap it in parenthesis: >
+	var Lambda = (arg) => ({key: 42})
+
+
 Automatic line continuation ~
 
 In many cases it is obvious that an expression continues on the next line.  In
-those cases there is no need to prefix the line with a backslash
-|line-continuation|.  For example, when a list spans multiple lines: >
+those cases there is no need to prefix the line with a backslash (see
+|line-continuation|).  For example, when a list spans multiple lines: >
 	var mylist = [
 		'one',
 		'two',
@@ -375,6 +447,12 @@ before it: >
 	var result = MyDict
 			.member
 
+For commands that have an argument that is a list of commands, the | character
+at the start of the line indicates line continuation: >
+	autocmd BufNewFile *.match if condition
+		|   echo 'match'
+		| endif
+
 <							*E1050*
 To make it possible for the operator at the start of the line to be
 recognized, it is required to put a colon before a range.  This will add
@@ -398,6 +476,16 @@ arguments: >
 		separator = '-'
 		): string
 
+Since a continuation line cannot be easily recognized the parsing of commands
+has been made stricter.  E.g., because of the error in the first line, the
+second line is seen as a separate command: >
+	popup_create(some invalid expression, {
+	   exit_cb: Func})
+Now "exit_cb: Func})" is actually a valid command: save any changes to the
+file "_cb: Func})" and exit.  To avoid this kind of mistake in Vim9 script
+there must be white space between most command names and the argument.
+
+
 Notes:
 - "enddef" cannot be used at the start of a continuation line, it ends the
   current function.
@@ -417,14 +505,6 @@ Notes:
 <  This does not work: >
 	echo [1, 2]
 		[3, 4]
-- No line break is allowed in the arguments of a lambda, between the "{" and
-  "->".  This is OK: >
-	filter(list, {k, v ->
-			v > 0})
-<  This does not work: >
-	filter(list, {k,
-			v -> v > 0})
-
 
 No curly braces expansion ~
 
@@ -436,19 +516,25 @@ Dictionary literals ~
 Traditionally Vim has supported dictionary literals with a {} syntax: >
 	let dict = {'key': value}
 
-Later it became clear that using a simple key name is very common, thus
-literally dictionaries were introduced in a backwards compatible way: >
+Later it became clear that using a simple text key is very common, thus
+literal dictionaries were introduced in a backwards compatible way: >
 	let dict = #{key: value}
 
-However, this #{} syntax is unlike any existing language.  As it appears that
-using a literal key is much more common than using an expression, and
+However, this #{} syntax is unlike any existing language.  As it turns out
+that using a literal key is much more common than using an expression, and
 considering that JavaScript uses this syntax, using the {} form for dictionary
-literals was considered a much more useful syntax.  In Vim9 script the {} form
+literals is considered a much more useful syntax.  In Vim9 script the {} form
 uses literal keys: >
 	let dict = {key: value}
 
-In case an expression needs to be used for the key, square brackets can be
-used, just like in JavaScript: >
+This works for alphanumeric characters, underscore and dash.  If you want to
+use another character, use a single or double quoted string: >
+	let dict = {'key with space': value}
+	let dict = {"key\twith\ttabs": value}
+	let dict = {'': value}  		# empty key
+
+In case the key needs to be an expression, square brackets can be used, just
+like in JavaScript: >
 	let dict = {["key" .. nr]: value}
 
 
@@ -478,6 +564,13 @@ command: >
 	var name = 234 # OK
 
 White space is required around most operators.
+
+White space is required in a sublist (list slice) around the ":", except at
+the start and end: >
+	otherlist = mylist[v : count]  	# v:count has a different meaning
+	otherlist = mylist[:]		# make a copy of the List
+	otherlist = mylist[v :]
+	otherlist = mylist[: v]
 
 White space is not allowed:
 - Between a function name and the "(": >
@@ -509,7 +602,7 @@ is either falsy or truthy.  This is mostly like JavaScript, except that an
 empty list and dict is falsy:
 
 	type		truthy when ~
-	bool		v:true or 1
+	bool		true, v:true or 1
 	number		non-zero
 	float		non-zero
 	string		non-empty
@@ -517,11 +610,11 @@ empty list and dict is falsy:
 	list		non-empty (different from JavaScript)
 	dictionary	non-empty (different from JavaScript)
 	func		when there is a function name
-	special		v:true
+	special		true or v:true
 	job		when not NULL
 	channel		when not NULL
 	class		when not NULL
-	object		when not NULL (TODO: when isTrue() returns v:true)
+	object		when not NULL (TODO: when isTrue() returns true)
 
 The boolean operators "||" and "&&" expect the values to be boolean, zero or
 one: >
@@ -543,12 +636,15 @@ result is a boolean.  "!!" can be used to turn any value into boolean: >
 When using "`.."` for string concatenation arguments of simple types are
 always converted to string: >
 	'hello ' .. 123  == 'hello 123'
-	'hello ' .. v:true  == 'hello v:true'
+	'hello ' .. v:true  == 'hello true'
 
 Simple types are string, float, special and bool.  For other types |string()|
 can be used.
-							*false* *true*
-In Vim9 script one can use "true" for v:true and "false" for v:false.
+							*false* *true* *null*
+In Vim9 script one can use "true" for v:true, "false" for v:false and "null"
+for v:null.  When converting a boolean to a string "false" and "true" are
+used, not "v:false" and "v:true" like in legacy script.  "v:none" is not
+changed, it is only used in JSON and has no equivalent in other languages.
 
 Indexing a string with [idx] or [idx, idx] uses character indexes instead of
 byte indexes. Example: >
@@ -619,6 +715,13 @@ command.  This will give an error for missing `endif`: >
 	  if has('feature') | use-feature | endif
 	enddef
 
+Other differences ~
+
+Patterns are used like 'magic' is set, unless explicitly overruled.
+The 'edcompatible' option value is not used.
+The 'gdefault' option value is not used.
+
+
 ==============================================================================
 
 3. New style functions					*fast-functions*
@@ -682,18 +785,24 @@ prefix and they do not need to exist (they can be deleted any time).
 Limitations ~
 
 Local variables will not be visible to string evaluation.  For example: >
-	def EvalString(): list<string>
+	def MapList(): list<string>
 	  var list = ['aa', 'bb', 'cc', 'dd']
 	  return range(1, 2)->map('list[v:val]')
 	enddef
 
 The map argument is a string expression, which is evaluated without the
 function scope.  Instead, use a lambda: >
-	def EvalString(): list<string>
+	def MapList(): list<string>
 	  var list = ['aa', 'bb', 'cc', 'dd']
-	  return range(1, 2)->map({ _, v -> list[v] })
+	  return range(1, 2)->map(( _, v) => list[v])
 	enddef
 
+The same is true for commands that are not compiled, such as `:global`.
+For these the backtick expansion can be used.  Example: >
+	def Replace()
+	  var newText = 'blah'
+	  g/pattern/s/^/`=newText`/
+	enddef
 
 ==============================================================================
 
@@ -788,12 +897,14 @@ compiled code the "any" type is assumed.
 This can be a problem when the "any" type is undesired and the actual type is
 expected to always be the same.  For example, when declaring a list: >
 	var l: list<number> = [1, g:two]
-This will give an error, because "g:two" has type "any".  To avoid this, use a
-type cast: >
+At compile time Vim doesn't know the type of "g:two" and the expression type
+becomes list<any>.  An instruction is generated to check the list type before
+doing the assignment, which is a bit inefficient.
+							*type-casting*
+To avoid this, use a type cast: >
 	var l: list<number> = [1, <number>g:two]
-<							*type-casting*
-The compiled code will then check that "g:two" is a number at runtime and give
-an error if it isn't.  This is called type casting.
+The compiled code will then only check that "g:two" is a number and give an
+error if it isn't.  This is called type casting.
 
 The syntax of a type cast is:  "<" {type} ">".  There cannot be white space
 after the "<" or before the ">" (to avoid them being confused with
@@ -851,7 +962,7 @@ that you don't do that.
 
 
 Namespace ~
-							*:vim9script* *:vim9*
+							*vim9-namespace*
 To recognize a file that can be imported the `vim9script` statement must
 appear as the first statement in the file.  It tells Vim to interpret the
 script in its own namespace, instead of the global namespace.  If a file

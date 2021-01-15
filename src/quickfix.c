@@ -4431,21 +4431,26 @@ qf_process_qftf_option(void)
 }
 
 /*
- * Update the w:quickfix_title variable in the quickfix/location list window
+ * Update the w:quickfix_title variable in the quickfix/location list window in
+ * all the tab pages.
  */
     static void
 qf_update_win_titlevar(qf_info_T *qi)
 {
+    qf_list_T	*qfl = qf_get_curlist(qi);
+    tabpage_T	*tp;
     win_T	*win;
-    win_T	*curwin_save;
+    win_T	*save_curwin = curwin;
 
-    if ((win = qf_find_win(qi)) != NULL)
+    FOR_ALL_TAB_WINDOWS(tp, win)
     {
-	curwin_save = curwin;
-	curwin = win;
-	qf_set_title_var(qf_get_curlist(qi));
-	curwin = curwin_save;
+	if (is_qf_win(win, qi))
+	{
+	    curwin = win;
+	    qf_set_title_var(qfl);
+	}
     }
+    curwin = save_curwin;
 }
 
 /*
@@ -6508,7 +6513,7 @@ wipe_dummy_buffer(buf_T *buf, char_u *dirname_start)
 	enter_cleanup(&cs);
 #endif
 
-	wipe_buffer(buf, FALSE);
+	wipe_buffer(buf, TRUE);
 
 #if defined(FEAT_EVAL)
 	// Restore the error/interrupt/exception state if not discarded by a
@@ -8094,6 +8099,7 @@ ex_helpgrep(exarg_T *eap)
     int		new_qi = FALSE;
     char_u	*au_name =  NULL;
     char_u	*lang = NULL;
+    int		updated = FALSE;
 
     switch (eap->cmdidx)
     {
@@ -8145,14 +8151,24 @@ ex_helpgrep(exarg_T *eap)
 	qfl->qf_ptr = qfl->qf_start;
 	qfl->qf_index = 1;
 	qf_list_changed(qfl);
-	qf_update_buffer(qi, NULL);
+	updated = TRUE;
     }
 
     if (p_cpo == empty_option)
 	p_cpo = save_cpo;
     else
-	// Darn, some plugin changed the value.
+    {
+	// Darn, some plugin changed the value.  If it's still empty it was
+	// changed and restored, need to restore in the complicated way.
+	if (*p_cpo == NUL)
+	    set_option_value((char_u *)"cpo", 0L, save_cpo, 0);
 	free_string_option(save_cpo);
+    }
+
+    if (updated)
+	// This may open a window and source scripts, do this after 'cpo' was
+	// restored.
+	qf_update_buffer(qi, NULL);
 
     if (au_name != NULL)
     {

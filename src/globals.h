@@ -230,6 +230,8 @@ EXTERN int	did_endif INIT(= FALSE);    // just had ":endif"
 EXTERN int	did_emsg;		    // set by emsg() when the message
 					    // is displayed or thrown
 #ifdef FEAT_EVAL
+EXTERN int	did_emsg_def;		    // set by emsg() when emsg_silent
+					    // is set before calling a function
 EXTERN int	did_emsg_cumul;		    // cumulative did_emsg, increased
 					    // when did_emsg is reset.
 EXTERN int	called_vim_beep;	    // set if vim_beep() is called
@@ -287,6 +289,14 @@ EXTERN garray_T	exestack INIT5(0, 0, sizeof(estack_T), 50, NULL);
 #define SOURCING_NAME (((estack_T *)exestack.ga_data)[exestack.ga_len - 1].es_name)
 // line number in the message source or zero
 #define SOURCING_LNUM (((estack_T *)exestack.ga_data)[exestack.ga_len - 1].es_lnum)
+
+// Script CTX being sourced or was sourced to define the current function.
+EXTERN sctx_T	current_sctx
+#ifdef FEAT_EVAL
+    INIT4(0, 0, 0, 0);
+#else
+    INIT(= {0});
+#endif
 
 #ifdef FEAT_EVAL
 // whether inside compile_def_function()
@@ -390,9 +400,6 @@ EXTERN int	may_garbage_collect INIT(= FALSE);
 EXTERN int	want_garbage_collect INIT(= FALSE);
 EXTERN int	garbage_collect_at_exit INIT(= FALSE);
 
-// Script CTX being sourced or was sourced to define the current function.
-EXTERN sctx_T	current_sctx INIT4(0, 0, 0, 0);
-
 
 // Commonly used types.
 EXTERN type_T t_unknown INIT6(VAR_UNKNOWN, 0, 0, TTFLAG_STATIC, NULL, NULL);
@@ -401,6 +408,7 @@ EXTERN type_T t_void INIT6(VAR_VOID, 0, 0, TTFLAG_STATIC, NULL, NULL);
 EXTERN type_T t_bool INIT6(VAR_BOOL, 0, 0, TTFLAG_STATIC, NULL, NULL);
 EXTERN type_T t_special INIT6(VAR_SPECIAL, 0, 0, TTFLAG_STATIC, NULL, NULL);
 EXTERN type_T t_number INIT6(VAR_NUMBER, 0, 0, TTFLAG_STATIC, NULL, NULL);
+EXTERN type_T t_number_bool INIT6(VAR_NUMBER, 0, 0, TTFLAG_STATIC|TTFLAG_BOOL_OK, NULL, NULL);
 EXTERN type_T t_float INIT6(VAR_FLOAT, 0, 0, TTFLAG_STATIC, NULL, NULL);
 EXTERN type_T t_string INIT6(VAR_STRING, 0, 0, TTFLAG_STATIC, NULL, NULL);
 EXTERN type_T t_blob INIT6(VAR_BLOB, 0, 0, TTFLAG_STATIC, NULL, NULL);
@@ -1134,6 +1142,10 @@ EXTERN int	is_export INIT(= FALSE);    // :export {cmd}
 
 EXTERN int	msg_silent INIT(= 0);	// don't print messages
 EXTERN int	emsg_silent INIT(= 0);	// don't print error messages
+#ifdef FEAT_EVAL
+EXTERN int	emsg_silent_def INIT(= 0);  // value of emsg_silent when a :def
+					    // function is called
+#endif
 EXTERN int	emsg_noredir INIT(= 0);	// don't redirect error messages
 EXTERN int	cmd_silent INIT(= FALSE); // don't echo the command line
 
@@ -1932,3 +1944,7 @@ EXTERN int channel_need_redraw INIT(= FALSE);
 
 #define FOR_ALL_LIST_ITEMS(l, li) \
     for ((li) = (l)->lv_first; (li) != NULL; (li) = (li)->li_next)
+
+// While executing a regexp and set to OPTION_MAGIC_ON or OPTION_MAGIC_OFF this
+// overrules p_magic.  Otherwise set to OPTION_MAGIC_NOT_SET.
+EXTERN optmagic_T magic_overruled INIT(= OPTION_MAGIC_NOT_SET);

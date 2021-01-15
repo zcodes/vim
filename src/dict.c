@@ -107,6 +107,8 @@ rettv_dict_set(typval_T *rettv, dict_T *d)
 dict_free_contents(dict_T *d)
 {
     hashtab_free_contents(&d->dv_hashtab);
+    free_type(d->dv_type);
+    d->dv_type = NULL;
 }
 
 /*
@@ -783,24 +785,76 @@ dict2string(typval_T *tv, int copyID, int restore_copyID)
 }
 
 /*
+ * Advance over a literal key, including "-".  If the first character is not a
+ * literal key character then "key" is returned.
+ */
+    char_u *
+skip_literal_key(char_u *key)
+{
+    char_u *p;
+
+    for (p = key; ASCII_ISALNUM(*p) || *p == '_' || *p == '-'; ++p)
+	;
+    return p;
+}
+
+/*
  * Get the key for #{key: val} into "tv" and advance "arg".
  * Return FAIL when there is no valid key.
  */
     static int
-get_literal_key(char_u **arg, typval_T *tv)
+get_literal_key_tv(char_u **arg, typval_T *tv)
 {
-    char_u *p;
+    char_u *p = skip_literal_key(*arg);
 
-    if (!ASCII_ISALNUM(**arg) && **arg != '_' && **arg != '-')
+    if (p == *arg)
 	return FAIL;
-
-    for (p = *arg; ASCII_ISALNUM(*p) || *p == '_' || *p == '-'; ++p)
-	;
     tv->v_type = VAR_STRING;
     tv->vval.v_string = vim_strnsave(*arg, p - *arg);
 
     *arg = p;
     return OK;
+}
+
+/*
+ * Get a literal key for a Vim9 dict:
+ * {"name": value},
+ * {'name': value},
+ * {name: value} use "name" as a literal key
+ * Return the key in allocated memory or NULL in the case of an error.
+ * "arg" is advanced to just after the key.
+ */
+    char_u *
+get_literal_key(char_u **arg)
+{
+    char_u	*key;
+    char_u	*end;
+    typval_T	rettv;
+
+    if (**arg == '\'')
+    {
+	if (eval_lit_string(arg, &rettv, TRUE) == FAIL)
+	    return NULL;
+	key = rettv.vval.v_string;
+    }
+    else if (**arg == '"')
+    {
+	if (eval_string(arg, &rettv, TRUE) == FAIL)
+	    return NULL;
+	key = rettv.vval.v_string;
+    }
+    else
+    {
+	end = skip_literal_key(*arg);
+	if (end == *arg)
+	{
+	    semsg(_(e_invalid_key_str), *arg);
+	    return NULL;
+	}
+	key = vim_strnsave(*arg, end - *arg);
+	*arg = end;
+    }
+    return key;
 }
 
 /*
@@ -851,17 +905,22 @@ eval_dict(char_u **arg, typval_T *rettv, evalarg_T *evalarg, int literal)
     *arg = skipwhite_and_linebreak(*arg + 1, evalarg);
     while (**arg != '}' && **arg != NUL)
     {
-	char_u *p = to_name_end(*arg, FALSE);
+	int	has_bracket = vim9script && **arg == '[';
 
-	if (literal || (vim9script && *p == ':'))
+	if (literal)
 	{
-	    if (get_literal_key(arg, &tvkey) == FAIL)
+	    if (get_literal_key_tv(arg, &tvkey) == FAIL)
 		goto failret;
+	}
+	else if (vim9script && !has_bracket)
+	{
+	    tvkey.vval.v_string = get_literal_key(arg);
+	    if (tvkey.vval.v_string == NULL)
+		goto failret;
+	    tvkey.v_type = VAR_STRING;
 	}
 	else
 	{
-	    int		has_bracket = vim9script && **arg == '[';
-
 	    if (has_bracket)
 		*arg = skipwhite(*arg + 1);
 	    if (eval1(arg, &tvkey, evalarg) == FAIL)	// recursive!
@@ -872,6 +931,7 @@ eval_dict(char_u **arg, typval_T *rettv, evalarg_T *evalarg, int literal)
 		if (**arg != ']')
 		{
 		    emsg(_(e_missing_matching_bracket_after_dict_key));
+		    clear_tv(&tvkey);
 		    return FAIL;
 		}
 		++*arg;
@@ -893,6 +953,11 @@ eval_dict(char_u **arg, typval_T *rettv, evalarg_T *evalarg, int literal)
 	}
 	if (evaluate)
 	{
+	    if (vim9script && check_for_string(&tvkey) == FAIL)
+	    {
+		clear_tv(&tvkey);
+		goto failret;
+	    }
 	    key = tv_get_string_buf_chk(&tvkey, buf);
 	    if (key == NULL)
 	    {
@@ -994,6 +1059,12 @@ dict_extend(dict_T *d1, dict_T *d2, char_u *action)
     hashitem_T	*hi2;
     int		todo;
     char_u	*arg_errmsg = (char_u *)N_("extend() argument");
+    type_T	*type;
+
+    if (d1->dv_type != NULL && d1->dv_type->tt_member != NULL)
+	type = d1->dv_type->tt_member;
+    else
+	type = NULL;
 
     todo = (int)d2->dv_hashtab.ht_used;
     for (hi2 = d2->dv_hashtab.ht_array; todo > 0; ++hi2)
@@ -1010,9 +1081,14 @@ dict_extend(dict_T *d1, dict_T *d2, char_u *action)
 			&& HI2DI(hi2)->di_tv.v_type == VAR_FUNC
 			&& var_wrong_func_name(hi2->hi_key, di1 == NULL))
 		    break;
-		if (!valid_varname(hi2->hi_key))
+		if (!valid_varname(hi2->hi_key, TRUE))
 		    break;
 	    }
+
+	    if (type != NULL
+		     && check_typval_type(type, &HI2DI(hi2)->di_tv, 0) == FAIL)
+		break;
+
 	    if (di1 == NULL)
 	    {
 		di1 = dictitem_copy(HI2DI(hi2));

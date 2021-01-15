@@ -821,6 +821,10 @@ func Test_popup_with_mask()
   " clean up
   call StopVimInTerminal(buf)
   call delete('XtestPopupMask')
+
+  " this was causing a crash
+  call popup_create('test', #{mask: [[0, 0, 0, 0]]})
+  call popup_clear()
 endfunc
 
 func Test_popup_select()
@@ -1766,6 +1770,16 @@ func Test_popup_title()
   call term_sendkeys(buf, ":\<CR>")
   call VerifyScreenDump(buf, 'Test_popupwin_longtitle_2', {})
 
+  call term_sendkeys(buf, ":call popup_clear()\<CR>")
+  call term_sendkeys(buf, ":call popup_create(['aaa', 'bbb'], #{title: 'Title', minwidth: 12, padding: [2, 2, 2, 2]})\<CR>")
+  call term_sendkeys(buf, ":\<CR>")
+  call VerifyScreenDump(buf, 'Test_popupwin_longtitle_3', {})
+
+  call term_sendkeys(buf, ":call popup_clear()\<CR>")
+  call term_sendkeys(buf, ":call popup_create(['aaa', 'bbb'], #{title: 'Title', minwidth: 12, border: [], padding: [2, 2, 2, 2]})\<CR>")
+  call term_sendkeys(buf, ":\<CR>")
+  call VerifyScreenDump(buf, 'Test_popupwin_longtitle_4', {})
+
   " clean up
   call StopVimInTerminal(buf)
   call delete('XtestPopupTitle')
@@ -2172,7 +2186,7 @@ func Test_popup_scrollbar()
     endfunc
 
     def CreatePopup(text: list<string>)
-      popup_create(text, #{
+      popup_create(text, {
 	    \ minwidth: 30,
 	    \ maxwidth: 30,
 	    \ minheight: 4,
@@ -2663,13 +2677,14 @@ func Test_popupwin_terminal_buffer()
 
   let termbuf = term_start(&shell, #{hidden: 1})
   let winid = popup_create(termbuf, #{minwidth: 40, minheight: 10, border: []})
-  " Wait for shell to start and show a prompt
+  " Wait for shell to start
   call WaitForAssert({-> assert_equal("run", job_status(term_getjob(termbuf)))})
-  sleep 20m
+  " Wait for a prompt (see border char first, then space after prompt)
+  call WaitForAssert({ -> assert_equal(' ', screenstring(screenrow(), screencol() - 1))})
 
   " When typing a character, the cursor is after it.
   call feedkeys("x", 'xt')
-  sleep 10m
+  call term_wait(termbuf)
   redraw
   call WaitForAssert({ -> assert_equal('x', screenstring(screenrow(), screencol() - 1))})
   call feedkeys("\<BS>", 'xt')
@@ -2717,7 +2732,7 @@ def Popupwin_close_prevwin()
   split
   wincmd b
   assert_equal(2, winnr())
-  var buf = term_start(&shell, #{hidden: 1})
+  var buf = term_start(&shell, {hidden: 1})
   popup_create(buf, {})
   TermWait(buf, 100)
   popup_clear(true)
@@ -3215,6 +3230,9 @@ func Get_popupmenu_lines()
       call setline(1, 'text text text text text text text ')
       func ChangeColor()
 	let id = popup_findinfo()
+	if buflisted(winbufnr(id))
+	  call setline(1, 'buffer is listed')
+	endif
 	eval id->popup_setoptions(#{highlight: 'InfoPopup'})
       endfunc
 
@@ -3294,7 +3312,7 @@ func Test_popupmenu_info_border()
   call term_sendkeys(buf, "cc\<C-X>\<C-U>")
   call VerifyScreenDump(buf, 'Test_popupwin_infopopup_6', {})
 
-  " Hide the info popup, cycle trough buffers, make sure it didn't get
+  " Hide the info popup, cycle through buffers, make sure it didn't get
   " deleted.
   call term_sendkeys(buf, "\<Esc>")
   call term_sendkeys(buf, ":set hidden\<CR>")
@@ -3708,11 +3726,18 @@ func Test_popupwin_latin1_encoding()
       set encoding=latin1
       terminal cat Xmultibyte
       call popup_create(['one', 'two', 'three', 'four'], #{line: 1, col: 10})
+      redraw
+      " wait for "cat" to finish
+      while execute('ls!') !~ 'finished'
+	sleep 10m
+      endwhile
+      echo "Done"
   END
   call writefile(lines, 'XtestPopupLatin')
   call writefile([repeat("\u3042 ", 120)], 'Xmultibyte')
 
   let buf = RunVimInTerminal('-S XtestPopupLatin', #{rows: 10})
+  call WaitForAssert({-> assert_match('Done', term_getline(buf, 10))})
 
   call term_sendkeys(buf, ":q\<CR>")
   call StopVimInTerminal(buf)
@@ -3770,6 +3795,12 @@ func Test_popupwin_exiting_terminal()
       autocmd!
     augroup END
   endtry
+endfunc
+
+func Test_popup_filter_menu()
+  let colors = ['red', 'green', 'blue']
+  call popup_menu(colors, #{callback: {_, result -> assert_equal('green', colors[result - 1])}})
+  call feedkeys("\<c-n>\<c-n>\<c-p>\<cr>", 'xt')
 endfunc
 
 " vim: shiftwidth=2 sts=2

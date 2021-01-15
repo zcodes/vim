@@ -1,7 +1,7 @@
 " Vim support file to detect file types
 "
 " Maintainer:	Bram Moolenaar <Bram@vim.org>
-" Last Change:	2020 Nov 22
+" Last Change:	2020 Dec 24
 
 " Listen very carefully, I will say this only once
 if exists("did_load_filetypes")
@@ -499,6 +499,9 @@ au BufNewFile,BufRead *.com			call dist#ft#BindzoneCheck('dcl')
 " DOT
 au BufNewFile,BufRead *.dot,*.gv		setf dot
 
+" Dune
+au BufNewFile,BufRead jbuild,dune,dune-project,dune-workspace setf dune
+
 " Dylan - lid files
 au BufNewFile,BufRead *.lid			setf dylanlid
 
@@ -626,6 +629,9 @@ au BufNewFile,BufRead *.mo,*.gdmo		setf gdmo
 
 " Gedcom
 au BufNewFile,BufRead *.ged,lltxxxxx.txt	setf gedcom
+
+" Gift (Moodle)
+autocmd BufRead,BufNewFile *.gift 		setf gift
 
 " Git
 au BufNewFile,BufRead COMMIT_EDITMSG,MERGE_MSG,TAG_EDITMSG	setf gitcommit
@@ -1122,14 +1128,17 @@ au BufNewFile,BufRead *.nse			setf lua
 " NSIS
 au BufNewFile,BufRead *.nsi,*.nsh		setf nsis
 
-" OCAML
-au BufNewFile,BufRead *.ml,*.mli,*.mll,*.mly,.ocamlinit	setf ocaml
+" OCaml
+au BufNewFile,BufRead *.ml,*.mli,*.mll,*.mly,.ocamlinit,*.mlt,*.mlp,*.mlip,*.mli.cppo,*.ml.cppo setf ocaml
 
 " Occam
 au BufNewFile,BufRead *.occ			setf occam
 
 " Omnimark
 au BufNewFile,BufRead *.xom,*.xin		setf omnimark
+
+" OPAM
+au BufNewFile,BufRead opam,*.opam,*.opam.template setf opam
 
 " OpenROAD
 au BufNewFile,BufRead *.or			setf openroad
@@ -1544,6 +1553,9 @@ au BufNewFile,BufRead *.scm,*.ss,*.rkt		setf scheme
 " Screen RC
 au BufNewFile,BufRead .screenrc,screenrc	setf screen
 
+" Sexplib
+au BufNewFile,BufRead *.sexp setf sexplib
+
 " Simula
 au BufNewFile,BufRead *.sim			setf simula
 
@@ -1742,6 +1754,9 @@ au BufNewFile,BufRead *.tf,.tfrc,tfrc		setf tf
 " tmux configuration
 au BufNewFile,BufRead {.,}tmux*.conf		setf tmux
 
+" TOML
+au BufNewFile,BufRead *.toml			setf toml
+
 " TPP - Text Presentation Program
 au BufNewFile,BufReadPost *.tpp			setf tpp
 
@@ -1763,8 +1778,13 @@ au BufNewFile,BufReadPost *.tsscl		setf tsscl
 " TWIG files
 au BufNewFile,BufReadPost *.twig		setf twig
 
-" Typescript
-au BufNewFile,BufReadPost *.ts			setf typescript
+" Typescript or Qt translation file (which is XML)
+au BufNewFile,BufReadPost *.ts
+	\ if getline(1) =~ '<?xml' |
+	\   setf xml |
+	\ else |
+	\   setf typescript |
+	\ endif
 
 " TypeScript with React
 au BufNewFile,BufRead *.tsx			setf typescriptreact

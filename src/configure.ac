@@ -437,9 +437,9 @@ fi
 
 dnl Set QUOTESED. Needs additional backslashes on zOS
 if test "$zOSUnix" = "yes"; then
-    QUOTESED="sed -e 's/[[\\\\\"]]/\\\\\\\\&/g' -e 's/\\\\\\\\\"/\"/' -e 's/\\\\\\\\\";\$\$/\";/'"
+    QUOTESED="sed -e 's/[[\\\\\"]]/\\\\\\\\&/g' -e 's/\\\\\\\\\"/\"/' -e 's/\\\\\\\\\";\$\$/\";/' -e 's/  */ /g'"
 else
-    QUOTESED="sed -e 's/[[\\\\\"]]/\\\\&/g' -e 's/\\\\\"/\"/' -e 's/\\\\\";\$\$/\";/'"
+    QUOTESED="sed -e 's/[[\\\\\"]]/\\\\&/g' -e 's/\\\\\"/\"/' -e 's/\\\\\";\$\$/\";/' -e 's/  */ /g'"
 fi
 AC_SUBST(QUOTESED)
 
@@ -632,7 +632,7 @@ if test "$enable_luainterp" = "yes" -o "$enable_luainterp" = "dynamic"; then
 	  inc_path="$vi_cv_path_lua_pfx/include"
 	  for dir in "$inc_path"/moonjit-[[0-9]]* ; do
 	    if test -d "$dir" ; then
-	      lua_suf=`basename '$dir'`
+	      lua_suf=`basename "$dir"`
 	      lua_suf="/$lua_suf"
 	      break
 	    fi
@@ -1965,8 +1965,7 @@ if test "$enable_rubyinterp" = "yes" -o "$enable_rubyinterp" = "dynamic"; then
 	librubyarg=`$vi_cv_path_ruby -r rbconfig -e "print $ruby_rbconfig.expand($ruby_rbconfig::CONFIG[['LIBRUBYARG']])"`
 	librubya=`$vi_cv_path_ruby -r rbconfig -e "print $ruby_rbconfig.expand($ruby_rbconfig::CONFIG[['LIBRUBY_A']])"`
 	rubylibdir=`$vi_cv_path_ruby -r rbconfig -e "print $ruby_rbconfig.expand($ruby_rbconfig::CONFIG[['libdir']])"`
-	if test -f "$rubylibdir/$librubya"; then
-	  librubyarg="$librubyarg"
+	if test -f "$rubylibdir/$librubya" || expr "$librubyarg" : "-lruby"; then
 	  RUBY_LIBS="$RUBY_LIBS -L$rubylibdir"
 	elif test "$librubyarg" = "libruby.a"; then
 	  dnl required on Mac OS 10.3 where libruby.a doesn't exist
@@ -2001,6 +2000,9 @@ if test "$enable_rubyinterp" = "yes" -o "$enable_rubyinterp" = "dynamic"; then
 	  AC_DEFINE(DYNAMIC_RUBY)
 	  RUBY_CFLAGS="-DDYNAMIC_RUBY_DLL=\\\"$libruby_soname\\\" $RUBY_CFLAGS"
 	  RUBY_LIBS=
+	fi
+	if test "X$CLANG_VERSION" != "X" -a "$rubyversion" -ge 30; then
+	  RUBY_CFLAGS="$RUBY_CFLAGS -fdeclspec"
 	fi
       else
 	AC_MSG_RESULT(not found; disabling Ruby)
@@ -4466,6 +4468,10 @@ if echo "$CFLAGS $LUA_CFLAGS $MZSCHEME_CFLAGS $PERL_CFLAGS $PYTHON_CFLAGS $PYTHO
 else
   AC_MSG_RESULT(no)
 fi
+
+dnl $LDFLAGS is passed to glibtool in libvterm, it doesn't like a space
+dnl between "-L" and the path that follows.
+LDFLAGS=`echo "$LDFLAGS" | sed -e 's/-L /-L/g'`
 
 dnl link.sh tries to avoid overlinking in a hackish way.
 dnl At least GNU ld supports --as-needed which provides the same functionality

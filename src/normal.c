@@ -3738,9 +3738,9 @@ nv_ident(cmdarg_T *cap)
     else
     {
 	if (cmdchar == '*')
-	    aux_ptr = (char_u *)(p_magic ? "/.*~[^$\\" : "/^$\\");
+	    aux_ptr = (char_u *)(magic_isset() ? "/.*~[^$\\" : "/^$\\");
 	else if (cmdchar == '#')
-	    aux_ptr = (char_u *)(p_magic ? "/?.*~[^$\\" : "/?^$\\");
+	    aux_ptr = (char_u *)(magic_isset() ? "/?.*~[^$\\" : "/?^$\\");
 	else if (tag_cmd)
 	{
 	    if (curbuf->b_help)
@@ -4927,7 +4927,7 @@ nv_replace(cmdarg_T *cap)
     if (cap->nchar == Ctrl_V)
     {
 	had_ctrl_v = Ctrl_V;
-	cap->nchar = get_literal();
+	cap->nchar = get_literal(FALSE);
 	// Don't redo a multibyte character with CTRL-V.
 	if (cap->nchar > DEL)
 	    had_ctrl_v = NUL;
@@ -5208,7 +5208,7 @@ nv_vreplace(cmdarg_T *cap)
 	else
 	{
 	    if (cap->extra_char == Ctrl_V)	// get another character
-		cap->extra_char = get_literal();
+		cap->extra_char = get_literal(FALSE);
 	    stuffcharReadbuff(cap->extra_char);
 	    stuffcharReadbuff(ESC);
 	    if (virtual_active())
@@ -5372,7 +5372,7 @@ v_visop(cmdarg_T *cap)
 nv_subst(cmdarg_T *cap)
 {
 #ifdef FEAT_TERMINAL
-    // When showing output of term_dumpdiff() swap the top and botom.
+    // When showing output of term_dumpdiff() swap the top and bottom.
     if (term_swap_diff() == OK)
 	return;
 #endif
@@ -5787,7 +5787,7 @@ nv_suspend(cmdarg_T *cap)
     clearop(cap->oap);
     if (VIsual_active)
 	end_visual_mode();		// stop Visual mode
-    do_cmdline_cmd((char_u *)"st");
+    do_cmdline_cmd((char_u *)"stop");
 }
 
 /*
