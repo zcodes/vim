@@ -762,7 +762,7 @@ def Test_disassemble_const_expr()
             'if has("gui_running")\_s*' ..
             '\d PUSHS "gui_running"\_s*' ..
             '\d BCALL has(argc 1)\_s*' ..
-            '\d COND2BOOL\_s*' ..
+            '\d 2BOOL (!!val)\_s*' ..
             '\d JUMP_IF_FALSE -> \d\_s*' ..
             '  echo "yes"\_s*' ..
             '\d PUSHS "yes"\_s*' ..
@@ -1839,6 +1839,21 @@ def Test_silent()
         '\d ECHOERR 1\_s*' ..
         '\d CMDMOD_REV\_s*' ..
         '\d RETURN 0',
+        res)
+enddef
+
+def s:SilentReturn(): string
+  silent return "done"
+enddef
+
+def Test_silent_return()
+  var res = execute('disass s:SilentReturn')
+  assert_match('<SNR>\d*_SilentReturn\_s*' ..
+        'silent return "done"\_s*' ..
+        '\d CMDMOD silent\_s*' ..
+        '\d PUSHS "done"\_s*' ..
+        '\d CMDMOD_REV\_s*' ..
+        '\d RETURN',
         res)
 enddef
 

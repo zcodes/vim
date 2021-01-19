@@ -324,7 +324,7 @@ func g:NoSuchFunc()
   echo 'none'
 endfunc
 
-def Test_try_catch()
+def Test_try_catch_throw()
   var l = []
   try # comment
     add(l, '1')
@@ -556,6 +556,62 @@ def Test_try_catch()
     n = 411
   endtry
   assert_equal(411, n)
+enddef
+
+def Test_cnext_works_in_catch()
+  var lines =<< trim END
+      vim9script
+      au BufEnter * eval 0
+      writefile(['text'], 'Xfile1')
+      writefile(['text'], 'Xfile2')
+      var items = [
+          {lnum: 1, filename: 'Xfile1', valid: true},
+          {lnum: 1, filename: 'Xfile2', valid: true}
+        ]
+      setqflist([], ' ', {items: items})
+      cwindow
+
+      def CnextOrCfirst()
+        # if cnext fails, cfirst is used
+        try
+          cnext
+        catch
+          cfirst
+        endtry
+      enddef
+
+      CnextOrCfirst()
+      CnextOrCfirst()
+      writefile([getqflist({idx: 0}).idx], 'Xresult')
+      qall
+  END
+  writefile(lines, 'XCatchCnext')
+  RunVim([], [], '--clean -S XCatchCnext')
+  assert_equal(['1'], readfile('Xresult'))
+
+  delete('Xfile1')
+  delete('Xfile2')
+  delete('XCatchCnext')
+  delete('Xresult')
+enddef
+
+def Test_throw_skipped()
+  if 0
+    throw dontgethere
+  endif
+enddef
+
+def Test_nocatch_throw_silenced()
+  var lines =<< trim END
+    vim9script
+    def Func()
+      throw 'error'
+    enddef
+    silent! Func()
+  END
+  writefile(lines, 'XthrowSilenced')
+  source XthrowSilenced
+  delete('XthrowSilenced')
 enddef
 
 def DeletedFunc(): list<any>
@@ -1238,7 +1294,7 @@ def Test_vim9script_reload_noclear()
   assert_equal(3, g:loadCount)
   assert_equal(['init', 'yes', 'again', 'once', 'thexport'], g:Values())
 
-  delete('Xreloaded')
+  delete('XReloaded')
   delete('XExportReload')
   delfunc g:Values
   unlet g:loadCount
@@ -2004,6 +2060,12 @@ def Test_for_loop()
     total += nr
   endfor
   assert_equal(6, total)
+
+  var res = ""
+  for [n: number, s: string] in [[1, 'a'], [2, 'b']]
+    res ..= n .. s
+  endfor
+  assert_equal('1a2b', res)
 enddef
 
 def Test_for_loop_fails()
@@ -2966,7 +3028,7 @@ def Test_vim9_autoload_error()
           invalid
       endfu
       try
-          invalid
+          alsoinvalid
       catch /wontmatch/
       endtry
   END

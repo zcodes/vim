@@ -350,7 +350,7 @@ def Test_assign_index()
     var lines: list<string>
     lines['a'] = 'asdf'
   END
-  CheckDefFailure(lines, 'E39:', 2)
+  CheckDefFailure(lines, 'E1012:', 2)
 
   lines =<< trim END
     var lines: string
@@ -559,6 +559,15 @@ def Test_assignment_list()
     d.dd[0] = 0
   END
   CheckDefExecFailure(lines, 'E1147:', 2)
+enddef
+
+def Test_assignment_list_any_index()
+   var l: list<number> = [1, 2]
+  for  [x, y, _]
+  in  [[0, 1, ''], [1, 3, '']]
+      l[x] = l[x] + y
+  endfor
+  assert_equal([2, 5], l)
 enddef
 
 def Test_assignment_list_vim9script()
@@ -1225,6 +1234,12 @@ def Test_var_declaration()
       g:dict_val = s:dict[key]
     enddef
     GetDictVal('a')
+
+    final adict: dict<string> = {}
+    def ChangeAdict()
+      adict.foo = 'foo'
+    enddef
+    ChangeAdict()
   END
   CheckScriptSuccess(lines)
   assert_equal('', g:var_uninit)
@@ -1259,6 +1274,16 @@ def Test_var_declaration_fails()
   END
   CheckScriptFailure(lines, 'E741:')
   unlet g:constvar
+
+  lines =<< trim END
+    vim9script
+    const cdict: dict<string> = {}
+    def Change()
+      cdict.foo = 'foo'
+    enddef
+    defcompile
+  END
+  CheckScriptFailure(lines, 'E46:')
 
   lines =<< trim END
     vim9script
@@ -1335,7 +1360,7 @@ def Test_var_list_dict_type()
       var ll: list<number>
       ll = [1, 2, 3]->map('"one"')
   END
-  CheckDefExecFailure(lines, 'E1012: Type mismatch; expected list<number> but got list<string>')
+  CheckDefExecFailure(lines, 'E1012: Type mismatch; expected number but got string')
 enddef
 
 def Test_cannot_use_let()
@@ -1389,7 +1414,7 @@ def Test_unlet()
   CheckDefExecFailure([
     'var ll = [1]',
     'unlet ll[g:astring]',
-    ], 'E39:', 2)
+    ], 'E1012:', 2)
   CheckDefExecFailure([
     'var dd = test_null_dict()',
     'unlet dd["a"]',
