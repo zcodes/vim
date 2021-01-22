@@ -1019,7 +1019,7 @@ skip_var_list(
 	for (;;)
 	{
 	    p = skipwhite(p + 1);	// skip whites after '[', ';' or ','
-	    s = skip_var_one(p, FALSE);
+	    s = skip_var_one(p, include_type);
 	    if (s == p)
 	    {
 		if (!silent)
@@ -1061,17 +1061,21 @@ skip_var_list(
     char_u *
 skip_var_one(char_u *arg, int include_type)
 {
-    char_u *end;
+    char_u	*end;
+    int		vim9 = in_vim9script();
 
     if (*arg == '@' && arg[1] != NUL)
 	return arg + 2;
     end = find_name_end(*arg == '$' || *arg == '&' ? arg + 1 : arg,
 				   NULL, NULL, FNE_INCL_BR | FNE_CHECK_START);
-    if (include_type && in_vim9script())
+
+    // "a: type" is declaring variable "a" with a type, not "a:".
+    // Same for "s: type".
+    if (vim9 && end == arg + 2 && end[-1] == ':')
+	--end;
+
+    if (include_type && vim9)
     {
-	// "a: type" is declaring variable "a" with a type, not "a:".
-	if (end == arg + 2 && end[-1] == ':')
-	    --end;
 	if (*end == ':')
 	    end = skip_type(skipwhite(end + 1), FALSE);
     }
@@ -1952,7 +1956,7 @@ static int	varnamebuflen = 0;
 /*
  * Function to concatenate a prefix and a variable name.
  */
-    static char_u *
+    char_u *
 cat_prefix_varname(int prefix, char_u *name)
 {
     int		len;
@@ -3153,7 +3157,7 @@ set_var_const(
 	    // A Vim9 script-local variable is also present in sn_all_vars and
 	    // sn_var_vals.  It may set "type" from "tv".
 	    if (is_script_local && vim9script)
-		update_vim9_script_var(FALSE, di, tv, &type);
+		update_vim9_script_var(FALSE, di, flags, tv, &type);
 	}
 
 	// existing variable, need to clear the value
@@ -3243,7 +3247,7 @@ set_var_const(
 	// A Vim9 script-local variable is also added to sn_all_vars and
 	// sn_var_vals. It may set "type" from "tv".
 	if (is_script_local && vim9script)
-	    update_vim9_script_var(TRUE, di, tv, &type);
+	    update_vim9_script_var(TRUE, di, flags, tv, &type);
     }
 
     if (copy || tv->v_type == VAR_NUMBER || tv->v_type == VAR_FLOAT)
