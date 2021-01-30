@@ -55,6 +55,8 @@ def Test_assignment_bool()
   CheckDefAndScriptFailure(['var x: bool = [1]'], 'E1012:')
   CheckDefAndScriptFailure(['var x: bool = {}'], 'E1012:')
   CheckDefAndScriptFailure(['var x: bool = "x"'], 'E1012:')
+
+  CheckDefAndScriptFailure(['var x: bool = "x"', '', 'eval 0'], 'E1012:', 1)
 enddef
 
 def Test_syntax()
@@ -1488,6 +1490,30 @@ def Test_unlet()
   unlet $ENVVAR
   assert_equal('', $ENVVAR)
 enddef
+
+def Test_expr_error_no_assign()
+  var lines =<< trim END
+      vim9script
+      var x = invalid
+      echo x
+  END
+  CheckScriptFailureList(lines, ['E121:', 'E121:'])
+
+  lines =<< trim END
+      vim9script
+      var x = 1 / 0
+      echo x
+  END
+  CheckScriptFailureList(lines, ['E1154:', 'E121:'])
+
+  lines =<< trim END
+      vim9script
+      var x = 1 % 0
+      echo x
+  END
+  CheckScriptFailureList(lines, ['E1154:', 'E121:'])
+enddef
+
 
 def Test_assign_command_modifier()
   var lines =<< trim END

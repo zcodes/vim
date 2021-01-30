@@ -696,11 +696,8 @@ do_cmdline(
     ++call_depth;
 
 #ifdef FEAT_EVAL
+    CLEAR_FIELD(cstack);
     cstack.cs_idx = -1;
-    cstack.cs_looplevel = 0;
-    cstack.cs_trylevel = 0;
-    cstack.cs_emsg_silent_list = NULL;
-    cstack.cs_lflags = 0;
     ga_init2(&lines_ga, (int)sizeof(wcmd_T), 10);
 
     real_cookie = getline_cookie(fgetline, cookie);
@@ -866,7 +863,7 @@ do_cmdline(
 	    if (do_profiling == PROF_YES)
 	    {
 		if (getline_is_func)
-		    func_line_start(real_cookie);
+		    func_line_start(real_cookie, SOURCING_LNUM);
 		else if (getline_equal(fgetline, cookie, getsourceline))
 		    script_line_start();
 	    }
@@ -3313,8 +3310,9 @@ find_ex_command(
 	if (vim_strchr((char_u *)"{('[\"@", *p) != NULL
 	       || ((p = to_name_const_end(pskip)) > eap->cmd && *p != NUL))
 	{
-	    int oplen;
-	    int heredoc;
+	    int	    oplen;
+	    int	    heredoc;
+	    char_u  *swp = skipwhite(p);
 
 	    if (
 		// "(..." is an expression.
@@ -3332,7 +3330,7 @@ find_ex_command(
 			 || eap->cmd[1] == ':'
 			    )
 			    // "varname->func()" is an expression.
-			: (*p == '-' && p[1] == '>')))
+			: (*swp == '-' && swp[1] == '>')))
 	    {
 		if (*eap->cmd == '{' && ends_excmd(*skipwhite(eap->cmd + 1)))
 		{

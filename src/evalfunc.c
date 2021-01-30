@@ -1219,7 +1219,7 @@ static funcentry_T global_functions[] =
     {"matchstrpos",	2, 4, FEARG_1,	    NULL,
 			ret_list_any,	    f_matchstrpos},
     {"max",		1, 1, FEARG_1,	    NULL,
-			ret_any,	    f_max},
+			ret_number,	    f_max},
     {"menu_info",	1, 2, FEARG_1,	    NULL,
 			ret_dict_any,
 #ifdef FEAT_MENU
@@ -1229,7 +1229,7 @@ static funcentry_T global_functions[] =
 #endif
 			},
     {"min",		1, 1, FEARG_1,	    NULL,
-			ret_any,	    f_min},
+			ret_number,	    f_min},
     {"mkdir",		1, 3, FEARG_1,	    NULL,
 			ret_number_bool,    f_mkdir},
     {"mode",		0, 1, FEARG_1,	    NULL,
@@ -4651,6 +4651,13 @@ f_has(typval_T *argvars, typval_T *rettv)
 		},
 	{"cmdline_compl", 1},
 	{"cmdline_hist", 1},
+	{"cmdwin",
+#ifdef FEAT_CMDWIN
+		1
+#else
+		0
+#endif
+		},
 	{"comments", 1},
 	{"conceal",
 #ifdef FEAT_CONCEAL

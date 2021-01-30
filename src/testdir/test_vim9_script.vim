@@ -815,6 +815,12 @@ def Test_list_vimscript()
       # comment 6
   END
   assert_equal(['# comment 1', 'two', '# comment 3', '', 'five', '# comment 6'], lines)
+
+  lines =<< trim END
+    [{
+      a: 0}]->string()->assert_equal("[{'a': 0}]")
+  END
+  CheckDefAndScriptSuccess(lines)
 enddef
 
 if has('channel')
@@ -1735,7 +1741,7 @@ def Test_if_elseif_else_fails()
   CheckDefFailure(['elseif true'], 'E582:')
   CheckDefFailure(['else'], 'E581:')
   CheckDefFailure(['endif'], 'E580:')
-  CheckDefFailure(['if true', 'elseif xxx'], 'E1001:')
+  CheckDefFailure(['if g:abool', 'elseif xxx'], 'E1001:')
   CheckDefFailure(['if true', 'echo 1'], 'E171:')
 enddef
 
